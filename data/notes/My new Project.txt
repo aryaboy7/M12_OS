@@ -1,0 +1,5 @@
+{
+    "title": "My new Project",
+    "type": "Work",
+    "body": "I am in the Notes developing."
+}

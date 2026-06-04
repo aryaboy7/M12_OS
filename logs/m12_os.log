@@ -1,9 +1,143 @@
-2026-06-03 19:54:21,992 | INFO | M12 OS 0.1.0 started
-2026-06-03 19:54:25,944 | INFO | Button pressed: 📝 Notes
-2026-06-03 19:54:35,610 | INFO | Notes: created Note_003.txt
-2026-06-03 20:00:04,663 | INFO | M12 OS 0.1.0 started
-2026-06-03 20:00:07,314 | INFO | Button pressed: 📝 Notes
-2026-06-03 20:00:12,612 | INFO | Notes: New pressed
-2026-06-03 20:02:45,221 | INFO | M12 OS 0.1.0 started
-2026-06-03 20:02:48,403 | INFO | Button pressed: 📝 Notes
-2026-06-03 20:02:52,198 | INFO | Notes: New pressed
+2026-06-04 18:40:42,727 | INFO | M12 OS 0.1.0 started
+2026-06-04 18:40:46,149 | INFO | Button pressed: 📝 Notes
+2026-06-04 18:40:55,256 | INFO | Notes: filter Personal
+2026-06-04 18:40:59,897 | INFO | Notes: filter Work
+2026-06-04 18:41:01,549 | INFO | Notes: filter Project
+2026-06-04 18:41:02,411 | INFO | Notes: filter Shopping
+2026-06-04 18:41:03,195 | INFO | Notes: filter Idea
+2026-06-04 18:41:04,945 | INFO | Notes: filter ESP32-28
+2026-06-04 18:41:08,887 | INFO | Notes: filter All
+2026-06-04 18:41:20,258 | INFO | Notes: New pressed
+2026-06-04 18:41:20,260 | INFO | Editor: new note
+2026-06-04 18:42:08,291 | INFO | Editor: saved NNN.json
+2026-06-04 18:42:09,840 | INFO | Editor: Back pressed
+2026-06-04 18:42:22,885 | INFO | Notes: selected NNN.json
+2026-06-04 18:42:25,650 | INFO | Notes: filter ESP32-28
+2026-06-04 18:42:27,502 | INFO | Notes: filter Idea
+2026-06-04 18:42:28,588 | INFO | Notes: filter Shopping
+2026-06-04 18:42:29,421 | INFO | Notes: filter Project
+2026-06-04 18:43:51,575 | INFO | Notes: filter All
+2026-06-04 18:44:09,114 | INFO | Notes: selected 9.txt
+2026-06-04 18:44:13,955 | ERROR | Editor: failed to load note JSON: Expecting value: line 1 column 1 (char 0)
+2026-06-04 18:44:13,957 | INFO | Notes: opening 9.txt
+2026-06-04 18:44:30,733 | INFO | Editor: saved 9.json
+2026-06-04 18:44:32,478 | INFO | Editor: Back pressed
+2026-06-04 18:44:37,943 | INFO | Notes: selected 9.txt
+2026-06-04 18:45:31,826 | INFO | Notes: filter Personal
+2026-06-04 18:45:35,281 | INFO | Notes: filter ESP32-28
+2026-06-04 18:45:36,835 | INFO | Notes: filter ESP32-28
+2026-06-04 18:45:37,843 | INFO | Notes: filter Personal
+2026-06-04 18:45:41,444 | INFO | Notes: filter ESP32-28
+2026-06-04 18:45:47,579 | INFO | Notes: selected 9.json
+2026-06-04 18:45:50,847 | INFO | Editor: loaded 9.json
+2026-06-04 18:45:50,847 | INFO | Notes: opening 9.json
+2026-06-04 18:45:54,245 | INFO | Editor: Back pressed
+2026-06-04 18:45:58,480 | INFO | Notes: filter All
+2026-06-04 19:07:45,577 | INFO | M12 OS 0.1.0 started
+2026-06-04 19:07:48,745 | INFO | Button pressed: 📝 Notes
+2026-06-04 19:07:52,522 | INFO | Notes: selected 10.txt
+2026-06-04 19:07:54,434 | ERROR | Editor: failed to load note JSON: Expecting value: line 1 column 1 (char 0)
+2026-06-04 19:07:54,436 | INFO | Notes: opening 10.txt
+2026-06-04 19:08:11,836 | INFO | Editor: Back pressed
+2026-06-04 19:09:13,841 | INFO | Notes: New pressed
+2026-06-04 19:09:13,842 | INFO | Editor: new note
+2026-06-04 19:09:17,242 | INFO | Editor: Back pressed
+2026-06-04 19:23:53,682 | INFO | M12 OS 0.1.0 started
+2026-06-04 19:23:57,336 | INFO | Button pressed: 📝 Notes
+2026-06-04 19:24:01,847 | INFO | Notes: New pressed
+2026-06-04 19:24:01,848 | INFO | Editor: new note
+2026-06-04 19:24:05,833 | INFO | Editor: saved Untitled.json
+2026-06-04 19:24:07,666 | INFO | Editor: Back pressed
+2026-06-04 19:24:12,891 | INFO | Notes: Back pressed
+2026-06-04 19:24:37,678 | INFO | Button pressed: 📝 Notes
+2026-06-04 19:24:41,962 | INFO | Notes: selected 12.txt
+2026-06-04 19:24:44,021 | ERROR | Editor: failed to load note JSON: Expecting value: line 1 column 1 (char 0)
+2026-06-04 19:24:44,023 | INFO | Notes: opening 12.txt
+2026-06-04 19:25:33,234 | INFO | Editor: saved 12.txt
+2026-06-04 19:25:34,250 | INFO | Editor: Back pressed
+2026-06-04 19:25:42,101 | INFO | Notes: New pressed
+2026-06-04 19:25:42,103 | INFO | Editor: new note
+2026-06-04 19:26:14,338 | INFO | Editor: saved Untitled.json
+2026-06-04 19:26:15,728 | INFO | Editor: Back pressed
+2026-06-04 19:34:33,380 | INFO | M12 OS 0.1.0 started
+2026-06-04 19:34:35,983 | INFO | Button pressed: 📝 Notes
+2026-06-04 19:34:55,644 | INFO | Notes: selected Untitled.json
+2026-06-04 19:35:08,330 | INFO | Notes: selected 12.txt
+2026-06-04 19:35:10,435 | INFO | Editor: loaded 12.txt
+2026-06-04 19:35:10,436 | INFO | Notes: opening 12.txt
+2026-06-04 19:35:42,277 | INFO | Editor: saved 12.txt
+2026-06-04 19:35:43,163 | INFO | Editor: saved 12.txt
+2026-06-04 19:35:45,097 | INFO | Editor: Back pressed
+2026-06-04 19:35:55,021 | INFO | Notes: selected 10.txt
+2026-06-04 19:35:58,129 | INFO | Notes: deleted 10.txt
+2026-06-04 19:35:59,456 | INFO | Notes: selected 9.json
+2026-06-04 19:36:00,157 | INFO | Notes: deleted 9.json
+2026-06-04 19:36:01,875 | INFO | Notes: selected NNN.json
+2026-06-04 19:36:02,540 | INFO | Notes: deleted NNN.json
+2026-06-04 19:36:03,604 | INFO | Notes: selected 1.txt
+2026-06-04 19:36:04,264 | INFO | Notes: deleted 1.txt
+2026-06-04 19:36:05,357 | INFO | Notes: selected 9.txt
+2026-06-04 19:36:05,961 | INFO | Notes: deleted 9.txt
+2026-06-04 19:36:07,009 | INFO | Notes: selected 22.txt
+2026-06-04 19:36:07,686 | INFO | Notes: deleted 22.txt
+2026-06-04 19:36:08,694 | INFO | Notes: selected 21.txt
+2026-06-04 19:36:09,546 | INFO | Notes: deleted 21.txt
+2026-06-04 19:36:10,596 | INFO | Notes: selected 20.txt
+2026-06-04 19:36:11,304 | INFO | Notes: deleted 20.txt
+2026-06-04 19:36:12,427 | INFO | Notes: selected 19.txt
+2026-06-04 19:36:13,007 | INFO | Notes: deleted 19.txt
+2026-06-04 19:36:13,864 | INFO | Notes: selected 18.txt
+2026-06-04 19:36:14,833 | INFO | Notes: deleted 18.txt
+2026-06-04 19:36:16,032 | INFO | Notes: selected 17.txt
+2026-06-04 19:36:17,500 | INFO | Notes: deleted 17.txt
+2026-06-04 19:36:18,562 | INFO | Notes: selected 16.txt
+2026-06-04 19:36:19,226 | INFO | Notes: deleted 16.txt
+2026-06-04 19:36:19,972 | INFO | Notes: selected 15.txt
+2026-06-04 19:36:20,488 | INFO | Notes: deleted 15.txt
+2026-06-04 19:36:21,316 | INFO | Notes: selected 14.txt
+2026-06-04 19:36:21,852 | INFO | Notes: deleted 14.txt
+2026-06-04 19:36:22,723 | INFO | Notes: selected 13.txt
+2026-06-04 19:36:23,250 | INFO | Notes: deleted 13.txt
+2026-06-04 19:36:24,032 | INFO | Notes: selected 11.txt
+2026-06-04 19:36:24,657 | INFO | Notes: deleted 11.txt
+2026-06-04 19:36:25,645 | INFO | Notes: selected 8.txt
+2026-06-04 19:36:26,212 | INFO | Notes: deleted 8.txt
+2026-06-04 19:36:26,918 | INFO | Notes: selected 7.txt
+2026-06-04 19:36:27,404 | INFO | Notes: deleted 7.txt
+2026-06-04 19:36:28,189 | INFO | Notes: selected 6.txt
+2026-06-04 19:36:28,779 | INFO | Notes: deleted 6.txt
+2026-06-04 19:36:29,555 | INFO | Notes: selected 5.txt
+2026-06-04 19:36:30,162 | INFO | Notes: deleted 5.txt
+2026-06-04 19:36:31,356 | INFO | Notes: selected 4.txt
+2026-06-04 19:36:31,985 | INFO | Notes: deleted 4.txt
+2026-06-04 19:36:32,860 | INFO | Notes: selected 3.txt
+2026-06-04 19:36:33,343 | INFO | Notes: deleted 3.txt
+2026-06-04 19:36:34,194 | INFO | Notes: selected 2.txt
+2026-06-04 19:36:34,811 | INFO | Notes: deleted 2.txt
+2026-06-04 19:36:39,583 | INFO | Notes: selected My new Project.txt
+2026-06-04 19:36:41,009 | ERROR | Editor: failed to load note JSON: Expecting value: line 1 column 1 (char 0)
+2026-06-04 19:36:41,013 | INFO | Notes: opening My new Project.txt
+2026-06-04 19:36:47,073 | INFO | Editor: saved My new Project.txt
+2026-06-04 19:36:48,121 | INFO | Editor: Back pressed
+2026-06-04 19:36:57,900 | INFO | Notes: filter Project
+2026-06-04 19:37:03,883 | INFO | Notes: filter Work
+2026-06-04 19:37:05,841 | INFO | Notes: filter Idea
+2026-06-04 19:37:07,134 | INFO | Notes: filter Shopping
+2026-06-04 19:37:12,671 | INFO | Notes: filter Personal
+2026-06-04 19:37:14,327 | INFO | Notes: filter All
+2026-06-04 19:37:16,897 | INFO | Notes: selected Untitled.json
+2026-06-04 19:37:18,182 | INFO | Editor: loaded Untitled.json
+2026-06-04 19:37:18,183 | INFO | Notes: opening Untitled.json
+2026-06-04 19:37:38,849 | INFO | Editor: saved Untitled.json
+2026-06-04 19:37:40,413 | INFO | Editor: Back pressed
+2026-06-04 19:37:45,844 | INFO | Notes: filter Shopping
+2026-06-04 19:37:50,319 | INFO | Notes: filter Personal
+2026-06-04 19:37:52,479 | INFO | Notes: filter All
+2026-06-04 19:37:54,917 | INFO | Notes: filter Project
+2026-06-04 19:37:57,066 | INFO | Notes: New pressed
+2026-06-04 19:37:57,069 | INFO | Editor: new note
+2026-06-04 19:39:06,733 | INFO | Editor: saved Notes completed..json
+2026-06-04 19:39:08,065 | INFO | Editor: Back pressed
+2026-06-04 19:39:40,635 | INFO | Notes: Back pressed
+2026-06-04 19:39:42,113 | INFO | Button pressed: 🕒 Clock
+2026-06-04 19:39:43,297 | INFO | Button pressed: 🕒 Clock

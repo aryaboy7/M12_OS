@@ -1,7 +1,7 @@
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.uix.screenmanager import ScreenManager
-
+from screens.note_types_screen import NoteTypesScreen
 from config.version import APP_NAME, VERSION
 from utils.logger import log
 from screens.home_screen import HomeScreen
@@ -19,6 +19,7 @@ class M12OS(App):
      sm.add_widget(HomeScreen(name="home"))
      sm.add_widget(NotesScreen(name="notes"))
      sm.add_widget(NoteEditorScreen(name="editor"))
+     sm.add_widget(NoteTypesScreen(name="note_types"))
      return sm
 
 
