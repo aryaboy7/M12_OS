@@ -210,3 +210,6 @@
 2026-06-05 08:27:02,850 | INFO | Stopwatch: opened
 2026-06-05 08:27:04,808 | INFO | Clock: opened
 2026-06-05 08:27:10,028 | INFO | Clock: Back pressed
+2026-06-05 09:52:57,166 | INFO | M12 OS 0.3.2 started
+2026-06-05 09:53:00,109 | INFO | Home: open updater
+2026-06-05 09:53:05,627 | ERROR | Updater check failed: HTTP Error 404: Not Found

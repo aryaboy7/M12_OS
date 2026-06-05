@@ -1,5 +1,9 @@
 {
-  "city": "Brooklyn, NY",
-  "theme": "dark",
-  "temperature_unit": "F"
+    "city": "Brooklyn, NY",
+    "temperature_unit": "F",
+    "theme": "dark",
+    "auto_update": true,
+    "update_channel": "stable",
+    "start_screen": "home",
+    "last_update_check": ""
 }
