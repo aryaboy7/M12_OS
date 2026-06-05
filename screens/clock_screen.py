@@ -6,6 +6,7 @@ from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from utils.ui_scale import font, height
 
 from utils.logger import log
 
@@ -25,7 +26,7 @@ class ClockScreen(Screen):
 
         back_btn = Button(
             text="< Back",
-            font_size=22,
+            font_size=font(22),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
         )
@@ -36,7 +37,7 @@ class ClockScreen(Screen):
 
         self.time_label = Label(
             text="00:00:00",
-            font_size=78,
+            font_size=font(78),
             bold=True,
             size_hint=(1, 0.45)
         )
@@ -44,14 +45,14 @@ class ClockScreen(Screen):
 
         self.date_label = Label(
             text="Date",
-            font_size=30,
+            font_size=font(39),
             size_hint=(1, 0.20)
         )
         root.add_widget(self.date_label)
 
         timer_btn = Button(
             text="Timer",
-            font_size=26,
+            font_size=font(26),
             size_hint=(1, 0.15),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
@@ -61,7 +62,7 @@ class ClockScreen(Screen):
 
         stopwatch_btn = Button(
             text="Stopwatch",
-            font_size=26,
+            font_size=font(26),
             size_hint=(1, 0.15),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
@@ -71,7 +72,7 @@ class ClockScreen(Screen):
 
         self.info_label = Label(
             text="M12 Clock",
-            font_size=22,
+            font_size=font(22),
             size_hint=(1, 0.23)
         )
         root.add_widget(self.info_label)

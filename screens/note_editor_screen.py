@@ -6,6 +6,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
+from utils.ui_scale import font, height
 
 from utils.logger import log
 
@@ -38,7 +39,7 @@ class NoteEditorScreen(Screen):
 
         self.title_input = TextInput(
             hint_text="Note title",
-            font_size=26,
+            font_size=font(28),
             size_hint=(1, 0.12),
             multiline=False
         )
@@ -47,7 +48,7 @@ class NoteEditorScreen(Screen):
         self.type_spinner = Spinner(
             text="Personal",
             values=self.load_types(),
-            font_size=22,
+            font_size=font(22),
             size_hint=(1, 0.10),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
@@ -56,7 +57,7 @@ class NoteEditorScreen(Screen):
 
         self.body_input = TextInput(
             hint_text="Type note here...",
-            font_size=22,
+            font_size=font(22),
             size_hint=(1, 0.66),
             multiline=True
         )

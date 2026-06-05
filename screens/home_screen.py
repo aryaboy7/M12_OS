@@ -7,6 +7,7 @@ from kivy.uix.button import Button
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
+from utils.ui_scale import font, height
 
 from utils.logger import log
 
@@ -46,8 +47,8 @@ class HomeScreen(Screen):
 
         clock_card = BoxLayout(orientation="vertical", size_hint=(1, 0.22))
 
-        self.clock_label = Label(text="00:00", font_size=60, bold=True)
-        self.date_label = Label(text="Date", font_size=24)
+        self.clock_label = Label(text="00:00", font_size=font(60), bold=True)
+        self.date_label = Label(text="Date", font_size=font(24))
 
         clock_card.add_widget(self.clock_label)
         clock_card.add_widget(self.date_label)
@@ -55,7 +56,7 @@ class HomeScreen(Screen):
 
         weather_card = Button(
             text="🌤  Brooklyn, NY\n72°F Sunny",
-            font_size=28,
+            font_size=font(28),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1),
             size_hint=(1, 0.18)
@@ -78,7 +79,7 @@ class HomeScreen(Screen):
         for app in apps:
             btn = Button(
                 text=app,
-                font_size=24,
+                font_size=font(24),
                 background_normal="",
                 background_color=(0.10, 0.15, 0.25, 1)
             )

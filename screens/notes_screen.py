@@ -7,6 +7,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
+from utils.ui_scale import font, height
 
 from utils.logger import log
 
@@ -26,7 +27,7 @@ class NotesScreen(Screen):
 
         layout = BoxLayout(orientation="vertical", spacing=8, padding=10)
 
-        title = Label(text="Notes", font_size=32, size_hint=(1, 0.10))
+        title = Label(text="Notes", font_size=font(32), size_hint=(1, 0.10))
         layout.add_widget(title)
 
         self.filter_box = GridLayout(cols=1, spacing=5, size_hint=(1, 0.18))
@@ -107,7 +108,7 @@ class NotesScreen(Screen):
 
             btn = Button(
                 text=name,
-                font_size=18,
+                font_size=font(18),
                 background_normal="",
                 background_color=color
             )
@@ -140,7 +141,7 @@ class NotesScreen(Screen):
             self.notes_box.add_widget(
                 Label(
                     text="No notes found",
-                    font_size=24,
+                    font_size=font(24),
                     size_hint_y=None,
                     height=80
                 )
@@ -156,7 +157,7 @@ class NotesScreen(Screen):
 
             btn = Button(
                 text=text,
-                font_size=18,
+                font_size=font(18),
                 size_hint_y=None,
                 height=80,
                 background_normal="",
