@@ -13,7 +13,13 @@ DEFAULT_SETTINGS = {
     "auto_update": True,
     "update_channel": "stable",
     "start_screen": "home",
-    "last_update_check": ""
+    "last_update_check": "",
+
+    "last_temperature": "--",
+    "last_condition": "",
+    "last_humidity": "",
+    "last_wind": "",
+    "last_advice": ""
 }
 
 

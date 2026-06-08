@@ -1,5 +1,4 @@
 from datetime import datetime
-from logging import root
 
 from kivy.clock import Clock
 from kivy.core.window import Window
@@ -78,6 +77,14 @@ class HomeScreen(Screen):
 
         self.add_widget(root)
 
+    def on_enter(self):
+        self.config = ConfigManager()
+        self.refresh_weather_card()
+
+        Clock.unschedule(self.update_time)
+        Clock.schedule_interval(self.update_time, 1)
+        self.update_time(0)
+
     def refresh_weather_card(self):
         self.config = ConfigManager()
 
@@ -85,26 +92,10 @@ class HomeScreen(Screen):
         unit = self.config.get("temperature_unit", "F")
         temp = self.config.get("last_temperature", "--")
 
-        self.weather_card.text = f"🌤 {city}\nWeather | {temp}°{unit}"
-
-    def on_enter(self):
-        self.config = ConfigManager()   # reload first
-        self.refresh_weather_card()
-
-        Clock.unschedule(self.update_time)
-        Clock.schedule_interval(self.update_time, 1)
-        self.update_time(0)
-
-        unit = self.config.get("temperature_unit", "F")
-        print("HOME UNIT =", unit)
-
-    def refresh_weather_card(self):
-        city = self.config.get("city", "Brooklyn, NY")
-        unit = self.config.get("temperature_unit", "F")
-        temp = self.config.get("last_temperature", "--")
-
-        self.weather_card.text = f"🌤 {city}\n{temp}°{unit}"
-    
+        self.weather_card.text = (
+            f"🌤 {city}\n"
+            f"{temp}°{unit}"
+        )
 
     def on_leave(self):
         Clock.unschedule(self.update_time)
