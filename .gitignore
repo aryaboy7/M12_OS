@@ -5,4 +5,5 @@ __pycache__/
 backups/
 updates/
 logs/
-config/settings.json
+config/settings.json*.zip
+*.zip
