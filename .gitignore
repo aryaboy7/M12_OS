@@ -7,3 +7,5 @@ updates/
 logs/
 config/settings.json*.zip
 *.zip
+config/settings.json
+config/settings.json
