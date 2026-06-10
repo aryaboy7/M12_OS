@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import tempfile
 import urllib.request
@@ -7,7 +8,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from config.version import VERSION, UPDATE_INFO_URL
+from config.version import VERSION
 from utils.logger import log
 
 
@@ -17,6 +18,10 @@ BACKUPS_DIR = BASE_DIR / "backups"
 
 UPDATES_DIR.mkdir(exist_ok=True)
 BACKUPS_DIR.mkdir(exist_ok=True)
+
+GITHUB_OWNER = "aryaboy7"
+GITHUB_REPO = "M12_OS"
+LATEST_RELEASE_API = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
 
 PRESERVE_NAMES = {
     ".git",
@@ -35,18 +40,23 @@ PRESERVE_FILES = {
 SKIP_SUFFIXES = {".pyc", ".pyo"}
 SKIP_NAMES = {
     ".DS_Store",
-    "requirements.txt",   # Android can throw permission error here
+    "requirements.txt",
 }
 
 
 def parse_version(value):
-    parts = []
-    for part in str(value).strip().split("."):
-        try:
-            parts.append(int(part))
-        except ValueError:
-            parts.append(0)
-    return tuple(parts)
+    text = str(value)
+    match = re.search(r"(\d+)[._](\d+)[._](\d+)", text)
+
+    if not match:
+        return (0, 0, 0)
+
+    return tuple(int(x) for x in match.groups())
+
+
+def version_string_from_tag(tag):
+    version = parse_version(tag)
+    return f"{version[0]}.{version[1]}.{version[2]}"
 
 
 def is_newer(remote_version, local_version=VERSION):
@@ -54,19 +64,61 @@ def is_newer(remote_version, local_version=VERSION):
 
 
 class Updater:
-    def __init__(self, config=None, update_info_url=UPDATE_INFO_URL):
+    def __init__(self, config=None, update_info_url=None):
         self.config = config
         self.update_info_url = update_info_url
 
     def check(self):
         try:
-            with urllib.request.urlopen(self.update_info_url, timeout=15) as response:
-                raw = response.read().decode("utf-8")
-                info = json.loads(raw)
+            request = urllib.request.Request(
+                LATEST_RELEASE_API,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "M12-OS-Updater"
+                }
+            )
 
-            remote_version = info.get("version", "0.0.0")
-            info["local_version"] = VERSION
-            info["update_available"] = is_newer(remote_version, VERSION)
+            with urllib.request.urlopen(request, timeout=20) as response:
+                raw = response.read().decode("utf-8")
+                release = json.loads(raw)
+
+            tag_name = release.get("tag_name", "")
+            release_name = release.get("name", tag_name)
+            notes = release.get("body", "") or release_name
+            remote_version = version_string_from_tag(tag_name)
+
+            asset_url = ""
+            asset_name = ""
+
+            for asset in release.get("assets", []):
+                name = asset.get("name", "")
+                url = asset.get("browser_download_url", "")
+
+                if name.lower().endswith(".zip") and "m12_os" in name.lower():
+                    asset_name = name
+                    asset_url = url
+                    break
+
+            if not asset_url:
+                return {
+                    "error": "Latest GitHub release has no M12_OS ZIP asset.",
+                    "local_version": VERSION,
+                    "version": remote_version,
+                    "notes": notes,
+                    "file_url": "",
+                    "update_available": False
+                }
+
+            info = {
+                "version": remote_version,
+                "tag": tag_name,
+                "release_name": release_name,
+                "notes": notes,
+                "asset_name": asset_name,
+                "file_url": asset_url,
+                "local_version": VERSION,
+                "update_available": is_newer(remote_version, VERSION),
+            }
 
             if self.config:
                 self.config.set(
@@ -74,11 +126,16 @@ class Updater:
                     datetime.now().isoformat(timespec="seconds")
                 )
 
-            log.info(f"Updater check OK: local={VERSION}, remote={remote_version}")
+            log.info(
+                f"Updater check OK: local={VERSION}, "
+                f"remote={remote_version}, asset={asset_name}"
+            )
+
             return info
 
         except Exception as e:
             log.error(f"Updater check failed: {e}")
+
             return {
                 "error": str(e),
                 "local_version": VERSION,
@@ -87,7 +144,10 @@ class Updater:
 
     def download(self, file_url):
         if not file_url:
-            return {"ok": False, "error": "No file_url in update.json"}
+            return {
+                "ok": False,
+                "error": "No download URL found."
+            }
 
         try:
             filename = file_url.rstrip("/").split("/")[-1]
@@ -100,7 +160,15 @@ class Updater:
             if target.exists():
                 target.unlink()
 
-            urllib.request.urlretrieve(file_url, target)
+            request = urllib.request.Request(
+                file_url,
+                headers={
+                    "User-Agent": "M12-OS-Updater"
+                }
+            )
+
+            with urllib.request.urlopen(request, timeout=60) as response:
+                target.write_bytes(response.read())
 
             log.info(f"Update downloaded: {target}")
 
@@ -111,6 +179,7 @@ class Updater:
 
         except Exception as e:
             log.error(f"Updater download failed: {e}")
+
             return {
                 "ok": False,
                 "error": str(e)
@@ -122,6 +191,7 @@ class Updater:
             key=lambda p: p.stat().st_mtime,
             reverse=True
         )
+
         return zips[0] if zips else None
 
     def _should_skip_file(self, rel_path, src):
@@ -171,8 +241,8 @@ class Updater:
 
         possible_roots = [
             extracted_dir / "M12_OS",
-            extracted_dir / "M12_05",
             extracted_dir / "M12_OS-main",
+            extracted_dir / "M12_05",
             extracted_dir / "M12_05-main",
         ]
 
@@ -266,6 +336,7 @@ class Updater:
 
         except Exception as e:
             log.error(f"Install failed: {e}")
+
             return {
                 "ok": False,
                 "error": str(e)
