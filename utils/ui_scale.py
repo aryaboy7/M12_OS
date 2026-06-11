@@ -4,19 +4,18 @@ from kivy.core.window import Window
 def font(base):
     w = Window.width
 
-    # M12
+    # M12 / small Android
     if w < 700:
-        scale = 0.80
+        scale = 1.15
 
-    # Phone
+    # Android phone / tablet
     elif w < 900:
+        scale = 1.20
+
+    # Mac test window 900x650
+    elif w < 1200:
         scale = 1.00
 
-    # Tablet
-    elif w < 1400:
-        scale = 1.10
-
-    # Desktop
     else:
         scale = 1.00
 
@@ -27,11 +26,11 @@ def height(base):
     w = Window.width
 
     if w < 700:
-        scale = 0.85
+        scale = 1.20
     elif w < 900:
+        scale = 1.15
+    elif w < 1200:
         scale = 1.00
-    elif w < 1400:
-        scale = 1.05
     else:
         scale = 1.00
 
