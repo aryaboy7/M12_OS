@@ -8,7 +8,7 @@ from kivy.uix.scrollview import ScrollView
 from config.version import VERSION
 from utils.config_manager import ConfigManager
 from utils.updater import Updater
-from utils.ui_scale import font
+from utils.ui_scale import font, height
 
 
 class UpdaterScreen(Screen):
@@ -23,21 +23,21 @@ class UpdaterScreen(Screen):
 
         root = BoxLayout(
             orientation="vertical",
-            padding=15,
-            spacing=10
+            padding=height(15),
+            spacing=height(10)
         )
 
         root.add_widget(
             Label(
                 text="Updater",
-                font_size=font(34),
+                font_size=font(40),
                 bold=True,
                 size_hint=(1, 0.11)
             )
         )
 
         self.scroll = ScrollView(
-            size_hint=(1, 0.38),
+            size_hint=(1, 0.42),
             do_scroll_x=False,
             do_scroll_y=True
         )
@@ -45,25 +45,25 @@ class UpdaterScreen(Screen):
         self.status = Label(
             text=(
                 f"Current version: {VERSION}\n\n"
-                "Updater uses GitHub Releases.\n"
-                "Latest release tag must look like:\n"
-                "M12_OS0.3.6\n\n"
-                "ZIP asset must look like:\n"
-                "M12_OS0_3_6.zip"
+                "Updater uses GitHub Releases.\n\n"
+                "Release tag example:\n"
+                "M12_OS0.3.8\n\n"
+                "ZIP asset example:\n"
+                "M12_OS0_3_8.zip"
             ),
-            font_size=font(18),
+            font_size=font(24),
             size_hint_y=None,
             halign="left",
             valign="top",
-            padding=(10, 10)
+            padding=(height(12), height(12))
         )
 
         self.status.bind(
-            width=lambda inst, val: setattr(inst, "text_size", (val, None))
+            width=lambda inst, val: setattr(inst, "text_size", (val - height(20), None))
         )
 
         self.status.bind(
-            texture_size=lambda inst, val: setattr(inst, "height", val[1] + 25)
+            texture_size=lambda inst, val: setattr(inst, "height", val[1] + height(35))
         )
 
         self.scroll.add_widget(self.status)
@@ -71,8 +71,8 @@ class UpdaterScreen(Screen):
 
         check_btn = Button(
             text="1. Check Latest Release",
-            font_size=font(22),
-            size_hint=(1, 0.10),
+            font_size=font(28),
+            size_hint=(1, 0.095),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
         )
@@ -81,8 +81,8 @@ class UpdaterScreen(Screen):
 
         self.download_btn = Button(
             text="2. Download ZIP",
-            font_size=font(22),
-            size_hint=(1, 0.10),
+            font_size=font(28),
+            size_hint=(1, 0.095),
             disabled=True,
             background_normal="",
             background_color=(0.10, 0.15, 0.25, 1)
@@ -91,9 +91,9 @@ class UpdaterScreen(Screen):
         root.add_widget(self.download_btn)
 
         self.install_btn = Button(
-            text="3. Install Downloaded ZIP",
-            font_size=font(22),
-            size_hint=(1, 0.10),
+            text="3. Install ZIP",
+            font_size=font(28),
+            size_hint=(1, 0.095),
             disabled=True,
             background_normal="",
             background_color=(0.10, 0.15, 0.25, 1)
@@ -103,8 +103,8 @@ class UpdaterScreen(Screen):
 
         self.restart_btn = Button(
             text="4. Restart M12 OS",
-            font_size=font(22),
-            size_hint=(1, 0.10),
+            font_size=font(28),
+            size_hint=(1, 0.095),
             disabled=True,
             background_normal="",
             background_color=(0.10, 0.15, 0.25, 1)
@@ -114,8 +114,8 @@ class UpdaterScreen(Screen):
 
         back_btn = Button(
             text="< Back",
-            font_size=font(22),
-            size_hint=(1, 0.10),
+            font_size=font(28),
+            size_hint=(1, 0.09),
             background_normal="",
             background_color=(0.10, 0.15, 0.25, 1)
         )
@@ -157,9 +157,9 @@ class UpdaterScreen(Screen):
             self.set_status(
                 "Update Available\n\n"
                 f"Current: {VERSION}\n"
-                f"Latest: {remote}\n"
-                f"Tag: {tag}\n"
-                f"Asset: {asset}\n\n"
+                f"Latest: {remote}\n\n"
+                f"Tag:\n{tag}\n\n"
+                f"Asset:\n{asset}\n\n"
                 f"{message}\n\n"
                 "Press Download ZIP."
             )
@@ -168,9 +168,9 @@ class UpdaterScreen(Screen):
             self.set_status(
                 "No update available.\n\n"
                 f"Current: {VERSION}\n"
-                f"Latest: {remote}\n"
-                f"Tag: {tag}\n"
-                f"Asset: {asset}"
+                f"Latest: {remote}\n\n"
+                f"Tag:\n{tag}\n\n"
+                f"Asset:\n{asset}"
             )
 
     def download_update(self, instance):
@@ -184,7 +184,7 @@ class UpdaterScreen(Screen):
             self.set_status(
                 "No ZIP asset found in latest GitHub Release.\n\n"
                 "Release must contain asset like:\n"
-                "M12_OS0_3_6.zip"
+                "M12_OS0_3_8.zip"
             )
             return
 
@@ -203,7 +203,7 @@ class UpdaterScreen(Screen):
             self.set_status(
                 "Download complete.\n\n"
                 f"File:\n{filename}\n\n"
-                "Press Install Downloaded ZIP."
+                "Press Install ZIP."
             )
 
             self.install_btn.disabled = False

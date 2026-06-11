@@ -14,7 +14,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.textinput import TextInput
 
-from utils.ui_scale import font
+from utils.ui_scale import font, device_profile, is_mobile
 from utils.logger import log
 
 
@@ -25,7 +25,8 @@ TEXT_EXTENSIONS = {
 
 
 def is_m12():
-    return Window.width < 700
+    # Use readable mobile layout for M12, Android tablet, and high-res phone.
+    return device_profile() in ("m12", "tablet", "phone")
 
 
 def m12_font(base):
@@ -37,15 +38,47 @@ def m12_font(base):
 
 
 def m12_button_font():
-    return 25 if is_m12() else font(16)
+    profile = device_profile()
+    if profile == "phone":
+        return 58
+    if profile == "tablet":
+        return 40
+    if profile == "m12":
+        return 30
+    return font(16)
 
 
 def m12_row_font():
-    return 30 if is_m12() else font(14)
+    profile = device_profile()
+    if profile == "phone":
+        return 64
+    if profile == "tablet":
+        return 44
+    if profile == "m12":
+        return 32
+    return font(14)
 
 
 def m12_check_font():
-    return 30 if is_m12() else font(14)
+    profile = device_profile()
+    if profile == "phone":
+        return 64
+    if profile == "tablet":
+        return 44
+    if profile == "m12":
+        return 32
+    return font(14)
+
+
+def mobile_row_height():
+    profile = device_profile()
+    if profile == "phone":
+        return 158
+    if profile == "tablet":
+        return 118
+    if profile == "m12":
+        return 96
+    return 60
 
 
 class FileRow(BoxLayout):
@@ -54,7 +87,7 @@ class FileRow(BoxLayout):
             orientation="horizontal",
             spacing=6 if is_m12() else 4,
             size_hint_y=None,
-            height=92 if is_m12() else 60,
+            height=mobile_row_height() if is_m12() else 60,
             **kwargs
         )
 
@@ -222,14 +255,14 @@ class FilesScreen(Screen):
 
         self.root_box.add_widget(Label(
             text="File Manager",
-            font_size=30 if is_m12() else font(26),
+            font_size=m12_button_font() if is_m12() else font(26),
             bold=True,
             size_hint=(1, 0.055)
         ))
 
         self.path_label = Label(
             text="Path",
-            font_size=20 if is_m12() else font(13),
+            font_size=28 if device_profile() == 'phone' else (22 if is_m12() else font(13)),
             size_hint=(1, 0.055),
             halign="left",
             valign="middle"
@@ -239,7 +272,7 @@ class FilesScreen(Screen):
 
         self.clipboard_label = Label(
             text="Clipboard: EMPTY",
-            font_size=20 if is_m12() else font(13),
+            font_size=28 if device_profile() == 'phone' else (22 if is_m12() else font(13)),
             size_hint=(1, 0.055),
             halign="left",
             valign="middle"
@@ -314,7 +347,7 @@ class FilesScreen(Screen):
 
         self.status_label = Label(
             text="",
-            font_size=19 if is_m12() else font(12),
+            font_size=26 if device_profile() == 'phone' else (20 if is_m12() else font(12)),
             size_hint=(1, 0.05),
             halign="left",
             valign="middle"
@@ -341,7 +374,7 @@ class FilesScreen(Screen):
                 sel_btn = Button(
                     text="[b][u]Sel[/u][/b]",
                     markup=True,
-                    font_size=22 if is_m12() else font(12),
+                    font_size=42 if device_profile() == 'phone' else (28 if is_m12() else font(12)),
                     size_hint=(width, 1),
                     background_normal="",
                     background_color=(0.12, 0.20, 0.35, 1)
@@ -351,7 +384,7 @@ class FilesScreen(Screen):
             else:
                 header.add_widget(Label(
                     text=text,
-                    font_size=22 if is_m12() else font(12),
+                    font_size=42 if device_profile() == 'phone' else (28 if is_m12() else font(12)),
                     bold=True,
                     size_hint=(width, 1),
                     halign="left",
@@ -362,7 +395,7 @@ class FilesScreen(Screen):
 
         self.scroll = ScrollView(size_hint=(1, 0.43), do_scroll_x=False, do_scroll_y=True)
 
-        self.file_list = GridLayout(cols=1, spacing=4, size_hint_y=None)
+        self.file_list = GridLayout(cols=1, spacing=8 if is_m12() else 4, size_hint_y=None)
         self.file_list.bind(minimum_height=self.file_list.setter("height"))
 
         self.scroll.add_widget(self.file_list)
@@ -549,11 +582,11 @@ class FilesScreen(Screen):
     def build_input_view(self, title, default_text, ok_callback):
         self.root_box.clear_widgets()
 
-        self.root_box.add_widget(Label(text=title, font_size=32 if is_m12() else font(26), bold=True, size_hint=(1, 0.14)))
+        self.root_box.add_widget(Label(text=title, font_size=42 if device_profile() == 'phone' else (32 if is_m12() else font(26)), bold=True, size_hint=(1, 0.14)))
 
         self.input_status = Label(
             text=f"Current folder:\n{self.short_path(self.current_path)}",
-            font_size=22 if is_m12() else font(13),
+            font_size=44 if device_profile() == 'phone' else (30 if is_m12() else font(13)),
             size_hint=(1, 0.18),
             halign="center",
             valign="middle"
@@ -564,7 +597,7 @@ class FilesScreen(Screen):
         self.name_input = TextInput(
             text=default_text,
             multiline=False,
-            font_size=28 if is_m12() else font(20),
+            font_size=56 if device_profile() == 'phone' else (38 if is_m12() else font(20)),
             size_hint=(1, 0.14),
             background_color=(1, 1, 1, 1),
             foreground_color=(0, 0, 0, 1),
@@ -575,11 +608,11 @@ class FilesScreen(Screen):
 
         buttons = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, 0.14))
 
-        ok_btn = Button(text="OK", font_size=28 if is_m12() else font(20), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
+        ok_btn = Button(text="OK", font_size=56 if device_profile() == 'phone' else (38 if is_m12() else font(20)), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
         ok_btn.bind(on_release=ok_callback)
         buttons.add_widget(ok_btn)
 
-        cancel_btn = Button(text="Cancel", font_size=28 if is_m12() else font(20), background_normal="", background_color=(0.10, 0.15, 0.25, 1))
+        cancel_btn = Button(text="Cancel", font_size=56 if device_profile() == 'phone' else (38 if is_m12() else font(20)), background_normal="", background_color=(0.10, 0.15, 0.25, 1))
         cancel_btn.bind(on_release=self.cancel_input)
         buttons.add_widget(cancel_btn)
 
@@ -814,7 +847,7 @@ class FilesScreen(Screen):
 
         self.root_box.add_widget(Label(
             text=f"Viewer: {viewer_path.name}",
-            font_size=30 if is_m12() else font(22),
+            font_size=58 if device_profile() == 'phone' else (40 if is_m12() else font(22)),
             bold=True,
             size_hint=(1, 0.09)
         ))
@@ -841,7 +874,7 @@ class FilesScreen(Screen):
             text=content,
             readonly=True,
             multiline=True,
-            font_size=22 if is_m12() else font(13),
+            font_size=44 if device_profile() == 'phone' else (30 if is_m12() else font(13)),
             size_hint=(1, 0.73),
             background_color=(0.04, 0.06, 0.10, 1),
             foreground_color=(1, 1, 1, 1),
@@ -892,7 +925,7 @@ class FilesScreen(Screen):
 
         self.root_box.add_widget(Label(
             text="Properties",
-            font_size=32 if is_m12() else font(26),
+            font_size=42 if device_profile() == 'phone' else (32 if is_m12() else font(26)),
             bold=True,
             size_hint=(1, 0.10)
         ))
@@ -901,7 +934,7 @@ class FilesScreen(Screen):
             text=props,
             readonly=True,
             multiline=True,
-            font_size=22 if is_m12() else font(14),
+            font_size=44 if device_profile() == 'phone' else (30 if is_m12() else font(14)),
             size_hint=(1, 0.78),
             background_color=(0.04, 0.06, 0.10, 1),
             foreground_color=(1, 1, 1, 1),

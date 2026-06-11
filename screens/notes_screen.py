@@ -1,13 +1,13 @@
 import json
 from pathlib import Path
 
+from kivy.core.window import Window
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
-from utils.ui_scale import font, height
 
 from utils.logger import log
 
@@ -18,28 +18,135 @@ TYPES_FILE = BASE_DIR / "config" / "note_types.json"
 NOTES_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def device_profile():
+    w = Window.width
+    h = Window.height
+
+    if h >= 1800:
+        return "phone"
+
+    if w < 700 and h >= 900:
+        return "m12"
+
+    if h >= 1100:
+        return "tablet"
+
+    return "desktop"
+
+
+def is_mobile():
+    return device_profile() in ("phone", "tablet", "m12")
+
+
+def notes_font(base):
+    profile = device_profile()
+
+    if profile == "phone":
+        scale = 1.85
+    elif profile == "tablet":
+        scale = 1.45
+    elif profile == "m12":
+        scale = 1.30
+    else:
+        scale = 1.00
+
+    return max(14, int(base * scale))
+
+
+def row_height():
+    profile = device_profile()
+
+    if profile == "phone":
+        return 150
+    if profile == "tablet":
+        return 118
+    if profile == "m12":
+        return 92
+
+    return 80
+
+
 class NotesScreen(Screen):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
         self.selected_note = None
         self.current_filter = "All"
 
-        layout = BoxLayout(orientation="vertical", spacing=8, padding=10)
+        profile = device_profile()
 
-        title = Label(text="Notes", font_size=font(32), size_hint=(1, 0.10))
+        if profile == "phone":
+            padding = 22
+            spacing = 14
+            title_hint = 0.08
+            filter_hint = 0.17
+            list_hint = 0.61
+            bottom_hint = 0.14
+        elif profile == "tablet":
+            padding = 16
+            spacing = 10
+            title_hint = 0.08
+            filter_hint = 0.17
+            list_hint = 0.60
+            bottom_hint = 0.15
+        elif profile == "m12":
+            padding = 10
+            spacing = 8
+            title_hint = 0.08
+            filter_hint = 0.16
+            list_hint = 0.61
+            bottom_hint = 0.15
+        else:
+            padding = 10
+            spacing = 8
+            title_hint = 0.10
+            filter_hint = 0.18
+            list_hint = 0.57
+            bottom_hint = 0.15
+
+        layout = BoxLayout(
+            orientation="vertical",
+            spacing=spacing,
+            padding=padding
+        )
+
+        title = Label(
+            text="Notes",
+            font_size=notes_font(32),
+            bold=True,
+            size_hint=(1, title_hint)
+        )
         layout.add_widget(title)
 
-        self.filter_box = GridLayout(cols=1, spacing=5, size_hint=(1, 0.18))
+        self.filter_box = GridLayout(
+            cols=self.filter_cols(),
+            spacing=6,
+            size_hint=(1, filter_hint)
+        )
         layout.add_widget(self.filter_box)
 
-        scroll = ScrollView(size_hint=(1, 0.57))
-        self.notes_box = GridLayout(cols=1, spacing=6, size_hint_y=None)
+        scroll = ScrollView(
+            size_hint=(1, list_hint),
+            do_scroll_x=False,
+            do_scroll_y=True
+        )
+
+        self.notes_box = GridLayout(
+            cols=1,
+            spacing=8 if is_mobile() else 6,
+            size_hint_y=None
+        )
         self.notes_box.bind(minimum_height=self.notes_box.setter("height"))
+
         scroll.add_widget(self.notes_box)
         layout.add_widget(scroll)
 
-        bottom = BoxLayout(spacing=8, size_hint=(1, 0.15))
+        bottom = GridLayout(
+            cols=5 if not is_mobile() else 3,
+            spacing=8,
+            size_hint=(1, bottom_hint)
+        )
 
         for text, callback in [
             ("New", self.new_note),
@@ -48,12 +155,28 @@ class NotesScreen(Screen):
             ("Types", self.open_types),
             ("Back", self.go_back),
         ]:
-            btn = Button(text=text)
+            btn = Button(
+                text=text,
+                font_size=notes_font(17 if is_mobile() else 18),
+                background_normal="",
+                background_color=(0.10, 0.15, 0.25, 1)
+            )
             btn.bind(on_press=callback)
             bottom.add_widget(btn)
 
         layout.add_widget(bottom)
         self.add_widget(layout)
+
+    def filter_cols(self):
+        profile = device_profile()
+
+        if profile == "phone":
+            return 2
+
+        if profile in ("tablet", "m12"):
+            return 3
+
+        return 3
 
     def on_enter(self):
         self.refresh_filters()
@@ -96,19 +219,18 @@ class NotesScreen(Screen):
         self.filter_box.clear_widgets()
 
         filters = ["All"] + self.load_types()
-
-        cols = 3 if len(filters) > 3 else len(filters)
-        if cols < 1:
-            cols = 1
-
-        self.filter_box.cols = cols
+        self.filter_box.cols = self.filter_cols()
 
         for name in filters:
-            color = (0.25, 0.45, 0.75, 1) if name == self.current_filter else (0.12, 0.20, 0.35, 1)
+            color = (
+                (0.25, 0.45, 0.75, 1)
+                if name == self.current_filter
+                else (0.12, 0.20, 0.35, 1)
+            )
 
             btn = Button(
                 text=name,
-                font_size=font(18),
+                font_size=notes_font(15 if is_mobile() else 18),
                 background_normal="",
                 background_color=color
             )
@@ -125,10 +247,11 @@ class NotesScreen(Screen):
     def refresh_notes(self):
         self.notes_box.clear_widgets()
 
-        files = sorted( 
+        files = sorted(
             list(NOTES_DIR.glob("*.json")) + list(NOTES_DIR.glob("*.txt")),
             key=lambda p: p.stat().st_mtime,
-            reverse=True)
+            reverse=True
+        )
 
         visible_files = []
 
@@ -141,28 +264,43 @@ class NotesScreen(Screen):
             self.notes_box.add_widget(
                 Label(
                     text="No notes found",
-                    font_size=font(24),
+                    font_size=notes_font(22),
                     size_hint_y=None,
-                    height=80
+                    height=row_height()
                 )
             )
             return
 
         for file, data in visible_files:
+            title = str(data["title"]).strip() or file.stem
+            note_type = str(data["type"]).strip() or "Personal"
             preview = data["body"].replace("\n", " ").strip()
-            if len(preview) > 60:
-                preview = preview[:60] + "..."
 
-            text = f"📄 {data['title']}\n{data['type']} | {preview}"
+            if is_mobile():
+                if len(title) > 30:
+                    title = title[:27] + "..."
+
+                # On mobile, keep it readable: title + type only.
+                text = f"{title}\n{note_type}"
+                fs = notes_font(18)
+            else:
+                if len(preview) > 60:
+                    preview = preview[:60] + "..."
+
+                text = f"{title}\n{note_type} | {preview}"
+                fs = notes_font(18)
 
             btn = Button(
                 text=text,
-                font_size=font(18),
+                font_size=fs,
                 size_hint_y=None,
-                height=80,
+                height=row_height(),
                 background_normal="",
-                background_color=(0.12, 0.20, 0.35, 1)
+                background_color=(0.12, 0.20, 0.35, 1),
+                halign="left",
+                valign="middle"
             )
+            btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - 20, val[1])))
 
             if self.selected_note == file:
                 btn.background_color = (0.25, 0.45, 0.75, 1)

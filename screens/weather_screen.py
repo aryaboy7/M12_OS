@@ -13,7 +13,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
 from utils.config_manager import ConfigManager
-from utils.ui_scale import font
+from utils.ui_scale import font, height
 
 
 WEATHER_CODES = {
@@ -111,16 +111,16 @@ class WeatherIcon(Widget):
 
 
 class WeatherRow(BoxLayout):
-    def __init__(self, left_text, icon_type, right_text, height_value=66, **kwargs):
-        super().__init__(orientation="horizontal", spacing=6, size_hint_y=None, height=height_value, **kwargs)
+    def __init__(self, left_text, icon_type, right_text, height_value=92, **kwargs):
+        super().__init__(orientation="horizontal", spacing=8, size_hint_y=None, height=height(height_value), **kwargs)
 
-        left = Label(text=left_text, font_size=font(17), bold=True, halign="center", valign="middle", size_hint=(0.22, 1))
+        left = Label(text=left_text, font_size=font(22), bold=True, halign="center", valign="middle", size_hint=(0.22, 1))
         left.bind(size=lambda inst, val: setattr(inst, "text_size", val))
         self.add_widget(left)
 
         self.add_widget(WeatherIcon(icon_type=icon_type, size_hint=(0.16, 1)))
 
-        right = Label(text=right_text, font_size=font(16), halign="left", valign="middle", size_hint=(0.62, 1))
+        right = Label(text=right_text, font_size=font(20), halign="left", valign="middle", size_hint=(0.62, 1))
         right.bind(size=lambda inst, val: setattr(inst, "text_size", val))
         self.add_widget(right)
 
@@ -136,7 +136,7 @@ class WeatherScreen(Screen):
         self.active_tab = "current"
 
         root = BoxLayout(orientation="vertical", padding=15, spacing=10)
-        root.add_widget(Label(text="Weather", font_size=font(34), bold=True, size_hint=(1, 0.09)))
+        root.add_widget(Label(text="Weather", font_size=font(40), bold=True, size_hint=(1, 0.09)))
 
         tabs = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, 0.09))
         self.current_btn = self.make_tab_button("Current")
@@ -154,17 +154,17 @@ class WeatherScreen(Screen):
         root.add_widget(self.content)
 
         bottom = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, 0.12))
-        refresh_btn = Button(text="Refresh", font_size=font(23), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
+        refresh_btn = Button(text="Refresh", font_size=font(28), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
         refresh_btn.bind(on_release=self.refresh_weather)
         bottom.add_widget(refresh_btn)
-        back_btn = Button(text="< Back", font_size=font(23), background_normal="", background_color=(0.10, 0.15, 0.25, 1))
+        back_btn = Button(text="< Back", font_size=font(28), background_normal="", background_color=(0.10, 0.15, 0.25, 1))
         back_btn.bind(on_release=self.go_back)
         bottom.add_widget(back_btn)
         root.add_widget(bottom)
         self.add_widget(root)
 
     def make_tab_button(self, text):
-        return Button(text=text, font_size=font(20), background_normal="", background_color=(0.10, 0.15, 0.25, 1))
+        return Button(text=text, font_size=font(26), background_normal="", background_color=(0.10, 0.15, 0.25, 1))
 
     def on_enter(self):
         self.config = ConfigManager()
@@ -185,13 +185,13 @@ class WeatherScreen(Screen):
 
     def show_loading(self, text="Loading weather..."):
         self.clear_content()
-        self.content.add_widget(Label(text=text, font_size=font(26), halign="center", valign="middle"))
+        self.content.add_widget(Label(text=text, font_size=font(32), halign="center", valign="middle"))
 
     def add_scroll_text(self, text, font_size_value=None):
         scroll = ScrollView(do_scroll_x=False, do_scroll_y=True)
         label = Label(text=text, font_size=font_size_value or font(18), halign="center", valign="top", size_hint_y=None, padding=(10, 10))
         label.bind(width=lambda inst, val: setattr(inst, "text_size", (val - 20, None)))
-        label.bind(texture_size=lambda inst, val: setattr(inst, "height", val[1] + 50))
+        label.bind(texture_size=lambda inst, val: setattr(inst, "height", val[1] + height(60)))
         scroll.add_widget(label)
         self.content.add_widget(scroll)
 
@@ -338,7 +338,7 @@ class WeatherScreen(Screen):
     def build_current_view(self, icon_type, city, temp, unit, condition, feels_like, advice, humidity, wind, uv, aqi, sunrise, sunset, updated_text):
         self.clear_content()
         self.content.add_widget(WeatherIcon(icon_type=icon_type, size_hint=(1, 0.24)))
-        self.content.add_widget(Label(text=f"{city}\n{temp}°{unit}  {condition}", font_size=font(32), bold=True, size_hint=(1, 0.22), halign="center", valign="middle"))
+        self.content.add_widget(Label(text=f"{city}\n{temp}°{unit}  {condition}", font_size=font(42), bold=True, size_hint=(1, 0.22), halign="center", valign="middle"))
         uv_label = self.uv_text(uv)
         aqi_label = self.aqi_text(aqi)
         details = (
@@ -352,7 +352,7 @@ class WeatherScreen(Screen):
             f"Sunset: {sunset}\n\n"
             f"{updated_text}"
         )
-        self.add_scroll_text(details, font_size_value=font(18))
+        self.add_scroll_text(details, font_size_value=font(24))
 
     def show_forecast(self):
         self.set_active_button("forecast")
@@ -373,22 +373,22 @@ class WeatherScreen(Screen):
         scroll = ScrollView(do_scroll_x=False, do_scroll_y=True)
         list_box = BoxLayout(orientation="vertical", spacing=6, size_hint_y=None)
         list_box.bind(minimum_height=list_box.setter("height"))
-        header = Label(text=f"{self.city_name}\n\nTOMORROW FORECAST", font_size=font(24), bold=True, size_hint_y=None, height=85, halign="center", valign="middle")
+        header = Label(text=f"{self.city_name}\n\nTOMORROW FORECAST", font_size=font(32), bold=True, size_hint_y=None, height=height(100), halign="center", valign="middle")
         header.bind(size=lambda inst, val: setattr(inst, "text_size", val))
         list_box.add_widget(header)
         i = 1
         icon_type, cond = self.code_to_icon_condition(codes[i])
         rain = precip[i] if i < len(precip) else "--"
-        list_box.add_widget(Label(text="Tomorrow", font_size=font(26), bold=True, size_hint_y=None, height=45))
-        list_box.add_widget(WeatherRow("Tomorrow", icon_type, f"{round(max_t[i])}/{round(min_t[i])}°{unit}\n{cond}  Rain {rain}%", height_value=95))
-        list_box.add_widget(Label(text="\nNext 10 Days", font_size=font(24), bold=True, size_hint_y=None, height=70, halign="center", valign="middle"))
+        list_box.add_widget(Label(text="Tomorrow", font_size=font(34), bold=True, size_hint_y=None, height=height(60)))
+        list_box.add_widget(WeatherRow("Tomorrow", icon_type, f"{round(max_t[i])}/{round(min_t[i])}°{unit}\n{cond}  Rain {rain}%", height_value=110))
+        list_box.add_widget(Label(text="\nNext 10 Days", font_size=font(32), bold=True, size_hint_y=None, height=height(85), halign="center", valign="middle"))
         for i in range(1, min(10, len(dates))):
             icon_type, cond = self.code_to_icon_condition(codes[i])
             rain = precip[i] if i < len(precip) else "--"
             day_name = self.short_day(dates[i])
             right_text = f"{round(max_t[i])}/{round(min_t[i])}°{unit}\n{cond}  Rain {rain}%"
-            list_box.add_widget(WeatherRow(day_name, icon_type, right_text, height_value=66))
-        list_box.add_widget(Label(text=f"Updated: {datetime.now().strftime('%I:%M %p')}", font_size=font(18), size_hint_y=None, height=45, halign="center", valign="middle"))
+            list_box.add_widget(WeatherRow(day_name, icon_type, right_text, height_value=92))
+        list_box.add_widget(Label(text=f"Updated: {datetime.now().strftime('%I:%M %p')}", font_size=font(24), size_hint_y=None, height=height(60), halign="center", valign="middle"))
         scroll.add_widget(list_box)
         self.content.add_widget(scroll)
 
@@ -411,7 +411,7 @@ class WeatherScreen(Screen):
         scroll = ScrollView(do_scroll_x=False, do_scroll_y=True)
         list_box = BoxLayout(orientation="vertical", spacing=6, size_hint_y=None)
         list_box.bind(minimum_height=list_box.setter("height"))
-        header = Label(text=f"{self.city_name}\n\nHourly Today", font_size=font(24), bold=True, size_hint_y=None, height=85, halign="center", valign="middle")
+        header = Label(text=f"{self.city_name}\n\nHourly Today", font_size=font(32), bold=True, size_hint_y=None, height=height(100), halign="center", valign="middle")
         header.bind(size=lambda inst, val: setattr(inst, "text_size", val))
         list_box.add_widget(header)
         count = 0
@@ -421,13 +421,13 @@ class WeatherScreen(Screen):
             hour = h_time.split("T")[-1][:5]
             icon_type, cond = self.code_to_icon_condition(h_codes[i])
             right_text = f"{round(h_temps[i])}°{unit}\n{cond}  H:{h_hums[i]}%  W:{round(h_winds[i])}"
-            list_box.add_widget(WeatherRow(hour, icon_type, right_text, height_value=66))
+            list_box.add_widget(WeatherRow(hour, icon_type, right_text, height_value=92))
             count += 1
             if count >= 24:
                 break
         if count == 0:
-            list_box.add_widget(Label(text="No hourly data.", font_size=font(22), size_hint_y=None, height=60))
-        list_box.add_widget(Label(text=f"Updated: {datetime.now().strftime('%I:%M %p')}", font_size=font(18), size_hint_y=None, height=45, halign="center", valign="middle"))
+            list_box.add_widget(Label(text="No hourly data.", font_size=font(28), size_hint_y=None, height=height(75)))
+        list_box.add_widget(Label(text=f"Updated: {datetime.now().strftime('%I:%M %p')}", font_size=font(24), size_hint_y=None, height=height(60), halign="center", valign="middle"))
         scroll.add_widget(list_box)
         self.content.add_widget(scroll)
 

@@ -1,13 +1,14 @@
 import json
 from pathlib import Path
 
+from kivy.core.window import Window
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
-from utils.ui_scale import font, height
 
+from utils.ui_scale import font, height
 from utils.logger import log
 
 
@@ -17,20 +18,108 @@ TYPES_FILE = BASE_DIR / "config" / "note_types.json"
 NOTES_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def device_profile():
+    w = Window.width
+    h = Window.height
+
+    if h >= 1800:
+        return "phone"
+
+    if w < 700 and h >= 900:
+        return "m12"
+
+    if h >= 1100:
+        return "tablet"
+
+    return "desktop"
+
+
+def editor_font(base):
+    profile = device_profile()
+
+    if profile == "phone":
+        scale = 1.75
+    elif profile == "tablet":
+        scale = 1.45
+    elif profile == "m12":
+        scale = 1.30
+    else:
+        scale = 1.00
+
+    return max(14, int(base * scale))
+
+
 class NoteEditorScreen(Screen):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
         self.current_path = None
 
-        root = BoxLayout(orientation="vertical", spacing=10, padding=10)
+        profile = device_profile()
 
-        top = BoxLayout(size_hint=(1, 0.12))
+        if profile == "phone":
+            top_hint = 0.10
+            title_hint = 0.10
+            type_hint = 0.09
+            body_hint = 0.71
+            button_size = 24
+            title_size = 24
+            type_size = 22
+            body_size = 22
+        elif profile == "tablet":
+            top_hint = 0.10
+            title_hint = 0.10
+            type_hint = 0.09
+            body_hint = 0.71
+            button_size = 23
+            title_size = 23
+            type_size = 21
+            body_size = 21
+        elif profile == "m12":
+            top_hint = 0.10
+            title_hint = 0.10
+            type_hint = 0.09
+            body_hint = 0.71
+            button_size = 21
+            title_size = 21
+            type_size = 19
+            body_size = 19
+        else:
+            top_hint = 0.12
+            title_hint = 0.12
+            type_hint = 0.10
+            body_hint = 0.66
+            button_size = 22
+            title_size = 28
+            type_size = 22
+            body_size = 22
 
-        back_btn = Button(text="< Back")
+        root = BoxLayout(
+            orientation="vertical",
+            spacing=height(10),
+            padding=height(10)
+        )
+
+        top = BoxLayout(
+            spacing=height(8),
+            size_hint=(1, top_hint)
+        )
+
+        back_btn = Button(
+            text="< Back",
+            font_size=editor_font(button_size),
+            background_normal="",
+            background_color=(0.10, 0.15, 0.25, 1)
+        )
         back_btn.bind(on_press=self.go_back)
 
-        save_btn = Button(text="Save")
+        save_btn = Button(
+            text="Save",
+            font_size=editor_font(button_size),
+            background_normal="",
+            background_color=(0.12, 0.20, 0.35, 1)
+        )
         save_btn.bind(on_press=self.save_note)
 
         top.add_widget(back_btn)
@@ -39,17 +128,19 @@ class NoteEditorScreen(Screen):
 
         self.title_input = TextInput(
             hint_text="Note title",
-            font_size=font(28),
-            size_hint=(1, 0.12),
-            multiline=False
+            font_size=editor_font(title_size),
+            size_hint=(1, title_hint),
+            multiline=False,
+            use_bubble=False,
+            use_handles=False
         )
         root.add_widget(self.title_input)
 
         self.type_spinner = Spinner(
             text="Personal",
             values=self.load_types(),
-            font_size=font(22),
-            size_hint=(1, 0.10),
+            font_size=editor_font(type_size),
+            size_hint=(1, type_hint),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
         )
@@ -57,9 +148,11 @@ class NoteEditorScreen(Screen):
 
         self.body_input = TextInput(
             hint_text="Type note here...",
-            font_size=font(22),
-            size_hint=(1, 0.66),
-            multiline=True
+            font_size=editor_font(body_size),
+            size_hint=(1, body_hint),
+            multiline=True,
+            use_bubble=False,
+            use_handles=False
         )
         root.add_widget(self.body_input)
 
@@ -69,8 +162,10 @@ class NoteEditorScreen(Screen):
         try:
             if TYPES_FILE.exists():
                 data = json.loads(TYPES_FILE.read_text(encoding="utf-8"))
+
                 if isinstance(data, list) and data:
                     return data
+
         except Exception as e:
             log.error(f"Editor: failed to load types: {e}")
 
@@ -85,11 +180,13 @@ class NoteEditorScreen(Screen):
 
     def new_note(self):
         types = self.load_types()
+
         self.current_path = None
         self.title_input.text = ""
         self.type_spinner.values = types
         self.type_spinner.text = types[0] if types else "Personal"
         self.body_input.text = ""
+
         log.info("Editor: new note")
 
     def load_note(self, path):
@@ -99,7 +196,6 @@ class NoteEditorScreen(Screen):
 
         try:
             data = json.loads(self.current_path.read_text(encoding="utf-8"))
-
             note_type = data.get("type", types[0] if types else "Personal")
 
             self.title_input.text = data.get("title", self.current_path.stem)
@@ -110,6 +206,7 @@ class NoteEditorScreen(Screen):
 
         except Exception as e:
             log.error(f"Editor: failed to load note JSON: {e}")
+
             self.title_input.text = self.current_path.stem
             self.type_spinner.text = types[0] if types else "Personal"
 
@@ -139,6 +236,7 @@ class NoteEditorScreen(Screen):
             path.write_text(json.dumps(data, indent=4), encoding="utf-8")
             self.current_path = path
             log.info(f"Editor: saved {path.name}")
+
         except Exception as e:
             log.error(f"Editor: failed to save note: {e}")
 

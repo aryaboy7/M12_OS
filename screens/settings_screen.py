@@ -13,7 +13,7 @@ from kivy.uix.gridlayout import GridLayout
 from config.version import version_text
 from utils.config_manager import ConfigManager
 from utils.logger import log
-from utils.ui_scale import font
+from utils.ui_scale import font, height
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -43,21 +43,21 @@ class SettingsScreen(Screen):
 
         root.add_widget(Label(
             text="Settings",
-            font_size=font(34),
+            font_size=font(40),
             bold=True,
             size_hint=(1, 0.12)
         ))
 
         root.add_widget(Label(
             text=version_text(),
-            font_size=font(22),
+            font_size=font(28),
             size_hint=(1, 0.08)
         ))
 
         self.theme_spinner = Spinner(
             text=self.config.get("theme", "dark"),
             values=("dark", "light"),
-            font_size=font(22),
+            font_size=font(28),
             size_hint=(1, 0.11),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
@@ -68,7 +68,7 @@ class SettingsScreen(Screen):
         self.unit_spinner = Spinner(
             text=self.config.get("temperature_unit", "F"),
             values=("F", "C"),
-            font_size=font(22),
+            font_size=font(28),
             size_hint=(1, 0.11),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
@@ -79,7 +79,7 @@ class SettingsScreen(Screen):
         self.channel_spinner = Spinner(
             text=self.config.get("update_channel", "stable"),
             values=("stable", "beta"),
-            font_size=font(22),
+            font_size=font(28),
             size_hint=(1, 0.11),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
@@ -89,7 +89,7 @@ class SettingsScreen(Screen):
 
         self.auto_btn = Button(
             text=self.auto_update_text(),
-            font_size=font(22),
+            font_size=font(28),
             size_hint=(1, 0.11),
             background_normal="",
             background_color=(0.10, 0.15, 0.25, 1)
@@ -99,7 +99,7 @@ class SettingsScreen(Screen):
 
         updater_btn = Button(
             text="Open Updater",
-            font_size=font(22),
+            font_size=font(28),
             size_hint=(1, 0.11),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
@@ -109,7 +109,7 @@ class SettingsScreen(Screen):
 
         log_btn = Button(
             text="View Log",
-            font_size=font(22),
+            font_size=font(28),
             size_hint=(1, 0.11),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
@@ -119,7 +119,7 @@ class SettingsScreen(Screen):
 
         back_btn = Button(
             text="< Back",
-            font_size=font(22),
+            font_size=font(28),
             size_hint=(1, 0.11),
             background_normal="",
             background_color=(0.10, 0.15, 0.25, 1)
@@ -136,15 +136,15 @@ class SettingsScreen(Screen):
 
         root.add_widget(Label(
             text="M12 OS Log",
-            font_size=font(30),
+            font_size=font(40),
             bold=True,
             size_hint=(1, 0.08)
         ))
 
         self.log_status = Label(
             text="Tap a line, then Copy Line.",
-            font_size=font(14),
-            size_hint=(1, 0.07),
+            font_size=font(20),
+            size_hint=(1, 0.09),
             halign="left",
             valign="middle"
         )
@@ -155,7 +155,7 @@ class SettingsScreen(Screen):
 
         refresh_btn = Button(
             text="Refresh",
-            font_size=font(17),
+            font_size=font(24),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
         )
@@ -164,7 +164,7 @@ class SettingsScreen(Screen):
 
         copy_line_btn = Button(
             text="Copy Line",
-            font_size=font(17),
+            font_size=font(24),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
         )
@@ -173,7 +173,7 @@ class SettingsScreen(Screen):
 
         copy_all_btn = Button(
             text="Copy All",
-            font_size=font(17),
+            font_size=font(24),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
         )
@@ -186,7 +186,7 @@ class SettingsScreen(Screen):
 
         clear_btn = Button(
             text="Clear Log",
-            font_size=font(17),
+            font_size=font(24),
             background_normal="",
             background_color=(0.35, 0.12, 0.12, 1)
         )
@@ -195,7 +195,7 @@ class SettingsScreen(Screen):
 
         back_settings_btn = Button(
             text="< Settings",
-            font_size=font(17),
+            font_size=font(24),
             background_normal="",
             background_color=(0.10, 0.15, 0.25, 1)
         )
@@ -204,7 +204,7 @@ class SettingsScreen(Screen):
 
         home_btn = Button(
             text="< Home",
-            font_size=font(17),
+            font_size=font(24),
             background_normal="",
             background_color=(0.10, 0.15, 0.25, 1)
         )
@@ -213,7 +213,7 @@ class SettingsScreen(Screen):
 
         root.add_widget(buttons2)
 
-        self.log_scroll = ScrollView(size_hint=(1, 0.69), do_scroll_x=False, do_scroll_y=True)
+        self.log_scroll = ScrollView(size_hint=(1, 0.65), do_scroll_x=False, do_scroll_y=True)
 
         self.log_list = GridLayout(cols=1, spacing=4, size_hint_y=None)
         self.log_list.bind(minimum_height=self.log_list.setter("height"))
@@ -286,20 +286,20 @@ class SettingsScreen(Screen):
 
     def add_log_line(self, idx, line):
         display = line
-        if len(display) > 220:
-            display = display[:217] + "..."
+        if len(display) > 320:
+            display = display[:317] + "..."
 
         btn = Button(
             text=f"{idx}: {display}",
-            font_size=font(12),
+            font_size=font(18),
             size_hint_y=None,
-            height=42,
+            height=height(70),
             halign="left",
             valign="middle",
             background_normal="",
             background_color=(0.10, 0.15, 0.25, 1)
         )
-        btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - 12, val[1])))
+        btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - 18, val[1])))
         btn.bind(on_press=lambda instance, text=line: self.select_log_line(text))
         self.log_list.add_widget(btn)
 
