@@ -43,7 +43,14 @@ class UpdaterScreen(Screen):
         )
 
         self.status = Label(
-            text=f"Current version: {VERSION}",
+            text=(
+                f"Current version: {VERSION}\n\n"
+                "Updater uses GitHub Releases.\n"
+                "Latest release tag must look like:\n"
+                "M12_OS0.3.6\n\n"
+                "ZIP asset must look like:\n"
+                "M12_OS0_3_6.zip"
+            ),
             font_size=font(18),
             size_hint_y=None,
             halign="left",
@@ -63,7 +70,7 @@ class UpdaterScreen(Screen):
         root.add_widget(self.scroll)
 
         check_btn = Button(
-            text="1. Check for Update",
+            text="1. Check Latest Release",
             font_size=font(22),
             size_hint=(1, 0.10),
             background_normal="",
@@ -73,7 +80,7 @@ class UpdaterScreen(Screen):
         root.add_widget(check_btn)
 
         self.download_btn = Button(
-            text="2. Download Update",
+            text="2. Download ZIP",
             font_size=font(22),
             size_hint=(1, 0.10),
             disabled=True,
@@ -84,7 +91,7 @@ class UpdaterScreen(Screen):
         root.add_widget(self.download_btn)
 
         self.install_btn = Button(
-            text="3. Install Downloaded Update",
+            text="3. Install Downloaded ZIP",
             font_size=font(22),
             size_hint=(1, 0.10),
             disabled=True,
@@ -108,7 +115,9 @@ class UpdaterScreen(Screen):
         back_btn = Button(
             text="< Back",
             font_size=font(22),
-            size_hint=(1, 0.10)
+            size_hint=(1, 0.10),
+            background_normal="",
+            background_color=(0.10, 0.15, 0.25, 1)
         )
         back_btn.bind(on_press=self.go_back)
         root.add_widget(back_btn)
@@ -120,7 +129,7 @@ class UpdaterScreen(Screen):
         Clock.schedule_once(lambda dt: setattr(self.scroll, "scroll_y", 1), 0.05)
 
     def check_update(self, instance):
-        self.set_status("Checking GitHub update.json...")
+        self.set_status("Checking latest GitHub Release...")
 
         self.download_btn.disabled = True
         self.install_btn.disabled = True
@@ -140,39 +149,46 @@ class UpdaterScreen(Screen):
             return
 
         remote = info.get("version", "unknown")
+        tag = info.get("tag", "")
+        asset = info.get("asset_name", "")
         message = info.get("notes") or info.get("message") or ""
 
         if info.get("update_available"):
             self.set_status(
                 "Update Available\n\n"
                 f"Current: {VERSION}\n"
-                f"New: {remote}\n\n"
-                f"{message}"
+                f"Latest: {remote}\n"
+                f"Tag: {tag}\n"
+                f"Asset: {asset}\n\n"
+                f"{message}\n\n"
+                "Press Download ZIP."
             )
             self.download_btn.disabled = False
         else:
             self.set_status(
                 "No update available.\n\n"
                 f"Current: {VERSION}\n"
-                f"Remote: {remote}"
+                f"Latest: {remote}\n"
+                f"Tag: {tag}\n"
+                f"Asset: {asset}"
             )
 
     def download_update(self, instance):
         if not self.latest_info:
-            self.set_status("Check update first.")
+            self.set_status("Check latest release first.")
             return
 
         file_url = self.latest_info.get("file_url")
 
         if not file_url:
             self.set_status(
-                "No file_url found in update.json.\n\n"
-                "GitHub update.json must contain:\n"
-                "\"file_url\": \"https://github.com/...\""
+                "No ZIP asset found in latest GitHub Release.\n\n"
+                "Release must contain asset like:\n"
+                "M12_OS0_3_6.zip"
             )
             return
 
-        self.set_status("Downloading update...")
+        self.set_status("Downloading update ZIP...")
         self.download_btn.disabled = True
 
         Clock.schedule_once(lambda dt: self._do_download(file_url), 0.1)
@@ -187,7 +203,7 @@ class UpdaterScreen(Screen):
             self.set_status(
                 "Download complete.\n\n"
                 f"File:\n{filename}\n\n"
-                "Press Install."
+                "Press Install Downloaded ZIP."
             )
 
             self.install_btn.disabled = False
@@ -215,7 +231,8 @@ class UpdaterScreen(Screen):
         if result.get("ok"):
             self.set_status(
                 "Update installed.\n\n"
-                f"Files copied: {result.get('files_copied')}\n\n"
+                f"Files copied: {result.get('files_copied')}\n"
+                f"Files skipped: {result.get('files_skipped')}\n\n"
                 "Backup created.\n\n"
                 "Press Restart M12 OS."
             )
