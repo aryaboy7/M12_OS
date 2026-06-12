@@ -11,6 +11,9 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
+from kivy.uix.textinput import TextInput
+from kivy.uix.popup import Popup
+from kivy.uix.gridlayout import GridLayout
 
 from utils.config_manager import ConfigManager
 from utils.ui_scale import font, height
@@ -133,6 +136,7 @@ class WeatherScreen(Screen):
         self.weather_data = None
         self.air_data = None
         self.city_name = self.config.get("city", "Brooklyn, NY")
+        self.selected_city = None
         self.active_tab = "current"
 
         root = BoxLayout(orientation="vertical", padding=15, spacing=10)
@@ -154,20 +158,252 @@ class WeatherScreen(Screen):
         root.add_widget(self.content)
 
         bottom = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, 0.12))
-        refresh_btn = Button(text="Refresh", font_size=font(28), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
+
+        refresh_btn = Button(text="Refresh", font_size=font(26), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
         refresh_btn.bind(on_release=self.refresh_weather)
         bottom.add_widget(refresh_btn)
-        back_btn = Button(text="< Back", font_size=font(28), background_normal="", background_color=(0.10, 0.15, 0.25, 1))
+
+        cities_btn = Button(text="Cities", font_size=font(26), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
+        cities_btn.bind(on_release=self.open_city_manager)
+        bottom.add_widget(cities_btn)
+
+        back_btn = Button(text="< Back", font_size=font(26), background_normal="", background_color=(0.10, 0.15, 0.25, 1))
         back_btn.bind(on_release=self.go_back)
         bottom.add_widget(back_btn)
+
         root.add_widget(bottom)
         self.add_widget(root)
+
+
+    def get_weather_cities(self):
+        cities = self.config.get("weather_cities", None)
+        current_city = self.config.get("city", "Brooklyn, NY")
+
+        if not isinstance(cities, list) or not cities:
+            cities = [current_city or "Brooklyn, NY"]
+
+        clean = []
+        for city in cities:
+            city = str(city).strip()
+            if city and city not in clean:
+                clean.append(city)
+
+        if current_city and current_city not in clean:
+            clean.insert(0, current_city)
+
+        self.config.set("weather_cities", clean)
+        return clean
+
+    def save_weather_cities(self, cities):
+        clean = []
+        for city in cities:
+            city = str(city).strip()
+            if city and city not in clean:
+                clean.append(city)
+
+        if not clean:
+            clean = ["Brooklyn, NY"]
+
+        self.config.set("weather_cities", clean)
+
+        active_city = self.config.get("city", "Brooklyn, NY")
+        if active_city not in clean:
+            self.config.set("city", clean[0])
+
+        return clean
+
+    def open_city_manager(self, instance=None):
+        self.selected_city = self.config.get("city", "Brooklyn, NY")
+
+        root = BoxLayout(orientation="vertical", spacing=height(8), padding=height(8))
+
+        title = Label(text="Weather Cities", font_size=font(30), bold=True, size_hint=(1, 0.10))
+        root.add_widget(title)
+
+        scroll = ScrollView(size_hint=(1, 0.58), do_scroll_x=False, do_scroll_y=True)
+        city_box = GridLayout(cols=1, spacing=height(6), size_hint_y=None)
+        city_box.bind(minimum_height=city_box.setter("height"))
+        scroll.add_widget(city_box)
+        root.add_widget(scroll)
+
+        selected_label = Label(
+            text=f"Selected: {self.selected_city}",
+            font_size=font(18),
+            size_hint=(1, 0.08),
+            halign="center",
+            valign="middle"
+        )
+        selected_label.bind(size=lambda inst, val: setattr(inst, "text_size", val))
+        root.add_widget(selected_label)
+
+        popup = Popup(title="Cities", content=root, size_hint=(0.92, 0.88))
+
+        def refresh_city_list():
+            city_box.clear_widgets()
+            cities = self.get_weather_cities()
+            active_city = self.config.get("city", "Brooklyn, NY")
+
+            for city in cities:
+                is_selected = city == self.selected_city
+                is_active = city == active_city
+
+                color = (0.25, 0.45, 0.75, 1) if is_selected else (0.12, 0.20, 0.35, 1)
+                text_value = f"{city}\nActive" if is_active else city
+
+                btn = Button(
+                    text=text_value,
+                    font_size=font(22),
+                    size_hint_y=None,
+                    height=height(82),
+                    halign="center",
+                    valign="middle",
+                    background_normal="",
+                    background_color=color
+                )
+                btn.bind(size=lambda inst, val: setattr(inst, "text_size", val))
+
+                def select_city(instance, c=city):
+                    self.selected_city = c
+                    selected_label.text = f"Selected: {self.selected_city}"
+                    refresh_city_list()
+
+                btn.bind(on_release=select_city)
+                city_box.add_widget(btn)
+
+        def select_active(instance):
+            if not self.selected_city:
+                return
+            self.config.set("city", self.selected_city)
+            self.city_name = self.selected_city
+            popup.dismiss()
+            self.show_saved_current()
+            Clock.schedule_once(lambda dt: self.refresh_weather(None), 0.1)
+
+        def add_city(instance):
+            popup.dismiss()
+            self.open_add_city_popup()
+
+        def delete_city(instance):
+            cities = self.get_weather_cities()
+
+            if not self.selected_city:
+                return
+
+            if len(cities) <= 1:
+                selected_label.text = "Keep at least one city."
+                return
+
+            if self.selected_city in cities:
+                deleted = self.selected_city
+                cities.remove(deleted)
+                self.save_weather_cities(cities)
+
+                active_city = self.config.get("city", "Brooklyn, NY")
+                if active_city == deleted:
+                    self.config.set("city", cities[0])
+                    self.city_name = cities[0]
+
+                self.selected_city = self.config.get("city", cities[0])
+                selected_label.text = f"Selected: {self.selected_city}"
+                refresh_city_list()
+
+        row1 = BoxLayout(orientation="horizontal", spacing=height(6), size_hint=(1, 0.11))
+
+        select_btn = Button(text="Select", font_size=font(22), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
+        select_btn.bind(on_release=select_active)
+        row1.add_widget(select_btn)
+
+        add_btn = Button(text="Add", font_size=font(22), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
+        add_btn.bind(on_release=add_city)
+        row1.add_widget(add_btn)
+
+        delete_btn = Button(text="Delete", font_size=font(22), background_normal="", background_color=(0.35, 0.12, 0.12, 1))
+        delete_btn.bind(on_release=delete_city)
+        row1.add_widget(delete_btn)
+
+        root.add_widget(row1)
+
+        close_btn = Button(
+            text="Cancel",
+            font_size=font(22),
+            size_hint=(1, 0.10),
+            background_normal="",
+            background_color=(0.10, 0.15, 0.25, 1)
+        )
+        close_btn.bind(on_release=lambda inst: popup.dismiss())
+        root.add_widget(close_btn)
+
+        refresh_city_list()
+        popup.open()
+
+    def open_add_city_popup(self):
+        root = BoxLayout(orientation="vertical", spacing=height(8), padding=height(8))
+
+        root.add_widget(Label(text="Add Weather City", font_size=font(28), bold=True, size_hint=(1, 0.18)))
+
+        input_box = TextInput(
+            text="",
+            hint_text="Example: Queens, NY",
+            font_size=font(24),
+            multiline=False,
+            size_hint=(1, 0.22),
+            use_bubble=False,
+            use_handles=False
+        )
+        root.add_widget(input_box)
+
+        status = Label(
+            text="Enter city name, state or country.",
+            font_size=font(16),
+            size_hint=(1, 0.16),
+            halign="center",
+            valign="middle"
+        )
+        status.bind(size=lambda inst, val: setattr(inst, "text_size", val))
+        root.add_widget(status)
+
+        popup = Popup(title="Add City", content=root, size_hint=(0.90, 0.55))
+
+        buttons = BoxLayout(orientation="horizontal", spacing=height(6), size_hint=(1, 0.22))
+
+        def save_city(instance):
+            city = input_box.text.strip()
+
+            if not city:
+                status.text = "City name is empty."
+                return
+
+            cities = self.get_weather_cities()
+
+            if city not in cities:
+                cities.append(city)
+                self.save_weather_cities(cities)
+
+            self.config.set("city", city)
+            self.city_name = city
+            self.selected_city = city
+            popup.dismiss()
+            self.show_saved_current()
+            Clock.schedule_once(lambda dt: self.refresh_weather(None), 0.1)
+
+        save_btn = Button(text="Save", font_size=font(22), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
+        save_btn.bind(on_release=save_city)
+        buttons.add_widget(save_btn)
+
+        cancel_btn = Button(text="Cancel", font_size=font(22), background_normal="", background_color=(0.10, 0.15, 0.25, 1))
+        cancel_btn.bind(on_release=lambda inst: popup.dismiss())
+        buttons.add_widget(cancel_btn)
+
+        root.add_widget(buttons)
+        popup.open()
+
 
     def make_tab_button(self, text):
         return Button(text=text, font_size=font(26), background_normal="", background_color=(0.10, 0.15, 0.25, 1))
 
     def on_enter(self):
         self.config = ConfigManager()
+        self.get_weather_cities()
         self.city_name = self.config.get("city", "Brooklyn, NY")
         self.show_saved_current()
         Clock.schedule_once(lambda dt: self.refresh_weather(None), 0.2)

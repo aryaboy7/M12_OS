@@ -24,7 +24,7 @@
         "notes": "Pick up Vicky from school",
         "reminder": "1h",
         "reminder_notified": false,
-        "event_notified": false
+        "event_notified": true
     },
     {
         "title": "Theater and Parking Lot",

@@ -213,3 +213,30 @@
 2026-06-12 01:12:13,721 | INFO | Calendar: events saved
 2026-06-12 07:00:24,961 | INFO | EventNotifier FINAL: sound played with afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
 2026-06-12 07:00:24,966 | INFO | EventNotifier FINAL: EVENT TIME popup shown for Sauna
+2026-06-12 12:41:44,295 | INFO | M12 OS 0.4.5 started
+2026-06-12 12:41:44,327 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-12 12:41:44,328 | INFO | EventNotifier FINAL: started
+2026-06-12 12:41:47,862 | INFO | Home: open weather
+2026-06-12 12:42:37,623 | INFO | Home: open settings
+2026-06-12 12:42:48,999 | INFO | Settings: theme=light
+2026-06-12 12:43:02,367 | INFO | Settings: auto_update=False
+2026-06-12 12:43:03,848 | INFO | Settings: auto_update=True
+2026-06-12 12:43:11,689 | INFO | Updater check OK: local=0.4.5, remote=0.4.4, asset=M12_OS0_4_4.zip
+2026-06-12 12:44:05,568 | INFO | EventNotifier FINAL: stopped
+2026-06-12 12:45:39,155 | INFO | M12 OS 0.4.5 started
+2026-06-12 12:45:39,184 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-12 12:45:39,184 | INFO | EventNotifier FINAL: started
+2026-06-12 12:45:42,229 | INFO | Home: open weather
+2026-06-12 12:46:39,138 | INFO | EventNotifier FINAL: stopped
+2026-06-12 13:07:41,027 | INFO | M12 OS 0.4.5 started
+2026-06-12 13:07:41,054 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-12 13:07:41,054 | INFO | EventNotifier FINAL: started
+2026-06-12 13:07:43,543 | INFO | Home: open weather
+2026-06-12 13:12:51,210 | INFO | EventNotifier FINAL: stopped
+2026-06-12 15:45:57,760 | INFO | M12 OS 0.4.5 started
+2026-06-12 15:45:57,792 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-12 15:45:57,792 | INFO | EventNotifier FINAL: started
+2026-06-12 15:46:00,322 | INFO | Home: open notes
+2026-06-12 15:46:03,623 | INFO | Notes: New pressed
+2026-06-12 15:46:03,623 | INFO | Editor: new note
+2026-06-12 15:46:28,087 | INFO | EventNotifier FINAL: stopped

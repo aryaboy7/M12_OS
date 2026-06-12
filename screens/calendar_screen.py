@@ -18,7 +18,7 @@ from utils.ui_scale import font, height
 from utils.logger import log
 
 
-Window.softinput_mode = "pan"
+Window.softinput_mode = "resize"
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -485,22 +485,11 @@ class CalendarScreen(Screen):
             hint_text="Notes",
             font_size=cal_font(18),
             multiline=True,
-            size_hint=(1, 0.15),
+            size_hint=(1, 0.25),
             use_bubble=False,
             use_handles=False
         )
         self.root_box.add_widget(self.notes_input)
-
-        reminder_label = Label(
-            text="Reminder: choose None, 5m, 15m, 30m, 1h",
-            font_size=cal_font(16),
-            bold=True,
-            size_hint=(1, 0.045),
-            halign="center",
-            valign="middle"
-        )
-        reminder_label.bind(size=lambda inst, val: setattr(inst, "text_size", val))
-        self.root_box.add_widget(reminder_label)
 
         reminder_text = event.get("reminder", "None")
         if reminder_text not in REMINDER_OPTIONS:
@@ -519,7 +508,7 @@ class CalendarScreen(Screen):
         self.status_label = Label(
             text="",
             font_size=cal_font(14),
-            size_hint=(1, 0.06),
+            size_hint=(1, 0.04),
             halign="center",
             valign="middle"
         )

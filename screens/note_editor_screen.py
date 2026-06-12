@@ -7,9 +7,13 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
+from kivy.uix.scrollview import ScrollView
 
 from utils.ui_scale import font, height
 from utils.logger import log
+
+
+Window.softinput_mode = "resize"
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -59,51 +63,40 @@ class NoteEditorScreen(Screen):
         profile = device_profile()
 
         if profile == "phone":
-            top_hint = 0.10
-            title_hint = 0.10
-            type_hint = 0.09
-            body_hint = 0.71
             button_size = 24
             title_size = 24
             type_size = 22
-            body_size = 22
+            body_size = 24
+            body_height = 520
         elif profile == "tablet":
-            top_hint = 0.10
-            title_hint = 0.10
-            type_hint = 0.09
-            body_hint = 0.71
             button_size = 23
             title_size = 23
             type_size = 21
-            body_size = 21
+            body_size = 23
+            body_height = 500
         elif profile == "m12":
-            top_hint = 0.10
-            title_hint = 0.10
-            type_hint = 0.09
-            body_hint = 0.71
             button_size = 24
             title_size = 26
             type_size = 24
             body_size = 28
+            body_height = 430
         else:
-            top_hint = 0.12
-            title_hint = 0.12
-            type_hint = 0.10
-            body_hint = 0.66
             button_size = 22
             title_size = 28
             type_size = 22
             body_size = 22
+            body_height = 360
 
         root = BoxLayout(
             orientation="vertical",
-            spacing=height(10),
-            padding=height(10)
+            spacing=height(8),
+            padding=height(8)
         )
 
         top = BoxLayout(
             spacing=height(8),
-            size_hint=(1, top_hint)
+            size_hint=(1, None),
+            height=height(62)
         )
 
         back_btn = Button(
@@ -126,37 +119,63 @@ class NoteEditorScreen(Screen):
         top.add_widget(save_btn)
         root.add_widget(top)
 
+        self.scroll = ScrollView(
+            do_scroll_x=False,
+            do_scroll_y=True,
+            size_hint=(1, 1)
+        )
+
+        form = BoxLayout(
+            orientation="vertical",
+            spacing=height(8),
+            size_hint_y=None
+        )
+        form.bind(minimum_height=form.setter("height"))
+
         self.title_input = TextInput(
             hint_text="Note title",
             font_size=editor_font(title_size),
-            size_hint=(1, title_hint),
+            size_hint=(1, None),
+            height=height(62),
             multiline=False,
             use_bubble=False,
             use_handles=False
         )
-        root.add_widget(self.title_input)
+        form.add_widget(self.title_input)
 
         self.type_spinner = Spinner(
             text="Personal",
             values=self.load_types(),
             font_size=editor_font(type_size),
-            size_hint=(1, type_hint),
+            size_hint=(1, None),
+            height=height(58),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
         )
-        root.add_widget(self.type_spinner)
+        form.add_widget(self.type_spinner)
 
         self.body_input = TextInput(
             hint_text="Type note here...",
             font_size=editor_font(body_size),
-            size_hint=(1, body_hint),
+            size_hint=(1, None),
+            height=height(body_height),
             multiline=True,
             use_bubble=False,
             use_handles=False
         )
-        root.add_widget(self.body_input)
+        self.body_input.bind(focus=self.on_body_focus)
+        form.add_widget(self.body_input)
+
+        form.add_widget(BoxLayout(size_hint=(1, None), height=height(120)))
+
+        self.scroll.add_widget(form)
+        root.add_widget(self.scroll)
 
         self.add_widget(root)
+
+    def on_body_focus(self, instance, focused):
+        if focused:
+            self.scroll.scroll_y = 0.0
 
     def load_types(self):
         try:
