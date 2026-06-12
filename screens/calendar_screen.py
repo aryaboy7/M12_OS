@@ -18,6 +18,9 @@ from utils.ui_scale import font, height
 from utils.logger import log
 
 
+Window.softinput_mode = "pan"
+
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 EVENTS_DIR = BASE_DIR / "data" / "events"
 EVENTS_FILE = EVENTS_DIR / "events.json"
@@ -45,7 +48,7 @@ REMINDER_MINUTES = {
 }
 
 OLD_REMINDER_MAP = {
-    "At event time": "At time",
+    "At event time": "Event Time",
     "At time": "Event Time",
     "5 minutes before": "5m",
     "15 minutes before": "15m",
@@ -182,14 +185,17 @@ class CalendarScreen(Screen):
         reminder = event.get("reminder", "None")
 
         if reminder == "None":
-            return "Reminder: None"
+            return "Notification: None"
+
+        if reminder == "Event Time":
+            return "Notification: Event Time"
 
         remind_at = self.reminder_datetime(event)
 
         if not remind_at:
-            return f"Reminder: {reminder}"
+            return f"Notification: {reminder}"
 
-        return f"Reminder: {reminder}  Notify: {remind_at.strftime('%m/%d %I:%M %p')}"
+        return f"Notification: {reminder} before  Notify: {remind_at.strftime('%m/%d %I:%M %p')}"
 
     def event_display_text(self, event):
         title = event.get("title", "Untitled Event")
@@ -321,23 +327,13 @@ class CalendarScreen(Screen):
             size_hint=(1, 0.08)
         ))
 
-        info = Label(
-            text="Tap event to select. Countdown is from current time.",
-            font_size=cal_font(14),
-            size_hint=(1, 0.05),
-            halign="center",
-            valign="middle"
-        )
-        info.bind(size=lambda inst, val: setattr(inst, "text_size", val))
-        self.root_box.add_widget(info)
-
         filters = BoxLayout(orientation="horizontal", spacing=height(5), size_hint=(1, 0.08))
         for label, key in [("All", "all"), ("Today", "today"), ("Tomorrow", "tomorrow"), ("Week", "week")]:
             color = (0.25, 0.45, 0.75, 1) if self.active_filter == key else (0.10, 0.15, 0.25, 1)
             filters.add_widget(self.make_btn(label, lambda inst, k=key: self.set_filter(k), color, fs=14))
         self.root_box.add_widget(filters)
 
-        scroll = ScrollView(size_hint=(1, 0.52), do_scroll_x=False, do_scroll_y=True)
+        scroll = ScrollView(size_hint=(1, 0.57), do_scroll_x=False, do_scroll_y=True)
 
         self.list_box = GridLayout(cols=1, spacing=height(6), size_hint_y=None)
         self.list_box.bind(minimum_height=self.list_box.setter("height"))
@@ -480,12 +476,16 @@ class CalendarScreen(Screen):
         self.time_input.bind(on_touch_down=self.time_field_touched)
         self.root_box.add_widget(self.time_input)
 
+        hide_btn = self.make_btn("Hide Keyboard", self.hide_keyboard, fs=18)
+        hide_btn.size_hint = (1, 0.075)
+        self.root_box.add_widget(hide_btn)
+
         self.notes_input = TextInput(
             text=event.get("notes", ""),
             hint_text="Notes",
             font_size=cal_font(18),
             multiline=True,
-            size_hint=(1, 0.16),
+            size_hint=(1, 0.15),
             use_bubble=False,
             use_handles=False
         )
@@ -516,10 +516,6 @@ class CalendarScreen(Screen):
         )
         self.root_box.add_widget(self.reminder_spinner)
 
-        hide_btn = self.make_btn("Hide Keyboard", self.hide_keyboard, fs=18)
-        hide_btn.size_hint = (1, 0.08)
-        self.root_box.add_widget(hide_btn)
-
         self.status_label = Label(
             text="Notifications work while Calendar is open.",
             font_size=cal_font(14),
@@ -541,6 +537,11 @@ class CalendarScreen(Screen):
                 getattr(self, name).focus = False
             except Exception:
                 pass
+
+        try:
+            Window.release_all_keyboards()
+        except Exception:
+            pass
 
     def date_field_touched(self, instance, touch):
         if instance.collide_point(*touch.pos):

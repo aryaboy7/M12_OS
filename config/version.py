@@ -1,5 +1,5 @@
 APP_NAME = "M12 OS"
-VERSION = "0.4.1"
+VERSION = "0.4.2"
 
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/aryaboy7/M12_OS/main/update.json"
 

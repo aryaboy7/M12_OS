@@ -23,6 +23,7 @@ REMINDER_SOUND = SOUNDS_DIR / "reminder.wav"
 
 REMINDER_MINUTES = {
     "None": None,
+    "Event Time": 0,
     "At time": 0,
     "5m": 5,
     "15m": 15,
@@ -155,8 +156,23 @@ class EventNotifier:
         except Exception:
             return None
 
+    def normalize_reminder(self, reminder):
+        reminder = str(reminder).strip() or "None"
+
+        old_map = {
+            "At event time": "Event Time",
+            "At time": "Event Time",
+            "5 minutes before": "5m",
+            "15 minutes before": "15m",
+            "30 minutes before": "30m",
+            "1 hour before": "1h",
+            "1 day before": "1 day",
+        }
+
+        return old_map.get(reminder, reminder)
+
     def reminder_datetime(self, event):
-        reminder = str(event.get("reminder", "None")).strip() or "None"
+        reminder = self.normalize_reminder(event.get("reminder", "None"))
         minutes = REMINDER_MINUTES.get(reminder)
 
         if minutes is None:
@@ -203,7 +219,7 @@ class EventNotifier:
         changed = False
 
         for event in events:
-            reminder = str(event.get("reminder", "None")).strip() or "None"
+            reminder = self.normalize_reminder(event.get("reminder", "None"))
             event_dt = self.parse_event_datetime(event)
 
             if not event_dt:
@@ -249,7 +265,7 @@ class EventNotifier:
         date = event.get("date", "")
         time = event.get("time", "")
         notes = event.get("notes", "")
-        reminder = event.get("reminder", "None")
+        reminder = self.normalize_reminder(event.get("reminder", "None"))
 
         message = (
             f"{popup_type}\n\n"

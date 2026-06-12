@@ -2,11 +2,11 @@
     {
         "title": "Watch some good movie",
         "date": "2026-06-11",
-        "time": "21:00",
+        "time": "21:50",
         "notes": "Find a good movie and watch it.",
-        "reminder": "15m",
+        "reminder": "5m",
         "reminder_notified": true,
-        "event_notified": false
+        "event_notified": true
     },
     {
         "title": "Victoria take from school",

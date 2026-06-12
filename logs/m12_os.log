@@ -122,3 +122,52 @@
 2026-06-11 20:45:02,076 | INFO | EventNotifier FINAL: sound played with afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
 2026-06-11 20:45:02,081 | INFO | EventNotifier FINAL: REMINDER popup shown for Watch some good movie
 2026-06-11 20:55:47,945 | INFO | EventNotifier FINAL: stopped
+2026-06-11 20:58:48,123 | INFO | M12 OS 0.4.1 started
+2026-06-11 20:58:48,149 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 20:58:48,149 | INFO | EventNotifier FINAL: started
+2026-06-11 20:59:32,434 | INFO | M12 OS 0.4.1 started
+2026-06-11 20:59:32,462 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 20:59:32,462 | INFO | EventNotifier FINAL: started
+2026-06-11 21:00:02,117 | INFO | EventNotifier FINAL: sound played with afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 21:00:02,122 | INFO | EventNotifier FINAL: EVENT TIME popup shown for Watch some good movie
+2026-06-11 21:00:22,524 | INFO | EventNotifier FINAL: stopped
+2026-06-11 21:18:28,031 | INFO | M12 OS 0.4.1 started
+2026-06-11 21:18:28,061 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 21:18:28,061 | INFO | EventNotifier FINAL: started
+2026-06-11 21:18:30,695 | INFO | Home: open calendar
+2026-06-11 21:19:13,880 | INFO | EventNotifier FINAL: stopped
+2026-06-11 21:23:16,758 | INFO | M12 OS 0.4.1 started
+2026-06-11 21:23:16,787 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 21:23:16,787 | INFO | EventNotifier FINAL: started
+2026-06-11 21:23:19,000 | INFO | Home: open calendar
+2026-06-11 21:24:57,328 | INFO | EventNotifier FINAL: stopped
+2026-06-11 21:26:41,249 | INFO | M12 OS 0.4.1 started
+2026-06-11 21:26:41,276 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 21:26:41,276 | INFO | EventNotifier FINAL: started
+2026-06-11 21:26:49,009 | INFO | Home: open calendar
+2026-06-11 21:27:18,636 | INFO | EventNotifier FINAL: stopped
+2026-06-11 21:30:11,423 | INFO | M12 OS 0.4.1 started
+2026-06-11 21:30:11,452 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 21:30:11,452 | INFO | EventNotifier FINAL: started
+2026-06-11 21:30:14,243 | INFO | Home: open calendar
+2026-06-11 21:30:23,133 | INFO | Calendar: selected event 0
+2026-06-11 21:31:00,120 | INFO | Calendar: edited Watch some good movie
+2026-06-11 21:31:00,122 | INFO | Calendar: events saved
+2026-06-11 21:31:11,040 | INFO | EventNotifier FINAL: sound played with afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 21:31:11,043 | INFO | EventNotifier FINAL: REMINDER popup shown for Watch some good movie
+2026-06-11 21:32:24,836 | INFO | EventNotifier FINAL: stopped
+2026-06-11 21:43:11,734 | INFO | M12 OS 0.4.1 started
+2026-06-11 21:43:11,762 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 21:43:11,762 | INFO | EventNotifier FINAL: started
+2026-06-11 21:43:14,572 | INFO | Home: open calendar
+2026-06-11 21:43:20,054 | INFO | Calendar: selected event 0
+2026-06-11 21:43:20,982 | INFO | Calendar: selected event 0
+2026-06-11 21:43:42,420 | INFO | Calendar: edited Watch some good movie
+2026-06-11 21:43:42,422 | INFO | Calendar: events saved
+2026-06-11 21:45:11,395 | INFO | EventNotifier FINAL: sound played with afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 21:45:11,398 | INFO | EventNotifier FINAL: REMINDER popup shown for Watch some good movie
+2026-06-11 21:48:18,543 | INFO | Calendar: selected event 1
+2026-06-11 21:48:19,511 | INFO | Calendar: selected event 0
+2026-06-11 21:50:11,418 | INFO | EventNotifier FINAL: sound played with afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 21:50:11,422 | INFO | EventNotifier FINAL: EVENT TIME popup shown for Watch some good movie
+2026-06-11 21:54:35,926 | INFO | EventNotifier FINAL: stopped
