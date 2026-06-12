@@ -27,10 +27,19 @@ PRESERVE_NAMES = {
     ".git",
     ".venv",
     "__pycache__",
-    "data",
     "logs",
     "updates",
     "backups",
+}
+
+# Preserve user-created data only.
+# data/sounds is NOT here, so updater can copy data/sounds/reminder.wav.
+PRESERVE_DATA_DIRS = {
+    "data/notes",
+    "data/events",
+    "data/drawings",
+    "data/files",
+    "data/music",
 }
 
 PRESERVE_FILES = {
@@ -47,10 +56,8 @@ SKIP_NAMES = {
 def parse_version(value):
     text = str(value)
     match = re.search(r"(\d+)[._](\d+)[._](\d+)", text)
-
     if not match:
         return (0, 0, 0)
-
     return tuple(int(x) for x in match.groups())
 
 
@@ -135,7 +142,6 @@ class Updater:
 
         except Exception as e:
             log.error(f"Updater check failed: {e}")
-
             return {
                 "error": str(e),
                 "local_version": VERSION,
@@ -144,46 +150,31 @@ class Updater:
 
     def download(self, file_url):
         if not file_url:
-            return {
-                "ok": False,
-                "error": "No download URL found."
-            }
+            return {"ok": False, "error": "No download URL found."}
 
         try:
             filename = file_url.rstrip("/").split("/")[-1]
-
             if not filename.lower().endswith(".zip"):
                 filename += ".zip"
 
             target = UPDATES_DIR / filename
-
             if target.exists():
                 target.unlink()
 
             request = urllib.request.Request(
                 file_url,
-                headers={
-                    "User-Agent": "M12-OS-Updater"
-                }
+                headers={"User-Agent": "M12-OS-Updater"}
             )
 
             with urllib.request.urlopen(request, timeout=60) as response:
                 target.write_bytes(response.read())
 
             log.info(f"Update downloaded: {target}")
-
-            return {
-                "ok": True,
-                "path": str(target)
-            }
+            return {"ok": True, "path": str(target)}
 
         except Exception as e:
             log.error(f"Updater download failed: {e}")
-
-            return {
-                "ok": False,
-                "error": str(e)
-            }
+            return {"ok": False, "error": str(e)}
 
     def latest_downloaded_zip(self):
         zips = sorted(
@@ -191,13 +182,23 @@ class Updater:
             key=lambda p: p.stat().st_mtime,
             reverse=True
         )
-
         return zips[0] if zips else None
+
+    def _is_preserved_data_file(self, rel):
+        for folder in PRESERVE_DATA_DIRS:
+            if rel == folder or rel.startswith(folder + "/"):
+                return True
+        return False
 
     def _should_skip_file(self, rel_path, src):
         rel = rel_path.as_posix()
 
         if rel_path.parts and rel_path.parts[0] in PRESERVE_NAMES:
+            return True
+
+        # Preserve only selected user data folders.
+        # This allows data/sounds/reminder.wav to be installed.
+        if self._is_preserved_data_file(rel):
             return True
 
         if rel in PRESERVE_FILES:
@@ -227,7 +228,6 @@ class Updater:
                     continue
 
                 rel_path = path.relative_to(BASE_DIR)
-
                 if self._should_skip_file(rel_path, path):
                     continue
 
@@ -254,7 +254,6 @@ class Updater:
 
         for main_file in candidates:
             parent = main_file.parent
-
             if (
                 (parent / "screens").exists()
                 and
@@ -274,10 +273,7 @@ class Updater:
             source_zip = Path(zip_path) if zip_path else self.latest_downloaded_zip()
 
             if not source_zip or not source_zip.exists():
-                return {
-                    "ok": False,
-                    "error": "No downloaded ZIP found."
-                }
+                return {"ok": False, "error": "No downloaded ZIP found."}
 
             backup_path = self.make_backup()
 
@@ -316,6 +312,9 @@ class Updater:
                         shutil.copy2(src, dst)
                         copied += 1
 
+                        if rel_path.as_posix() == "data/sounds/reminder.wav":
+                            log.info("Updater copied reminder sound: data/sounds/reminder.wav")
+
                     except PermissionError as e:
                         skipped += 1
                         log.error(f"Permission denied copying {rel_path}: {e}")
@@ -331,16 +330,12 @@ class Updater:
                 "backup": str(backup_path),
                 "files_copied": copied,
                 "files_skipped": skipped,
-                "message": "Update installed. Restart M12 OS."
+                "message": "Update installed. Fully close and reopen M12 OS."
             }
 
         except Exception as e:
             log.error(f"Install failed: {e}")
-
-            return {
-                "ok": False,
-                "error": str(e)
-            }
+            return {"ok": False, "error": str(e)}
 
     def restart_app(self):
         python = os.sys.executable

@@ -5,7 +5,16 @@
         "time": "21:50",
         "notes": "Find a good movie and watch it.",
         "reminder": "5m",
-        "reminder_notified": true,
+        "reminder_notified": false,
+        "event_notified": true
+    },
+    {
+        "title": "Sauna",
+        "date": "2026-06-12",
+        "time": "07:00",
+        "notes": "",
+        "reminder": "Event Time",
+        "reminder_notified": false,
         "event_notified": true
     },
     {

@@ -171,3 +171,45 @@
 2026-06-11 21:50:11,418 | INFO | EventNotifier FINAL: sound played with afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
 2026-06-11 21:50:11,422 | INFO | EventNotifier FINAL: EVENT TIME popup shown for Watch some good movie
 2026-06-11 21:54:35,926 | INFO | EventNotifier FINAL: stopped
+2026-06-11 23:36:07,674 | INFO | M12 OS 0.4.2 started
+2026-06-11 23:36:07,706 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 23:36:07,706 | INFO | EventNotifier FINAL: started
+2026-06-11 23:37:37,389 | INFO | EventNotifier FINAL: stopped
+2026-06-11 23:41:25,074 | INFO | M12 OS 0.4.2 started
+2026-06-11 23:41:25,102 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 23:41:25,102 | INFO | EventNotifier FINAL: started
+2026-06-11 23:41:27,852 | INFO | Home: open calendar
+2026-06-11 23:45:33,381 | INFO | EventNotifier FINAL: stopped
+2026-06-11 23:56:37,454 | INFO | M12 OS 0.4.2 started
+2026-06-11 23:56:37,481 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-11 23:56:37,481 | INFO | EventNotifier FINAL: started
+2026-06-11 23:56:40,201 | INFO | Home: open calendar
+2026-06-11 23:56:48,469 | INFO | Calendar: selected event 0
+2026-06-11 23:57:01,065 | INFO | Calendar: edited Watch some good movie
+2026-06-11 23:57:01,067 | INFO | Calendar: events saved
+2026-06-12 00:00:14,214 | INFO | EventNotifier FINAL: stopped
+2026-06-12 00:14:49,075 | INFO | M12 OS 0.4.2 started
+2026-06-12 00:14:49,108 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-12 00:14:49,109 | INFO | EventNotifier FINAL: started
+2026-06-12 00:14:52,006 | INFO | Home: open calendar
+2026-06-12 00:15:52,814 | INFO | Calendar: selected event 2
+2026-06-12 00:18:30,911 | INFO | Calendar: selected event 1
+2026-06-12 00:20:47,361 | INFO | EventNotifier FINAL: stopped
+2026-06-12 00:23:17,769 | INFO | M12 OS 0.4.2 started
+2026-06-12 00:23:17,796 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-12 00:23:17,796 | INFO | EventNotifier FINAL: started
+2026-06-12 00:23:20,510 | INFO | Home: open calendar
+2026-06-12 00:26:34,833 | INFO | EventNotifier FINAL: stopped
+2026-06-12 00:28:23,628 | INFO | M12 OS 0.4.2 started
+2026-06-12 00:28:23,655 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-12 00:28:23,655 | INFO | EventNotifier FINAL: started
+2026-06-12 00:28:26,776 | INFO | Home: open calendar
+2026-06-12 00:29:25,005 | INFO | EventNotifier FINAL: stopped
+2026-06-12 01:10:54,321 | INFO | M12 OS 0.4.2 started
+2026-06-12 01:10:54,349 | WARNING | EventNotifier FINAL: sound not loaded: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-12 01:10:54,349 | INFO | EventNotifier FINAL: started
+2026-06-12 01:10:56,354 | INFO | Home: open calendar
+2026-06-12 01:12:13,719 | INFO | Calendar: added Sauna
+2026-06-12 01:12:13,721 | INFO | Calendar: events saved
+2026-06-12 07:00:24,961 | INFO | EventNotifier FINAL: sound played with afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-12 07:00:24,966 | INFO | EventNotifier FINAL: EVENT TIME popup shown for Sauna

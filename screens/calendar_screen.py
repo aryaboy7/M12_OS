@@ -103,7 +103,7 @@ class CalendarScreen(Screen):
         self.events = []
         self.selected_index = None
         self.mode = "list"
-        self.active_filter = "all"
+        self.active_filter = "upcoming"
 
         self.root_box = BoxLayout(
             orientation="vertical",
@@ -201,12 +201,10 @@ class CalendarScreen(Screen):
         title = event.get("title", "Untitled Event")
         date = event.get("date", "")
         time = event.get("time", "")
-        reminder = event.get("reminder", "None")
-        bell = "[Bell] " if reminder != "None" else ""
         reminder_line = self.reminder_display_text(event)
         when = f"{date} {time}" if time else date
-        return f"{bell}{title}\n{when}\nCountdown: {self.countdown_text(event)}\n{reminder_line}"
-
+        return f"{title}\n{when}\nCountdown: {self.countdown_text(event)}\n{reminder_line}"
+    
     def event_color(self, event, selected=False):
         if selected:
             return (0.25, 0.45, 0.75, 1)
@@ -232,20 +230,31 @@ class CalendarScreen(Screen):
         for index, event in enumerate(self.events):
             dt = self.parse_event_datetime(event)
 
-            if self.active_filter == "all":
-                result.append((index, event))
-                continue
-
             if not dt:
                 continue
 
-            days = (dt.date() - today).days
+            if self.active_filter == "upcoming":
+                if dt >= now:
+                    result.append((index, event))
 
-            if self.active_filter == "today" and days == 0:
-                result.append((index, event))
-            elif self.active_filter == "tomorrow" and days == 1:
-                result.append((index, event))
-            elif self.active_filter == "week" and 0 <= days <= 7:
+            elif self.active_filter == "today":
+                if dt >= now and dt.date() == today:
+                    result.append((index, event))
+
+            elif self.active_filter == "tomorrow":
+                if dt >= now and (dt.date() - today).days == 1:
+                    result.append((index, event))
+
+            elif self.active_filter == "week":
+                days = (dt.date() - today).days
+                if dt >= now and 0 <= days <= 7:
+                    result.append((index, event))
+
+            elif self.active_filter == "past":
+                if dt < now:
+                    result.append((index, event))
+
+            elif self.active_filter == "all":
                 result.append((index, event))
 
         return result
@@ -301,21 +310,6 @@ class CalendarScreen(Screen):
         return event_dt - timedelta(minutes=minutes)
 
 
-    def play_reminder_sound(self):
-        try:
-            if REMINDER_SOUND.exists():
-                sound = SoundLoader.load(str(REMINDER_SOUND))
-                if sound:
-                    sound.play()
-                    return
-
-            # Fallback: system bell on many desktop/mac terminals.
-            print("\a", end="", flush=True)
-
-        except Exception as e:
-            log.error(f"Calendar: reminder sound failed {e}")
-
-
     def build_list_view(self, *args):
         self.mode = "list"
         self.clear()
@@ -328,9 +322,15 @@ class CalendarScreen(Screen):
         ))
 
         filters = BoxLayout(orientation="horizontal", spacing=height(5), size_hint=(1, 0.08))
-        for label, key in [("All", "all"), ("Today", "today"), ("Tomorrow", "tomorrow"), ("Week", "week")]:
+        for label, key in [
+            ("Upcoming", "upcoming"),
+            ("Today", "today"),
+            ("Tomorrow", "tomorrow"),
+            ("Week", "week"),
+            ("Past", "past"),
+        ]:
             color = (0.25, 0.45, 0.75, 1) if self.active_filter == key else (0.10, 0.15, 0.25, 1)
-            filters.add_widget(self.make_btn(label, lambda inst, k=key: self.set_filter(k), color, fs=14))
+            filters.add_widget(self.make_btn(label, lambda inst, k=key: self.set_filter(k), color, fs=13))
         self.root_box.add_widget(filters)
 
         scroll = ScrollView(size_hint=(1, 0.57), do_scroll_x=False, do_scroll_y=True)
@@ -476,9 +476,9 @@ class CalendarScreen(Screen):
         self.time_input.bind(on_touch_down=self.time_field_touched)
         self.root_box.add_widget(self.time_input)
 
-        hide_btn = self.make_btn("Hide Keyboard", self.hide_keyboard, fs=18)
-        hide_btn.size_hint = (1, 0.075)
-        self.root_box.add_widget(hide_btn)
+     #   hide_btn = self.make_btn("Hide Keyboard", self.hide_keyboard, fs=18)
+     #   hide_btn.size_hint = (1, 0.075)
+     #   self.root_box.add_widget(hide_btn)
 
         self.notes_input = TextInput(
             text=event.get("notes", ""),
@@ -517,12 +517,13 @@ class CalendarScreen(Screen):
         self.root_box.add_widget(self.reminder_spinner)
 
         self.status_label = Label(
-            text="Notifications work while Calendar is open.",
+            text="",
             font_size=cal_font(14),
             size_hint=(1, 0.06),
             halign="center",
             valign="middle"
         )
+    
         self.status_label.bind(size=lambda inst, val: setattr(inst, "text_size", val))
         self.root_box.add_widget(self.status_label)
 
