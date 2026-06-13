@@ -35,11 +35,27 @@ class SettingsScreen(Screen):
     def clear_screen(self):
         self.clear_widgets()
 
+    def make_label(self, text):
+        return Label(
+            text=text,
+            font_size=font(22),
+            size_hint=(1, 0.06)
+        )
+
+    def make_button(self, text, color=(0.12, 0.20, 0.35, 1)):
+        return Button(
+            text=text,
+            font_size=font(28),
+            size_hint=(1, 0.11),
+            background_normal="",
+            background_color=color
+        )
+
     def build_settings_view(self, instance=None):
         self.clear_screen()
         self.config = ConfigManager()
 
-        root = BoxLayout(orientation="vertical", padding=15, spacing=12)
+        root = BoxLayout(orientation="vertical", padding=15, spacing=10)
 
         root.add_widget(Label(
             text="Settings",
@@ -50,20 +66,11 @@ class SettingsScreen(Screen):
 
         root.add_widget(Label(
             text=version_text(),
-            font_size=font(28),
-            size_hint=(1, 0.08)
+            font_size=font(26),
+            size_hint=(1, 0.07)
         ))
 
-        self.theme_spinner = Spinner(
-            text=self.config.get("theme", "dark"),
-            values=("dark", "light"),
-            font_size=font(28),
-            size_hint=(1, 0.11),
-            background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
-        )
-        self.theme_spinner.bind(text=self.change_theme)
-        root.add_widget(self.theme_spinner)
+        root.add_widget(self.make_label("Temperature Unit"))
 
         self.unit_spinner = Spinner(
             text=self.config.get("temperature_unit", "F"),
@@ -76,54 +83,22 @@ class SettingsScreen(Screen):
         self.unit_spinner.bind(text=self.change_unit)
         root.add_widget(self.unit_spinner)
 
-        self.channel_spinner = Spinner(
-            text=self.config.get("update_channel", "stable"),
-            values=("stable", "beta"),
-            font_size=font(28),
-            size_hint=(1, 0.11),
-            background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
-        )
-        self.channel_spinner.bind(text=self.change_channel)
-        root.add_widget(self.channel_spinner)
-
-        self.auto_btn = Button(
-            text=self.auto_update_text(),
-            font_size=font(28),
-            size_hint=(1, 0.11),
-            background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
+        self.auto_btn = self.make_button(
+            self.auto_update_text(),
+            (0.10, 0.15, 0.25, 1)
         )
         self.auto_btn.bind(on_press=self.toggle_auto_update)
         root.add_widget(self.auto_btn)
 
-        updater_btn = Button(
-            text="Open Updater",
-            font_size=font(28),
-            size_hint=(1, 0.11),
-            background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
-        )
+        updater_btn = self.make_button("Open Updater")
         updater_btn.bind(on_press=self.open_updater)
         root.add_widget(updater_btn)
 
-        log_btn = Button(
-            text="View Log",
-            font_size=font(28),
-            size_hint=(1, 0.11),
-            background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
-        )
+        log_btn = self.make_button("View Log")
         log_btn.bind(on_press=self.build_log_view)
         root.add_widget(log_btn)
 
-        back_btn = Button(
-            text="< Back",
-            font_size=font(28),
-            size_hint=(1, 0.11),
-            background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
-        )
+        back_btn = self.make_button("< Back", (0.10, 0.15, 0.25, 1))
         back_btn.bind(on_press=self.go_back)
         root.add_widget(back_btn)
 
@@ -229,10 +204,6 @@ class SettingsScreen(Screen):
     def auto_update_text(self):
         return "Auto update check: ON" if self.config.get("auto_update", True) else "Auto update check: OFF"
 
-    def change_theme(self, instance, value):
-        self.config.set("theme", value)
-        log.info(f"Settings: theme={value}")
-
     def change_unit(self, instance, value):
         self.config.set("temperature_unit", value)
         self.config.set("last_temperature", 22 if value == "C" else 72)
@@ -243,10 +214,6 @@ class SettingsScreen(Screen):
             home = self.manager.get_screen("home")
             if hasattr(home, "refresh_weather_card"):
                 home.refresh_weather_card()
-
-    def change_channel(self, instance, value):
-        self.config.set("update_channel", value)
-        log.info(f"Settings: update_channel={value}")
 
     def toggle_auto_update(self, instance):
         new_value = not self.config.get("auto_update", True)
@@ -361,7 +328,6 @@ class SettingsScreen(Screen):
             log.info("Settings: log text copied")
             return
 
-        # Fallback that never crashes: write selected/copied text to a file.
         try:
             COPY_FILE.parent.mkdir(parents=True, exist_ok=True)
             COPY_FILE.write_text(text, encoding="utf-8")

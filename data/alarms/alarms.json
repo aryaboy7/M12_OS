@@ -1,0 +1,12 @@
+[
+    {
+        "hour": 18,
+        "minute": 25,
+        "enabled": false,
+        "repeat_mode": "once",
+        "days": [],
+        "until_date": "",
+        "last_fired_date": "2026-06-13",
+        "last_fired_time": "18:25"
+    }
+]

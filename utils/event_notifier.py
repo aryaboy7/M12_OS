@@ -68,20 +68,27 @@ class EventNotifier:
 
     def load_sound(self):
         try:
-            if REMINDER_SOUND.exists():
-                self.sound = SoundLoader.load(str(REMINDER_SOUND))
+            if not REMINDER_SOUND.exists():
+                self.sound = None
+                log.warning(f"EventNotifier FINAL: sound file missing: {REMINDER_SOUND}")
+                return
 
-                if self.sound:
-                    log.info(f"EventNotifier FINAL: sound loaded {REMINDER_SOUND}")
-                    return
+            if platform == "macosx":
+                self.sound = None
+                log.info(f"EventNotifier FINAL: macOS sound ready for afplay: {REMINDER_SOUND}")
+                return
 
-            self.sound = None
-            log.warning(f"EventNotifier FINAL: sound not loaded: {REMINDER_SOUND}")
+            self.sound = SoundLoader.load(str(REMINDER_SOUND))
+
+            if self.sound:
+                log.info(f"EventNotifier FINAL: sound loaded {REMINDER_SOUND}")
+            else:
+                log.warning(f"EventNotifier FINAL: SoundLoader could not load: {REMINDER_SOUND}")
 
         except Exception as e:
             self.sound = None
             log.error(f"EventNotifier FINAL: sound load failed {e}")
-
+ 
     def play_sound(self):
         try:
             if not REMINDER_SOUND.exists():

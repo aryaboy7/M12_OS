@@ -33,7 +33,9 @@ from screens.music_screen import MusicScreen
 from screens.ai_screen import AIScreen
 from screens.weather_screen import WeatherScreen
 from screens.calendar_screen import CalendarScreen
-
+from screens.calculator_converter_screen import CalculatorConverterScreen
+from screens.alarm_screen import AlarmScreen
+from utils.alarm_notifier import AlarmNotifier
 
 print("PLATFORM =", platform)
 print("WINDOW WIDTH =", Window.width)
@@ -65,6 +67,8 @@ class M12OS(App):
         sm.add_widget(AIScreen(name="ai"))
         sm.add_widget(WeatherScreen(name="weather"))
         sm.add_widget(CalendarScreen(name="calendar"))
+        sm.add_widget(CalculatorConverterScreen(name="calculator"))
+        sm.add_widget(AlarmScreen(name="alarm"))
 
         start_screen = config.get("start_screen", "home")
         sm.current = start_screen if sm.has_screen(start_screen) else "home"
@@ -80,13 +84,16 @@ class M12OS(App):
 
         self.event_notifier = EventNotifier(interval_seconds=30)
         self.event_notifier.start()
+        self.alarm_notifier = AlarmNotifier(interval_seconds=30)
+        self.alarm_notifier.start()
 
         return sm
 
     def on_stop(self):
         if hasattr(self, "event_notifier"):
             self.event_notifier.stop()
-
+        if hasattr(self, "alarm_notifier"):
+            self.alarm_notifier.stop()
 
 if __name__ == "__main__":
     M12OS().run()
