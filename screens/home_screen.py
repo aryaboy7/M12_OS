@@ -1,7 +1,10 @@
 import json
-from datetime import datetime, timedelta
+import os
+import sys
+from datetime import datetime
 from pathlib import Path
 
+from kivy.app import App
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.uix.boxlayout import BoxLayout
@@ -33,23 +36,6 @@ TILE_COLORS = [
     (0.36, 0.16, 0.18, 1),
     (0.14, 0.32, 0.42, 1),
 ]
-
-REMINDER_MINUTES = {
-    "None": None,
-    "Event Time": 0,
-    "At time": 0,
-    "5m": 5,
-    "15m": 15,
-    "30m": 30,
-    "1h": 60,
-    "1 day": 1440,
-    "At event time": 0,
-    "5 minutes before": 5,
-    "15 minutes before": 15,
-    "30 minutes before": 30,
-    "1 hour before": 60,
-    "1 day before": 1440,
-}
 
 
 def device_profile():
@@ -118,6 +104,8 @@ class HomeScreen(Screen):
             status_size = 11
             version_size = 12
 
+        self.app_size = app_size
+
         root = BoxLayout(orientation="vertical", padding=padding, spacing=spacing)
 
         with root.canvas.before:
@@ -149,7 +137,7 @@ class HomeScreen(Screen):
         )
 
         self.status_center = Label(
-            text="WiFi: OK   Battery: --%",
+            text="WiFi: OK",
             font_size=home_font(status_size),
             color=(0.75, 1, 0.80, 1),
             halign="center",
@@ -239,7 +227,8 @@ class HomeScreen(Screen):
             ("Clock", "clock"),
             ("Calculator", "calculator"),
             ("Settings", "settings"),
-            ("Updater", "updater")
+            ("Updater", "updater"),
+            ("Restart", "restart"),
         ]
 
         self.build_app_buttons(app_size)
@@ -330,20 +319,6 @@ class HomeScreen(Screen):
         else:
             btn.text = "Clock"
 
-    def normalize_reminder(self, reminder):
-        old_map = {
-            "At event time": "Event Time",
-            "At time": "Event Time",
-            "5 minutes before": "5m",
-            "15 minutes before": "15m",
-            "30 minutes before": "30m",
-            "1 hour before": "1h",
-            "1 day before": "1 day",
-        }
-
-        reminder = str(reminder).strip() or "None"
-        return old_map.get(reminder, reminder)
-
     def parse_event_datetime(self, event):
         try:
             date_text = str(event.get("date", "")).strip()
@@ -351,6 +326,43 @@ class HomeScreen(Screen):
             return datetime.strptime(f"{date_text} {time_text}", "%Y-%m-%d %H:%M")
         except Exception:
             return None
+
+    def get_today_occurrence_for_home(self, event, now):
+        base_dt = self.parse_event_datetime(event)
+
+        if not base_dt:
+            return None
+
+        repeat_mode = event.get("repeat_mode", "once")
+        today = now.date()
+
+        if repeat_mode == "once":
+            return base_dt
+
+        if today < base_dt.date():
+            return None
+
+        until_date = str(event.get("until_date", "")).strip()
+
+        if until_date:
+            try:
+                until = datetime.strptime(until_date, "%Y-%m-%d").date()
+                if today > until:
+                    return None
+            except Exception:
+                pass
+
+        if repeat_mode == "every_day":
+            return datetime.combine(today, base_dt.time())
+
+        if repeat_mode == "days":
+            today_name = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][today.weekday()]
+            days = event.get("days", [])
+
+            if today_name in days:
+                return datetime.combine(today, base_dt.time())
+
+        return None
 
     def get_today_calendar_count(self):
         try:
@@ -362,33 +374,17 @@ class HomeScreen(Screen):
             if not isinstance(events, list):
                 return 0
 
-            today = datetime.now().date()
+            now = datetime.now()
+            today = now.date()
             count = 0
 
             for event in events:
-                event_dt = self.parse_event_datetime(event)
+                occurrence = self.get_today_occurrence_for_home(event, now)
 
-                if not event_dt:
+                if not occurrence:
                     continue
 
-                reminder = self.normalize_reminder(event.get("reminder", "None"))
-                reminder_minutes = REMINDER_MINUTES.get(reminder)
-
-                event_today = (
-                    event_dt.date() == today
-                    and not event.get("event_notified", False)
-                )
-
-                reminder_today = False
-
-                if reminder_minutes is not None:
-                    remind_at = event_dt - timedelta(minutes=reminder_minutes)
-                    reminder_today = (
-                        remind_at.date() == today
-                        and not event.get("reminder_notified", False)
-                    )
-
-                if event_today or reminder_today:
+                if occurrence.date() == today and occurrence >= now:
                     count += 1
 
             return count
@@ -458,8 +454,22 @@ class HomeScreen(Screen):
 
         return 5
 
+    def restart_app(self):
+        log.info("Home: restarting app")
+
+        app = App.get_running_app()
+
+        if app:
+            app.stop()
+
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
     def open_screen(self, screen_name):
         log.info(f"Home: open {screen_name}")
+
+        if screen_name == "restart":
+            self.restart_app()
+            return
 
         if self.manager and self.manager.has_screen(screen_name):
             self.manager.current = screen_name

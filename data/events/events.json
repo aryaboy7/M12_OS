@@ -84,9 +84,23 @@
         "event_notified": true
     },
     {
-        "title": "Medication Morning",
+        "title": "Test",
+        "date": "2026-06-14",
+        "time": "10:00",
+        "notes": "Test 10:00",
+        "reminder": "5m",
+        "repeat_mode": "once",
+        "days": [],
+        "until_date": "",
+        "last_reminder_date": "",
+        "last_event_date": "",
+        "reminder_notified": true,
+        "event_notified": true
+    },
+    {
+        "title": "Medication Evening",
         "date": "2026-06-13",
-        "time": "09:00",
+        "time": "21:00",
         "notes": "",
         "reminder": "5m",
         "repeat_mode": "every_day",
@@ -98,9 +112,9 @@
         "event_notified": false
     },
     {
-        "title": "Medication Evening",
+        "title": "Medication Morning",
         "date": "2026-06-13",
-        "time": "21:00",
+        "time": "09:00",
         "notes": "",
         "reminder": "5m",
         "repeat_mode": "every_day",

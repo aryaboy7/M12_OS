@@ -378,7 +378,9 @@ class CalendarScreen(Screen):
                     result.append((index, event))
 
             elif self.active_filter == "today":
-                if dt >= now and dt.date() == today:
+                occurrence = self.get_today_occurrence(event, now)
+
+                if occurrence and occurrence.date() == today and occurrence >= now:
                     result.append((index, event))
 
             elif self.active_filter == "tomorrow":
