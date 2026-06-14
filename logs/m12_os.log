@@ -453,3 +453,14 @@
 2026-06-14 16:14:40,829 | INFO | Backup restored: /Users/aryaboy/Documents/M12_OS/data/backups/google_drive_backup.zip
 2026-06-14 16:14:47,049 | INFO | EventNotifier FINAL: stopped
 2026-06-14 16:14:47,049 | INFO | AlarmNotifier: stopped
+2026-06-14 17:17:38,557 | INFO | M12 OS 0.4.13 started
+2026-06-14 17:17:38,600 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-14 17:17:38,600 | INFO | EventNotifier FINAL: started
+2026-06-14 17:17:38,600 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-14 17:17:38,600 | INFO | AlarmNotifier: started
+2026-06-14 17:17:42,555 | INFO | Home: open settings
+2026-06-14 17:17:56,387 | INFO | Google Drive backup link saved
+2026-06-14 17:17:56,392 | INFO | Google Drive backup link saved
+2026-06-14 17:17:56,398 | INFO | Backup restored: /Users/aryaboy/Documents/M12_OS/data/backups/google_drive_backup.zip
+2026-06-14 17:18:02,228 | INFO | EventNotifier FINAL: stopped
+2026-06-14 17:18:02,228 | INFO | AlarmNotifier: stopped
