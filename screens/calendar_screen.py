@@ -73,16 +73,8 @@ def device_profile():
 
 
 def cal_font(base):
-    p = device_profile()
-    if p == "phone":
-        scale = 1.75
-    elif p == "tablet":
-        scale = 1.45
-    elif p == "m12":
-        scale = 1.30
-    else:
-        scale = 1.00
-    return max(14, int(base * scale))
+    """Use global M12 OS scaling so Android phone text is readable."""
+    return max(font(base), font(16))
 
 
 def event_row_height():

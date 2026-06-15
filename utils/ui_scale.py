@@ -36,7 +36,7 @@ def font(base):
     profile = device_profile()
 
     if profile == "phone":
-        scale = 1.80
+        scale = 2.05
     elif profile == "tablet":
         scale = 1.45
     elif profile == "m12":
@@ -51,7 +51,7 @@ def height(base):
     profile = device_profile()
 
     if profile == "phone":
-        scale = 1.55
+        scale = 1.90
     elif profile == "tablet":
         scale = 1.35
     elif profile == "m12":

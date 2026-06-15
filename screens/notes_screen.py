@@ -10,6 +10,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 
 from utils.logger import log
+from utils.ui_scale import font, height
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -39,31 +40,21 @@ def is_mobile():
 
 
 def notes_font(base):
-    profile = device_profile()
-
-    if profile == "phone":
-        scale = 1.85
-    elif profile == "tablet":
-        scale = 1.45
-    elif profile == "m12":
-        scale = 1.30
-    else:
-        scale = 1.00
-
-    return max(14, int(base * scale))
+    """Use global M12 OS scaling so Android phone text is readable."""
+    return max(font(base), font(16))
 
 
 def row_height():
     profile = device_profile()
 
     if profile == "phone":
-        return 150
+        return height(110)
     if profile == "tablet":
-        return 118
+        return height(90)
     if profile == "m12":
-        return 130
+        return height(95)
 
-    return 80
+    return height(80)
 
 
 class NotesScreen(Screen):
@@ -77,29 +68,29 @@ class NotesScreen(Screen):
         profile = device_profile()
 
         if profile == "phone":
-            padding = 22
-            spacing = 14
+            padding = height(22)
+            spacing = height(14)
             title_hint = 0.08
             filter_hint = 0.17
             list_hint = 0.61
             bottom_hint = 0.14
         elif profile == "tablet":
-            padding = 16
-            spacing = 10
+            padding = height(16)
+            spacing = height(10)
             title_hint = 0.08
             filter_hint = 0.17
             list_hint = 0.60
             bottom_hint = 0.15
         elif profile == "m12":
-            padding = 10
-            spacing = 8
+            padding = height(10)
+            spacing = height(8)
             title_hint = 0.08
             filter_hint = 0.16
             list_hint = 0.61
             bottom_hint = 0.15
         else:
-            padding = 10
-            spacing = 8
+            padding = height(10)
+            spacing = height(8)
             title_hint = 0.10
             filter_hint = 0.18
             list_hint = 0.57
@@ -121,7 +112,7 @@ class NotesScreen(Screen):
 
         self.filter_box = GridLayout(
             cols=self.filter_cols(),
-            spacing=6,
+            spacing=height(6),
             size_hint=(1, filter_hint)
         )
         layout.add_widget(self.filter_box)
@@ -134,7 +125,7 @@ class NotesScreen(Screen):
 
         self.notes_box = GridLayout(
             cols=1,
-            spacing=8 if is_mobile() else 6,
+            spacing=height(8 if is_mobile() else 6),
             size_hint_y=None
         )
         self.notes_box.bind(minimum_height=self.notes_box.setter("height"))
@@ -144,7 +135,7 @@ class NotesScreen(Screen):
 
         bottom = GridLayout(
             cols=5 if not is_mobile() else 3,
-            spacing=8,
+            spacing=height(8),
             size_hint=(1, bottom_hint)
         )
 
@@ -280,7 +271,6 @@ class NotesScreen(Screen):
                 if len(title) > 30:
                     title = title[:27] + "..."
 
-                # On mobile, keep it readable: title + type only.
                 text = f"{title}\n{note_type}"
                 fs = notes_font(24)
             else:
@@ -300,7 +290,7 @@ class NotesScreen(Screen):
                 halign="left",
                 valign="middle"
             )
-            btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - 20, val[1])))
+            btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - height(20), val[1])))
 
             if self.selected_note == file:
                 btn.background_color = (0.25, 0.45, 0.75, 1)

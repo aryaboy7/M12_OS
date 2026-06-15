@@ -7,6 +7,8 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
 from kivy.graphics import Color, Rectangle
 
+from utils.ui_scale import font, height
+
 
 BG = (0.04, 0.07, 0.12, 1)
 TAB_OFF = (0.10, 0.14, 0.22, 1)
@@ -25,7 +27,7 @@ class CalculatorConverterScreen(Screen):
         self.expression = ""
         self.converter_value = ""
 
-        root = BoxLayout(orientation="vertical", padding=10, spacing=8)
+        root = BoxLayout(orientation="vertical", padding=height(10), spacing=height(8))
 
         with root.canvas.before:
             Color(*BG)
@@ -33,11 +35,11 @@ class CalculatorConverterScreen(Screen):
 
         root.bind(pos=self.update_bg, size=self.update_bg)
 
-        top = BoxLayout(size_hint=(1, 0.10), spacing=10)
+        top = BoxLayout(size_hint=(1, 0.10), spacing=height(10))
 
         back = Button(
             text="< Back",
-            font_size=22,
+            font_size=font(22),
             background_normal="",
             background_color=(0.25, 0.25, 0.30, 1),
             color=(1, 1, 1, 1)
@@ -46,7 +48,7 @@ class CalculatorConverterScreen(Screen):
 
         title = Label(
             text="Calculator - Converter",
-            font_size=24,
+            font_size=font(24),
             bold=True,
             color=(0.85, 0.95, 1, 1)
         )
@@ -55,11 +57,11 @@ class CalculatorConverterScreen(Screen):
         top.add_widget(title)
         root.add_widget(top)
 
-        tabs = BoxLayout(size_hint=(1, 0.10), spacing=8)
+        tabs = BoxLayout(size_hint=(1, 0.10), spacing=height(8))
 
         self.calc_tab = Button(
             text="Calculator",
-            font_size=22,
+            font_size=font(22),
             background_normal="",
             background_color=TAB_ON,
             color=(1, 1, 1, 1)
@@ -67,7 +69,7 @@ class CalculatorConverterScreen(Screen):
 
         self.conv_tab = Button(
             text="Converter",
-            font_size=22,
+            font_size=font(22),
             background_normal="",
             background_color=TAB_OFF,
             color=(1, 1, 1, 1)
@@ -80,7 +82,7 @@ class CalculatorConverterScreen(Screen):
         tabs.add_widget(self.conv_tab)
         root.add_widget(tabs)
 
-        self.body = BoxLayout(orientation="vertical", spacing=7)
+        self.body = BoxLayout(orientation="vertical", spacing=height(7))
         root.add_widget(self.body)
 
         self.add_widget(root)
@@ -100,7 +102,7 @@ class CalculatorConverterScreen(Screen):
     def make_label(self, text, size=18):
         return Label(
             text=text,
-            font_size=size,
+            font_size=font(size),
             color=(0.65, 0.85, 1, 1),
             size_hint=(1, 0.055)
         )
@@ -109,7 +111,7 @@ class CalculatorConverterScreen(Screen):
         return Spinner(
             text=text,
             values=values,
-            font_size=20,
+            font_size=font(20),
             size_hint=(1, 0.09),
             background_normal="",
             background_color=(0.12, 0.22, 0.36, 1),
@@ -130,7 +132,7 @@ class CalculatorConverterScreen(Screen):
             text=self.expression,
             readonly=True,
             multiline=False,
-            font_size=38,
+            font_size=font(38),
             size_hint=(1, 0.18),
             halign="right",
             background_color=INPUT_BG,
@@ -139,7 +141,7 @@ class CalculatorConverterScreen(Screen):
         )
         self.body.add_widget(self.display)
 
-        grid = GridLayout(cols=4, spacing=8, size_hint=(1, 0.82))
+        grid = GridLayout(cols=4, spacing=height(8), size_hint=(1, 0.82))
 
         buttons = [
             "7", "8", "9", "/",
@@ -161,7 +163,7 @@ class CalculatorConverterScreen(Screen):
 
             btn = Button(
                 text=text,
-                font_size=28,
+                font_size=font(28),
                 background_normal="",
                 background_color=color,
                 color=(1, 1, 1, 1)
@@ -225,9 +227,9 @@ class CalculatorConverterScreen(Screen):
         self.conv_type.bind(text=self.update_units)
         self.body.add_widget(self.conv_type)
 
-        row = BoxLayout(size_hint=(1, 0.20), spacing=8)
+        row = BoxLayout(size_hint=(1, 0.20), spacing=height(8))
 
-        left = BoxLayout(orientation="vertical", spacing=5)
+        left = BoxLayout(orientation="vertical", spacing=height(5))
 
         left.add_widget(self.make_label("From"))
         self.from_unit = self.make_spinner("Meters", ())
@@ -237,14 +239,14 @@ class CalculatorConverterScreen(Screen):
         self.to_unit = self.make_spinner("Feet", ())
         left.add_widget(self.to_unit)
 
-        right = BoxLayout(orientation="vertical", spacing=5)
+        right = BoxLayout(orientation="vertical", spacing=height(5))
 
         right.add_widget(self.make_label("Value"))
         self.value_display = TextInput(
             text=self.converter_value,
             readonly=True,
             multiline=False,
-            font_size=28,
+            font_size=font(28),
             size_hint=(1, 0.42),
             halign="right",
             background_color=INPUT_BG,
@@ -255,7 +257,7 @@ class CalculatorConverterScreen(Screen):
 
         self.result_label = Label(
             text="Result: --",
-            font_size=24,
+            font_size=font(24),
             bold=True,
             size_hint=(1, 0.42),
             color=(0.90, 1, 1, 1)
@@ -267,7 +269,7 @@ class CalculatorConverterScreen(Screen):
 
         self.body.add_widget(row)
 
-        keypad = GridLayout(cols=3, spacing=7, size_hint=(1, 0.58))
+        keypad = GridLayout(cols=3, spacing=height(7), size_hint=(1, 0.58))
 
         keys = [
             "7", "8", "9",
@@ -289,7 +291,7 @@ class CalculatorConverterScreen(Screen):
 
             btn = Button(
                 text=text,
-                font_size=24,
+                font_size=font(24),
                 background_normal="",
                 background_color=color,
                 color=(1, 1, 1, 1),
