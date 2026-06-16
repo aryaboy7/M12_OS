@@ -8,7 +8,14 @@ from kivy.uix.scrollview import ScrollView
 from config.version import VERSION
 from utils.config_manager import ConfigManager
 from utils.updater import Updater
-from utils.ui_scale import font, height
+from utils.ui_scale import (
+    title_font,
+    button_font,
+    text_font,
+    button_height,
+    padding_size,
+    spacing_size,
+)
 
 
 class UpdaterScreen(Screen):
@@ -23,23 +30,23 @@ class UpdaterScreen(Screen):
 
         root = BoxLayout(
             orientation="vertical",
-            padding=height(15),
-            spacing=height(10)
+            padding=padding_size(),
+            spacing=spacing_size(),
         )
 
         root.add_widget(
             Label(
                 text="Updater",
-                font_size=font(40),
+                font_size=title_font(),
                 bold=True,
-                size_hint=(1, 0.11)
+                size_hint=(1, 0.11),
             )
         )
 
         self.scroll = ScrollView(
             size_hint=(1, 0.42),
             do_scroll_x=False,
-            do_scroll_y=True
+            do_scroll_y=True,
         )
 
         self.status = Label(
@@ -47,23 +54,23 @@ class UpdaterScreen(Screen):
                 f"Current version: {VERSION}\n\n"
                 "Updater uses GitHub Releases.\n\n"
                 "Release tag example:\n"
-                "M12_OS0.3.8\n\n"
+                "M12_OS0.4.17\n\n"
                 "ZIP asset example:\n"
-                "M12_OS0_3_8.zip"
+                "M12_OS0_4_17.zip"
             ),
-            font_size=font(24),
+            font_size=text_font(),
             size_hint_y=None,
             halign="left",
             valign="top",
-            padding=(height(12), height(12))
+            padding=(padding_size(), padding_size()),
         )
 
         self.status.bind(
-            width=lambda inst, val: setattr(inst, "text_size", (val - height(20), None))
+            width=lambda inst, val: setattr(inst, "text_size", (val - padding_size(), None))
         )
 
         self.status.bind(
-            texture_size=lambda inst, val: setattr(inst, "height", val[1] + height(35))
+            texture_size=lambda inst, val: setattr(inst, "height", val[1] + padding_size())
         )
 
         self.scroll.add_widget(self.status)
@@ -71,53 +78,58 @@ class UpdaterScreen(Screen):
 
         check_btn = Button(
             text="1. Check Latest Release",
-            font_size=font(28),
-            size_hint=(1, 0.095),
+            font_size=button_font(),
+            size_hint=(1, None),
+            height=button_height(),
             background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
+            background_color=(0.12, 0.20, 0.35, 1),
         )
         check_btn.bind(on_press=self.check_update)
         root.add_widget(check_btn)
 
         self.download_btn = Button(
             text="2. Download ZIP",
-            font_size=font(28),
-            size_hint=(1, 0.095),
+            font_size=button_font(),
+            size_hint=(1, None),
+            height=button_height(),
             disabled=True,
             background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
+            background_color=(0.10, 0.15, 0.25, 1),
         )
         self.download_btn.bind(on_press=self.download_update)
         root.add_widget(self.download_btn)
 
         self.install_btn = Button(
             text="3. Install ZIP",
-            font_size=font(28),
-            size_hint=(1, 0.095),
+            font_size=button_font(),
+            size_hint=(1, None),
+            height=button_height(),
             disabled=True,
             background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
+            background_color=(0.10, 0.15, 0.25, 1),
         )
         self.install_btn.bind(on_press=self.install_update)
         root.add_widget(self.install_btn)
 
         self.restart_btn = Button(
             text="4. Restart M12 OS",
-            font_size=font(28),
-            size_hint=(1, 0.095),
+            font_size=button_font(),
+            size_hint=(1, None),
+            height=button_height(),
             disabled=True,
             background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
+            background_color=(0.10, 0.15, 0.25, 1),
         )
         self.restart_btn.bind(on_press=self.restart_app)
         root.add_widget(self.restart_btn)
 
         back_btn = Button(
             text="< Back",
-            font_size=font(28),
-            size_hint=(1, 0.09),
+            font_size=button_font(),
+            size_hint=(1, None),
+            height=button_height(),
             background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
+            background_color=(0.10, 0.15, 0.25, 1),
         )
         back_btn.bind(on_press=self.go_back)
         root.add_widget(back_btn)
@@ -184,7 +196,7 @@ class UpdaterScreen(Screen):
             self.set_status(
                 "No ZIP asset found in latest GitHub Release.\n\n"
                 "Release must contain asset like:\n"
-                "M12_OS0_3_8.zip"
+                "M12_OS0_4_17.zip"
             )
             return
 
@@ -247,7 +259,10 @@ class UpdaterScreen(Screen):
             self.install_btn.disabled = False
 
     def restart_app(self, instance):
-        self.set_status("Restarting M12 OS...")
+        self.set_status(
+            "Restarting M12 OS...\n\n"
+            "On Android, fully close and reopen app if restart does not happen."
+        )
 
         Clock.schedule_once(lambda dt: self.updater.restart_app(), 0.2)
 

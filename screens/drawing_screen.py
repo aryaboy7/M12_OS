@@ -1,8 +1,9 @@
+# M12 OS Drawing Screen - shared UI scale version
 
 import json
 from pathlib import Path
 
-from kivy.graphics import Color, Line
+from kivy.graphics import Color, Line, Rectangle
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -12,7 +13,18 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 
-from utils.ui_scale import font, height
+from utils.ui_scale import (
+    button_font,
+    list_font,
+    text_font,
+    input_font,
+    status_font,
+    row_height,
+    button_height,
+    input_height,
+    padding_size,
+    spacing_size,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,6 +43,13 @@ class DrawingCanvas(Widget):
 
         with self.canvas.before:
             Color(1, 1, 1, 1)
+            self.bg_rect = Rectangle(pos=self.pos, size=self.size)
+
+        self.bind(pos=self.update_bg, size=self.update_bg)
+
+    def update_bg(self, *args):
+        self.bg_rect.pos = self.pos
+        self.bg_rect.size = self.size
 
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos):
@@ -70,6 +89,11 @@ class DrawingCanvas(Widget):
 
     def redraw(self):
         self.canvas.clear()
+
+        with self.canvas.before:
+            Color(1, 1, 1, 1)
+            self.bg_rect = Rectangle(pos=self.pos, size=self.size)
+
         for s in self.strokes:
             with self.canvas:
                 Color(*s["color"])
@@ -83,6 +107,10 @@ class DrawingCanvas(Widget):
     def clear_all(self):
         self.strokes = []
         self.canvas.clear()
+
+        with self.canvas.before:
+            Color(1, 1, 1, 1)
+            self.bg_rect = Rectangle(pos=self.pos, size=self.size)
 
     def save_file(self, path):
         path.write_text(json.dumps({"strokes": self.strokes}), encoding="utf-8")
@@ -99,9 +127,9 @@ class DrawingScreen(Screen):
 
         self.current_file = None
 
-        root = BoxLayout(orientation="vertical", spacing=height(6), padding=height(6))
+        root = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
 
-        top = BoxLayout(size_hint=(1, 0.10), spacing=height(4))
+        top = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
 
         for txt, cb in [
             ("Back", self.go_back),
@@ -110,13 +138,13 @@ class DrawingScreen(Screen):
             ("Undo", self.undo),
             ("Clear", self.clear_canvas),
         ]:
-            b = Button(text=txt, font_size=font(20))
+            b = Button(text=txt, font_size=button_font())
             b.bind(on_press=cb)
             top.add_widget(b)
 
         root.add_widget(top)
 
-        colors = BoxLayout(size_hint=(1, 0.08))
+        colors = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
         for clr in [
             (0,0,0,1),
             (1,0,0,1),
@@ -134,9 +162,9 @@ class DrawingScreen(Screen):
             colors.add_widget(b)
         root.add_widget(colors)
 
-        brushes = BoxLayout(size_hint=(1, 0.08))
+        brushes = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
         for txt, w in [("S",2),("M",4),("L",8)]:
-            b = Button(text=txt)
+            b = Button(text=txt, font_size=button_font())
             b.bind(on_press=lambda inst, width=w: self.set_brush(width))
             brushes.add_widget(b)
         root.add_widget(brushes)
@@ -159,12 +187,20 @@ class DrawingScreen(Screen):
         self.canvas_widget.clear_all()
 
     def save_dialog(self, *a):
-        box = BoxLayout(orientation="vertical")
-        inp = TextInput(text=self.current_file.stem if self.current_file else "", multiline=False)
+        box = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
+        inp = TextInput(
+            text=self.current_file.stem if self.current_file else "",
+            multiline=False,
+            font_size=input_font(),
+            size_hint=(1, None),
+            height=input_height(),
+            use_bubble=False,
+            use_handles=False
+        )
         box.add_widget(inp)
 
-        row = BoxLayout(size_hint=(1,0.3))
-        pop = Popup(title="Save Drawing", content=box, size_hint=(0.8,0.4))
+        row = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
+        pop = Popup(title="Save Drawing", content=box, size_hint=(0.88, 0.45))
 
         def do_save(*x):
             name = inp.text.strip() or "Drawing"
@@ -173,7 +209,7 @@ class DrawingScreen(Screen):
             self.current_file = path
             pop.dismiss()
 
-        btn = Button(text="Save")
+        btn = Button(text="Save", font_size=button_font(), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
         btn.bind(on_press=do_save)
         row.add_widget(btn)
         box.add_widget(row)
@@ -212,16 +248,16 @@ class DrawingScreen(Screen):
         return name.strip()
 
     def open_dialog(self, *a):
-        main = BoxLayout(orientation="vertical", spacing=height(6), padding=height(6))
+        main = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
 
-        list_layout = GridLayout(cols=1, size_hint_y=None, spacing=height(5))
+        list_layout = GridLayout(cols=1, size_hint_y=None, spacing=spacing_size())
         list_layout.bind(minimum_height=list_layout.setter("height"))
 
         scroll = ScrollView(do_scroll_x=False, do_scroll_y=True)
         scroll.add_widget(list_layout)
         main.add_widget(scroll)
 
-        bottom = BoxLayout(size_hint=(1, 0.12), spacing=height(6))
+        bottom = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
 
         pop = Popup(
             title="Open Drawing",
@@ -229,7 +265,7 @@ class DrawingScreen(Screen):
             size_hint=(0.90, 0.85)
         )
 
-        close_btn = Button(text="Cancel", font_size=font(20))
+        close_btn = Button(text="Cancel", font_size=button_font())
         close_btn.bind(on_press=lambda inst: pop.dismiss())
         bottom.add_widget(close_btn)
         main.add_widget(bottom)
@@ -239,18 +275,18 @@ class DrawingScreen(Screen):
         if not files:
             list_layout.add_widget(Button(
                 text="No drawings saved",
-                font_size=font(20),
+                font_size=button_font(),
                 size_hint_y=None,
-                height=height(60),
+                height=row_height(),
                 disabled=True
             ))
 
         for f in files:
-            row = BoxLayout(size_hint_y=None, height=height(64), spacing=height(4))
+            row = BoxLayout(size_hint_y=None, height=row_height(), spacing=spacing_size())
 
             open_btn = Button(
                 text=f.name,
-                font_size=font(18),
+                font_size=list_font(),
                 background_normal="",
                 background_color=(0.10, 0.15, 0.25, 1)
             )
@@ -267,7 +303,7 @@ class DrawingScreen(Screen):
 
             ren_btn = Button(
                 text="Rename",
-                font_size=font(16),
+                font_size=status_font(),
                 size_hint=(0.25, 1),
                 background_normal="",
                 background_color=(0.12, 0.20, 0.35, 1)
@@ -276,7 +312,7 @@ class DrawingScreen(Screen):
 
             del_btn = Button(
                 text="Delete",
-                font_size=font(16),
+                font_size=status_font(),
                 size_hint=(0.25, 1),
                 background_normal="",
                 background_color=(0.35, 0.12, 0.12, 1)
@@ -293,12 +329,12 @@ class DrawingScreen(Screen):
     def rename_dialog(self, old_path, parent_popup=None):
         old_path = Path(old_path)
 
-        box = BoxLayout(orientation="vertical", spacing=height(8), padding=height(8))
+        box = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
 
         inp = TextInput(
             text=old_path.stem,
             multiline=False,
-            font_size=font(22),
+            font_size=input_font(),
             use_bubble=False,
             use_handles=False
         )
@@ -306,13 +342,13 @@ class DrawingScreen(Screen):
 
         status = Button(
             text="Enter new drawing name",
-            font_size=font(16),
+            font_size=status_font(),
             disabled=True,
             size_hint=(1, 0.25)
         )
         box.add_widget(status)
 
-        buttons = BoxLayout(size_hint=(1, 0.30), spacing=height(6))
+        buttons = BoxLayout(size_hint=(1, 0.30), spacing=spacing_size())
 
         pop = Popup(
             title=f"Rename {old_path.name}",
@@ -354,7 +390,7 @@ class DrawingScreen(Screen):
 
         rename_btn = Button(
             text="Rename",
-            font_size=font(20),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
         )
@@ -362,7 +398,7 @@ class DrawingScreen(Screen):
 
         cancel_btn = Button(
             text="Cancel",
-            font_size=font(20),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.10, 0.15, 0.25, 1)
         )
@@ -377,17 +413,17 @@ class DrawingScreen(Screen):
     def delete_confirm(self, path, parent_popup=None):
         path = Path(path)
 
-        box = BoxLayout(orientation="vertical", spacing=height(8), padding=height(8))
+        box = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
 
         warning = Button(
             text=f"Delete?\n{path.name}",
-            font_size=font(20),
+            font_size=button_font(),
             disabled=True,
             size_hint=(1, 0.55)
         )
         box.add_widget(warning)
 
-        buttons = BoxLayout(size_hint=(1, 0.35), spacing=height(6))
+        buttons = BoxLayout(size_hint=(1, 0.35), spacing=spacing_size())
 
         pop = Popup(
             title="Confirm Delete",
@@ -415,7 +451,7 @@ class DrawingScreen(Screen):
 
         yes_btn = Button(
             text="Delete",
-            font_size=font(20),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.35, 0.12, 0.12, 1)
         )
@@ -423,7 +459,7 @@ class DrawingScreen(Screen):
 
         cancel_btn = Button(
             text="Cancel",
-            font_size=font(20),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.10, 0.15, 0.25, 1)
         )

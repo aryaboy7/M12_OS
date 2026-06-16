@@ -28,3 +28,10 @@
 2026-06-15 20:03:47,727 | INFO | Home: open calendar
 2026-06-15 20:03:51,146 | INFO | EventNotifier FINAL: stopped
 2026-06-15 20:03:51,146 | INFO | AlarmNotifier: stopped
+2026-06-15 20:30:25,531 | INFO | M12 OS 0.4.18 started
+2026-06-15 20:30:25,572 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-15 20:30:25,573 | INFO | EventNotifier FINAL: started
+2026-06-15 20:30:25,573 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-15 20:30:25,573 | INFO | AlarmNotifier: started
+2026-06-15 20:30:32,678 | INFO | EventNotifier FINAL: stopped
+2026-06-15 20:30:32,679 | INFO | AlarmNotifier: stopped

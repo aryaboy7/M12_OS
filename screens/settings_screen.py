@@ -1,3 +1,4 @@
+# M12 OS Settings Screen - shared UI scale version
 from pathlib import Path
 import subprocess
 
@@ -14,7 +15,16 @@ from kivy.graphics import Color, Rectangle
 from config.version import version_text
 from utils.config_manager import ConfigManager
 from utils.logger import log
-from utils.ui_scale import font, height
+from utils.ui_scale import (
+    title_font,
+    button_font,
+    text_font,
+    status_font,
+    row_height,
+    button_height,
+    padding_size,
+    spacing_size,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -57,7 +67,7 @@ class SettingsScreen(Screen):
     def make_title(self, text):
         return Label(
             text=text,
-            font_size=font(40),
+            font_size=title_font(),
             bold=True,
             color=(1, 1, 1, 1),
             size_hint=(1, 0.10)
@@ -66,7 +76,7 @@ class SettingsScreen(Screen):
     def make_subtitle(self, text):
         return Label(
             text=text,
-            font_size=font(22),
+            font_size=text_font(),
             color=(0.70, 0.85, 1, 1),
             size_hint=(1, 0.06)
         )
@@ -74,7 +84,7 @@ class SettingsScreen(Screen):
     def make_section_label(self, text):
         return Label(
             text=text,
-            font_size=font(24),
+            font_size=text_font(),
             bold=True,
             color=(0.80, 0.95, 1, 1),
             size_hint=(1, 0.07)
@@ -83,8 +93,9 @@ class SettingsScreen(Screen):
     def make_button(self, text, color=BLUE):
         return Button(
             text=text,
-            font_size=font(27),
-            size_hint=(1, 0.105),
+            font_size=button_font(),
+            size_hint=(1, None),
+            height=button_height(),
             background_normal="",
             background_color=color,
             color=(1, 1, 1, 1),
@@ -94,7 +105,7 @@ class SettingsScreen(Screen):
     def make_small_button(self, text, color=BLUE):
         return Button(
             text=text,
-            font_size=font(23),
+            font_size=button_font(),
             background_normal="",
             background_color=color,
             color=(1, 1, 1, 1),
@@ -105,8 +116,9 @@ class SettingsScreen(Screen):
         return Spinner(
             text=text,
             values=values,
-            font_size=font(28),
-            size_hint=(1, 0.105),
+            font_size=button_font(),
+            size_hint=(1, None),
+            height=button_height(),
             background_normal="",
             background_color=BLUE,
             color=(1, 1, 1, 1)
@@ -116,7 +128,7 @@ class SettingsScreen(Screen):
         self.clear_screen()
         self.config = ConfigManager()
 
-        root = BoxLayout(orientation="vertical", padding=15, spacing=9)
+        root = BoxLayout(orientation="vertical", padding=padding_size(), spacing=spacing_size())
         self.add_bg(root)
 
         root.add_widget(self.make_title("Settings"))
@@ -167,12 +179,12 @@ class SettingsScreen(Screen):
     def build_log_view(self, instance=None):
         self.clear_screen()
 
-        root = BoxLayout(orientation="vertical", padding=10, spacing=6)
+        root = BoxLayout(orientation="vertical", padding=padding_size(), spacing=spacing_size())
         self.add_bg(root)
 
         root.add_widget(Label(
             text="M12 OS Log",
-            font_size=font(38),
+            font_size=title_font(),
             bold=True,
             color=(1, 1, 1, 1),
             size_hint=(1, 0.08)
@@ -180,7 +192,7 @@ class SettingsScreen(Screen):
 
         self.log_status = Label(
             text="Tap a line, then Copy Line.",
-            font_size=font(20),
+            font_size=status_font(),
             color=(0.80, 0.90, 1, 1),
             size_hint=(1, 0.09),
             halign="left",
@@ -189,7 +201,7 @@ class SettingsScreen(Screen):
         self.log_status.bind(size=lambda inst, val: setattr(inst, "text_size", val))
         root.add_widget(self.log_status)
 
-        buttons1 = BoxLayout(orientation="horizontal", spacing=6, size_hint=(1, 0.08))
+        buttons1 = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, None), height=button_height())
 
         refresh_btn = self.make_small_button("Refresh", BLUE)
         refresh_btn.bind(on_press=self.refresh_log)
@@ -205,7 +217,7 @@ class SettingsScreen(Screen):
 
         root.add_widget(buttons1)
 
-        buttons2 = BoxLayout(orientation="horizontal", spacing=6, size_hint=(1, 0.08))
+        buttons2 = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, None), height=button_height())
 
         clear_btn = self.make_small_button("Clear Log", RED)
         clear_btn.bind(on_press=self.clear_log_confirm)
@@ -223,7 +235,7 @@ class SettingsScreen(Screen):
 
         self.log_scroll = ScrollView(size_hint=(1, 0.65), do_scroll_x=False, do_scroll_y=True)
 
-        self.log_list = GridLayout(cols=1, spacing=4, size_hint_y=None)
+        self.log_list = GridLayout(cols=1, spacing=spacing_size(), size_hint_y=None)
         self.log_list.bind(minimum_height=self.log_list.setter("height"))
 
         self.log_scroll.add_widget(self.log_list)
@@ -294,16 +306,16 @@ class SettingsScreen(Screen):
 
         btn = Button(
             text=f"{idx}: {display}",
-            font_size=font(18),
+            font_size=text_font(),
             size_hint_y=None,
-            height=height(70),
+            height=row_height(),
             halign="left",
             valign="middle",
             background_normal="",
             background_color=DARK,
             color=(1, 1, 1, 1)
         )
-        btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - 18, val[1])))
+        btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1])))
         btn.bind(on_press=lambda instance, text=line: self.select_log_line(text))
         self.log_list.add_widget(btn)
 

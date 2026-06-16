@@ -1,3 +1,4 @@
+# M12 OS Home Screen - shared UI scale version
 import json
 import os
 import sys
@@ -17,6 +18,19 @@ from kivy.graphics import Color, Rectangle
 from config.version import VERSION
 from utils.config_manager import ConfigManager
 from utils.logger import log
+from utils.ui_scale import (
+    device_profile,
+    title_font,
+    button_font,
+    list_font,
+    text_font,
+    status_font,
+    clock_time_font,
+    clock_date_font,
+    top_bar_height,
+    padding_size,
+    spacing_size,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -38,32 +52,7 @@ TILE_COLORS = [
 ]
 
 
-def device_profile():
-    w = Window.width
-    h = Window.height
 
-    if h >= 1800:
-        return "phone"
-    if w < 700 and h >= 900:
-        return "m12"
-    if h >= 1100:
-        return "tablet"
-    return "desktop"
-
-
-def home_font(base):
-    profile = device_profile()
-
-    if profile == "phone":
-        scale = 1.85
-    elif profile == "tablet":
-        scale = 1.45
-    elif profile == "m12":
-        scale = 1.35
-    else:
-        scale = 1.00
-
-    return max(14, int(base * scale))
 
 
 class HomeScreen(Screen):
@@ -75,36 +64,29 @@ class HomeScreen(Screen):
 
         profile = device_profile()
 
-        if profile == "m12":
-            padding = 14
-            spacing = 9
-            status_hint = 0.06
-            clock_hint = 0.15
-            weather_hint = 0.14
-            grid_hint = 0.59
+        padding = padding_size()
+        spacing = spacing_size()
+
+        if profile == "phone":
+            status_hint = 0.055
+            clock_hint = 0.17
+            weather_hint = 0.15
+            grid_hint = 0.575
             version_hint = 0.04
-            clock_size = 36
-            date_size = 16
-            weather_size = 16
-            app_size = 16
-            status_size = 10
-            version_size = 10
+        elif profile in ("tablet", "m12"):
+            status_hint = 0.055
+            clock_hint = 0.16
+            weather_hint = 0.14
+            grid_hint = 0.60
+            version_hint = 0.04
         else:
-            padding = 15
-            spacing = 11
             status_hint = 0.06
             clock_hint = 0.16
             weather_hint = 0.14
             grid_hint = 0.58
             version_hint = 0.04
-            clock_size = 46
-            date_size = 20
-            weather_size = 20
-            app_size = 19
-            status_size = 11
-            version_size = 12
 
-        self.app_size = app_size
+        self.app_size = button_font()
 
         root = BoxLayout(orientation="vertical", padding=padding, spacing=spacing)
 
@@ -117,8 +99,8 @@ class HomeScreen(Screen):
         status_bar = BoxLayout(
             orientation="horizontal",
             size_hint=(1, status_hint),
-            spacing=6,
-            padding=(8, 2)
+            spacing=spacing_size(),
+            padding=(spacing_size(), 2)
         )
 
         with status_bar.canvas.before:
@@ -129,7 +111,7 @@ class HomeScreen(Screen):
 
         self.status_left = Label(
             text=f"M12 OS {VERSION}",
-            font_size=home_font(status_size),
+            font_size=status_font(),
             color=(0.75, 0.85, 1, 1),
             halign="left",
             valign="middle",
@@ -138,7 +120,7 @@ class HomeScreen(Screen):
 
         self.status_center = Label(
             text="WiFi: OK",
-            font_size=home_font(status_size),
+            font_size=status_font(),
             color=(0.75, 1, 0.80, 1),
             halign="center",
             valign="middle",
@@ -147,7 +129,7 @@ class HomeScreen(Screen):
 
         self.status_time = Label(
             text="--:--:--",
-            font_size=home_font(status_size),
+            font_size=status_font(),
             color=(1, 1, 1, 1),
             halign="right",
             valign="middle",
@@ -166,7 +148,7 @@ class HomeScreen(Screen):
         clock_card = BoxLayout(
             orientation="vertical",
             size_hint=(1, clock_hint),
-            padding=8
+            padding=spacing_size()
         )
 
         with clock_card.canvas.before:
@@ -177,14 +159,14 @@ class HomeScreen(Screen):
 
         self.clock_label = Label(
             text="00:00",
-            font_size=home_font(clock_size),
+            font_size=clock_time_font(),
             bold=True,
             color=(1, 1, 1, 1)
         )
 
         self.date_label = Label(
             text="Date",
-            font_size=home_font(date_size),
+            font_size=clock_date_font(),
             color=(0.75, 0.88, 1, 1)
         )
 
@@ -197,7 +179,7 @@ class HomeScreen(Screen):
 
         self.weather_card = Button(
             text=f"Weather\n{city}  °{unit}",
-            font_size=home_font(weather_size),
+            font_size=text_font(),
             background_normal="",
             background_color=CARD_WEATHER,
             color=(1, 1, 1, 1),
@@ -231,12 +213,12 @@ class HomeScreen(Screen):
             ("Restart", "restart"),
         ]
 
-        self.build_app_buttons(app_size)
+        self.build_app_buttons()
         root.add_widget(self.grid)
 
         self.version_label = Label(
             text=f"M12 OS {VERSION}",
-            font_size=home_font(version_size),
+            font_size=status_font(),
             size_hint=(1, version_hint),
             color=(0.65, 0.75, 0.90, 1)
         )
@@ -244,7 +226,7 @@ class HomeScreen(Screen):
 
         self.add_widget(root)
 
-    def build_app_buttons(self, app_size):
+    def build_app_buttons(self):
         self.grid.clear_widgets()
         self.app_buttons = {}
 
@@ -262,7 +244,7 @@ class HomeScreen(Screen):
 
             btn = Button(
                 text=display_title,
-                font_size=home_font(app_size),
+                font_size=button_font(),
                 background_normal="",
                 background_color=TILE_COLORS[index % len(TILE_COLORS)],
                 color=(1, 1, 1, 1),

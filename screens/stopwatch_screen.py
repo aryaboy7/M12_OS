@@ -1,43 +1,32 @@
 from kivy.clock import Clock
-from kivy.core.window import Window
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 
-from utils.ui_scale import height
 from utils.logger import log
+from utils.ui_scale import (
+    device_profile,
+    button_font,
+    text_font,
+    clock_time_font,
+    button_height,
+    padding_size,
+    spacing_size,
+)
 
 
-def device_profile():
-    w = Window.width
-    h = Window.height
-
-    if h >= 1800:
-        return "phone"
-
-    if w < 700 and h >= 900:
-        return "m12"
-
-    if h >= 1100:
-        return "tablet"
-
-    return "desktop"
-
-
-def sw_font(base):
+def stopwatch_time_font():
     profile = device_profile()
 
     if profile == "phone":
-        scale = 1.85
-    elif profile == "tablet":
-        scale = 1.45
-    elif profile == "m12":
-        scale = 1.30
-    else:
-        scale = 1.00
+        return 118
+    if profile == "tablet":
+        return 86
+    if profile == "m12":
+        return 68
 
-    return max(14, int(base * scale))
+    return clock_time_font()
 
 
 class StopwatchScreen(Screen):
@@ -50,61 +39,46 @@ class StopwatchScreen(Screen):
 
         root = BoxLayout(
             orientation="vertical",
-            spacing=height(12),
-            padding=height(15)
+            spacing=spacing_size(),
+            padding=padding_size(),
         )
-
-        profile = device_profile()
-
-        if profile == "phone":
-            time_size = 70
-            button_size = 26
-        elif profile == "tablet":
-            time_size = 66
-            button_size = 25
-        elif profile == "m12":
-            time_size = 58
-            button_size = 23
-        else:
-            time_size = 72
-            button_size = 24
 
         self.time_label = Label(
             text="00:00.00",
-            font_size=sw_font(time_size),
+            font_size=stopwatch_time_font(),
             bold=True,
             size_hint=(1, 0.62),
             halign="center",
-            valign="middle"
+            valign="middle",
         )
         root.add_widget(self.time_label)
 
         controls = BoxLayout(
-            spacing=height(10),
-            size_hint=(1, 0.23)
+            spacing=spacing_size(),
+            size_hint=(1, 0.23),
         )
 
         self.start_btn = Button(
             text="Start",
-            font_size=sw_font(button_size),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
+            background_color=(0.12, 0.20, 0.35, 1),
         )
         self.start_btn.bind(on_press=self.start_stop)
 
         reset_btn = Button(
             text="Reset",
-            font_size=sw_font(button_size),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
+            background_color=(0.10, 0.15, 0.25, 1),
         )
         reset_btn.bind(on_press=self.reset)
 
         back_btn = Button(
             text="< Back",
-            font_size=sw_font(button_size),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
+            background_color=(0.10, 0.15, 0.25, 1),
         )
         back_btn.bind(on_press=self.go_back)
 
@@ -116,10 +90,10 @@ class StopwatchScreen(Screen):
 
         self.info_label = Label(
             text="Stopwatch",
-            font_size=sw_font(18),
+            font_size=text_font(),
             size_hint=(1, 0.10),
             halign="center",
-            valign="middle"
+            valign="middle",
         )
         root.add_widget(self.info_label)
 

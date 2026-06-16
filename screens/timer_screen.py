@@ -1,50 +1,81 @@
 from kivy.clock import Clock
-from kivy.core.window import Window
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 
-from utils.ui_scale import font, height
 from utils.logger import log
+from utils.ui_scale import (
+    device_profile,
+    title_font,
+    button_font,
+    text_font,
+    status_font,
+    clock_time_font,
+    button_height,
+    padding_size,
+    spacing_size,
+    height,
+)
 
 
-def device_profile():
-    w = Window.width
-    h = Window.height
-
-    if h >= 1800:
-        return "phone"
-
-    if w < 700 and h >= 900:
-        return "m12"
-
-    if h >= 1100:
-        return "tablet"
-
-    return "desktop"
-
-
-def timer_font(base):
+def wheel_title_font():
     profile = device_profile()
 
     if profile == "phone":
-        scale = 1.75
-    elif profile == "tablet":
-        scale = 1.45
-    elif profile == "m12":
-        scale = 1.30
-    else:
-        scale = 1.00
+        return 42
+    if profile == "tablet":
+        return 30
+    if profile == "m12":
+        return 24
 
-    return max(14, int(base * scale))
+    return text_font()
+
+
+def wheel_side_font():
+    profile = device_profile()
+
+    if profile == "phone":
+        return 44
+    if profile == "tablet":
+        return 32
+    if profile == "m12":
+        return 26
+
+    return text_font()
+
+
+def wheel_value_font():
+    profile = device_profile()
+
+    if profile == "phone":
+        return 86
+    if profile == "tablet":
+        return 62
+    if profile == "m12":
+        return 48
+
+    return clock_time_font()
+
+
+def timer_time_font():
+    profile = device_profile()
+
+    if profile == "phone":
+        return 96
+    if profile == "tablet":
+        return 72
+    if profile == "m12":
+        return 58
+
+    return clock_time_font()
 
 
 class NumberWheel(BoxLayout):
     def __init__(self, title, value=0, minimum=0, maximum=59, **kwargs):
         super().__init__(
             orientation="vertical",
-            spacing=height(6),
+            spacing=spacing_size(),
             **kwargs
         )
 
@@ -54,48 +85,29 @@ class NumberWheel(BoxLayout):
         self.maximum = maximum
         self.start_y = 0
 
-        profile = device_profile()
-
-        if profile == "phone":
-            title_size = 22
-            side_size = 24
-            value_size = 52
-        elif profile == "tablet":
-            title_size = 21
-            side_size = 23
-            value_size = 48
-        elif profile == "m12":
-            title_size = 18
-            side_size = 20
-            value_size = 42
-        else:
-            title_size = 24
-            side_size = 24
-            value_size = 48
-
         self.add_widget(Label(
             text=title,
-            font_size=timer_font(title_size),
-            size_hint=(1, 0.18)
+            font_size=wheel_title_font(),
+            size_hint=(1, 0.18),
         ))
 
         self.up_label = Label(
             text="",
-            font_size=timer_font(side_size),
-            size_hint=(1, 0.22)
+            font_size=wheel_side_font(),
+            size_hint=(1, 0.22),
         )
 
         self.value_label = Label(
             text="",
-            font_size=timer_font(value_size),
+            font_size=wheel_value_font(),
             bold=True,
-            size_hint=(1, 0.38)
+            size_hint=(1, 0.38),
         )
 
         self.down_label = Label(
             text="",
-            font_size=timer_font(side_size),
-            size_hint=(1, 0.22)
+            font_size=wheel_side_font(),
+            size_hint=(1, 0.22),
         )
 
         self.add_widget(self.up_label)
@@ -161,21 +173,21 @@ class TimerScreen(Screen):
 
         root = BoxLayout(
             orientation="vertical",
-            spacing=height(12),
-            padding=height(15)
+            spacing=spacing_size(),
+            padding=padding_size(),
         )
 
         title = Label(
             text="Timer",
-            font_size=timer_font(34),
+            font_size=title_font(),
             bold=True,
-            size_hint=(1, 0.09)
+            size_hint=(1, 0.09),
         )
         root.add_widget(title)
 
         wheels = BoxLayout(
-            spacing=height(10),
-            size_hint=(1, 0.36)
+            spacing=spacing_size(),
+            size_hint=(1, 0.36),
         )
 
         self.hours_wheel = NumberWheel("Hours", value=0, minimum=0, maximum=23)
@@ -188,66 +200,47 @@ class TimerScreen(Screen):
 
         root.add_widget(wheels)
 
-        profile = device_profile()
-
-        if profile == "phone":
-            time_size = 56
-            status_size = 22
-            button_size = 24
-        elif profile == "tablet":
-            time_size = 54
-            status_size = 22
-            button_size = 23
-        elif profile == "m12":
-            time_size = 48
-            status_size = 20
-            button_size = 21
-        else:
-            time_size = 58
-            status_size = 22
-            button_size = 24
-
         self.time_label = Label(
             text="00:05:00",
-            font_size=timer_font(time_size),
+            font_size=timer_time_font(),
             bold=True,
-            size_hint=(1, 0.20)
+            size_hint=(1, 0.20),
         )
         root.add_widget(self.time_label)
 
         self.status_label = Label(
             text="Swipe wheels up/down to set time",
-            font_size=timer_font(status_size),
-            size_hint=(1, 0.10)
+            font_size=status_font(),
+            size_hint=(1, 0.10),
         )
         root.add_widget(self.status_label)
 
         controls = BoxLayout(
-            spacing=height(10),
-            size_hint=(1, 0.15)
+            spacing=spacing_size(),
+            size_hint=(1, 0.15),
         )
 
         start_btn = Button(
             text="Start",
-            font_size=timer_font(button_size),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
+            background_color=(0.12, 0.20, 0.35, 1),
         )
         start_btn.bind(on_press=self.start)
 
         stop_btn = Button(
             text="Stop",
-            font_size=timer_font(button_size),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
+            background_color=(0.10, 0.15, 0.25, 1),
         )
         stop_btn.bind(on_press=self.stop)
 
         reset_btn = Button(
             text="Reset",
-            font_size=timer_font(button_size),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
+            background_color=(0.10, 0.15, 0.25, 1),
         )
         reset_btn.bind(on_press=self.reset)
 
@@ -259,10 +252,11 @@ class TimerScreen(Screen):
 
         back_btn = Button(
             text="< Back",
-            font_size=timer_font(button_size),
-            size_hint=(1, 0.09),
+            font_size=button_font(),
+            size_hint=(1, None),
+            height=button_height(),
             background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
+            background_color=(0.10, 0.15, 0.25, 1),
         )
         back_btn.bind(on_press=self.go_back)
         root.add_widget(back_btn)
