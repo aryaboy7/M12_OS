@@ -12,9 +12,20 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.popup import Popup
 from kivy.uix.label import Label
 
-from utils.ui_scale import font, height
 from utils.logger import log
 from utils.text_editor_popup import open_text_editor
+from utils.ui_scale import (
+    device_profile,
+    button_font,
+    input_font,
+    text_font,
+    title_font,
+    button_height,
+    input_height,
+    padding_size,
+    spacing_size,
+    height,
+)
 
 
 Window.softinput_mode = "resize"
@@ -26,35 +37,30 @@ TYPES_FILE = BASE_DIR / "config" / "note_types.json"
 NOTES_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def device_profile():
-    w = Window.width
-    h = Window.height
-
-    if h >= 1800:
-        return "phone"
-
-    if w < 700 and h >= 900:
-        return "m12"
-
-    if h >= 1100:
-        return "tablet"
-
-    return "desktop"
-
-
-def editor_font(base):
+def body_editor_height():
     profile = device_profile()
 
     if profile == "phone":
-        scale = 1.75
-    elif profile == "tablet":
-        scale = 1.45
-    elif profile == "m12":
-        scale = 1.30
-    else:
-        scale = 1.00
+        return 760
+    if profile == "tablet":
+        return 560
+    if profile == "m12":
+        return 480
 
-    return max(14, int(base * scale))
+    return height(360)
+
+
+def popup_font():
+    profile = device_profile()
+
+    if profile == "phone":
+        return 52
+    if profile == "tablet":
+        return 36
+    if profile == "m12":
+        return 28
+
+    return text_font()
 
 
 class NoteEditorScreen(Screen):
@@ -65,58 +71,31 @@ class NoteEditorScreen(Screen):
         self.current_path = None
         self.saved_popup = None
 
-        profile = device_profile()
-
-        if profile == "phone":
-            button_size = 24
-            title_size = 24
-            type_size = 22
-            body_size = 24
-            body_height = 520
-        elif profile == "tablet":
-            button_size = 23
-            title_size = 23
-            type_size = 21
-            body_size = 23
-            body_height = 500
-        elif profile == "m12":
-            button_size = 24
-            title_size = 26
-            type_size = 24
-            body_size = 28
-            body_height = 430
-        else:
-            button_size = 22
-            title_size = 28
-            type_size = 22
-            body_size = 22
-            body_height = 360
-
         root = BoxLayout(
             orientation="vertical",
-            spacing=height(8),
-            padding=height(8)
+            spacing=spacing_size(),
+            padding=padding_size(),
         )
 
         top = BoxLayout(
-            spacing=height(8),
+            spacing=spacing_size(),
             size_hint=(1, None),
-            height=height(62)
+            height=button_height(),
         )
 
         back_btn = Button(
             text="< Back",
-            font_size=editor_font(button_size),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
+            background_color=(0.10, 0.15, 0.25, 1),
         )
         back_btn.bind(on_press=self.go_back)
 
         save_btn = Button(
             text="Save",
-            font_size=editor_font(button_size),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
+            background_color=(0.12, 0.20, 0.35, 1),
         )
         save_btn.bind(on_press=self.save_note)
 
@@ -127,25 +106,25 @@ class NoteEditorScreen(Screen):
         self.scroll = ScrollView(
             do_scroll_x=False,
             do_scroll_y=True,
-            size_hint=(1, 1)
+            size_hint=(1, 1),
         )
 
         form = BoxLayout(
             orientation="vertical",
-            spacing=height(8),
-            size_hint_y=None
+            spacing=spacing_size(),
+            size_hint_y=None,
         )
         form.bind(minimum_height=form.setter("height"))
 
         self.title_input = TextInput(
             hint_text="Note title",
-            font_size=editor_font(title_size),
+            font_size=input_font(),
             size_hint=(1, None),
-            height=height(62),
+            height=input_height(),
             multiline=False,
             use_bubble=False,
             use_handles=False,
-            readonly=(device_profile() == "m12")
+            readonly=(device_profile() == "m12"),
         )
 
         if device_profile() == "m12":
@@ -156,23 +135,23 @@ class NoteEditorScreen(Screen):
         self.type_spinner = Spinner(
             text="Personal",
             values=self.load_types(),
-            font_size=editor_font(type_size),
+            font_size=button_font(),
             size_hint=(1, None),
-            height=height(58),
+            height=input_height(),
             background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
+            background_color=(0.12, 0.20, 0.35, 1),
         )
         form.add_widget(self.type_spinner)
 
         self.body_input = TextInput(
             hint_text="Type note here...",
-            font_size=editor_font(body_size),
+            font_size=text_font(),
             size_hint=(1, None),
-            height=height(body_height),
+            height=body_editor_height(),
             multiline=True,
             use_bubble=False,
             use_handles=False,
-            readonly=(device_profile() == "m12")
+            readonly=(device_profile() == "m12"),
         )
 
         if device_profile() == "m12":
@@ -182,7 +161,7 @@ class NoteEditorScreen(Screen):
 
         form.add_widget(self.body_input)
 
-        form.add_widget(BoxLayout(size_hint=(1, None), height=height(120)))
+        form.add_widget(BoxLayout(size_hint=(1, None), height=button_height()))
 
         self.scroll.add_widget(form)
         root.add_widget(self.scroll)
@@ -213,7 +192,7 @@ class NoteEditorScreen(Screen):
             title="Note Title",
             text=self.title_input.text,
             on_save=save_text,
-            multiline=False
+            multiline=False,
         )
 
     def open_body_editor(self):
@@ -224,7 +203,7 @@ class NoteEditorScreen(Screen):
             title="Note Text",
             text=self.body_input.text,
             on_save=save_text,
-            multiline=True
+            multiline=True,
         )
 
     def load_types(self):
@@ -287,16 +266,16 @@ class NoteEditorScreen(Screen):
     def show_saved_then_back(self):
         box = BoxLayout(
             orientation="vertical",
-            padding=height(12),
-            spacing=height(8)
+            padding=padding_size(),
+            spacing=spacing_size(),
         )
 
         label = Label(
             text="Note saved",
-            font_size=editor_font(26),
+            font_size=popup_font(),
             bold=True,
             halign="center",
-            valign="middle"
+            valign="middle",
         )
         label.bind(size=lambda inst, val: setattr(inst, "text_size", val))
         box.add_widget(label)
@@ -304,8 +283,8 @@ class NoteEditorScreen(Screen):
         self.saved_popup = Popup(
             title="Saved",
             content=box,
-            size_hint=(0.70, 0.28),
-            auto_dismiss=False
+            size_hint=(0.80, 0.30),
+            auto_dismiss=False,
         )
 
         self.saved_popup.open()
@@ -329,7 +308,7 @@ class NoteEditorScreen(Screen):
         data = {
             "title": title,
             "type": note_type,
-            "body": body
+            "body": body,
         }
 
         if self.current_path:

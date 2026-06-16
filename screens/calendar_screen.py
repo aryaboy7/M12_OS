@@ -14,7 +14,20 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.uix.spinner import Spinner
 
-from utils.ui_scale import font, height
+from utils.ui_scale import (
+    device_profile,
+    font,
+    height,
+    title_font,
+    button_font,
+    list_font,
+    text_font,
+    input_font,
+    status_font,
+    small_font,
+    padding_size,
+    spacing_size,
+)
 from utils.logger import log
 from utils.text_editor_popup import open_text_editor
 
@@ -59,32 +72,61 @@ OLD_REMINDER_MAP = {
 }
 
 
-def device_profile():
-    w = Window.width
-    h = Window.height
+def calendar_filter_font():
+    profile = device_profile()
 
-    if h >= 1800:
-        return "phone"
-    if w < 700 and h >= 900:
-        return "m12"
-    if h >= 1100:
-        return "tablet"
-    return "desktop"
+    if profile == "phone":
+        return 40
+    if profile == "tablet":
+        return 30
+    if profile == "m12":
+        return 24
+
+    return font(13)
+
+
+def compact_button_font():
+    profile = device_profile()
+
+    if profile == "phone":
+        return 36
+    if profile == "tablet":
+        return 28
+    if profile == "m12":
+        return 22
+
+    return font(12)
 
 
 def cal_font(base):
-    """Use global M12 OS scaling so Android phone text is readable."""
-    return max(font(base), font(16))
+    """
+    Compatibility helper for older Calendar code.
+    New Calendar UI follows shared M12 OS sizes from ui_scale.py.
+    """
+    if base <= 13:
+        return compact_button_font()
+    if base <= 16:
+        return list_font()
+    if base <= 18:
+        return input_font()
+    if base <= 22:
+        return button_font()
+    if base <= 30:
+        return title_font()
+
+    return font(base)
 
 
 def event_row_height():
-    p = device_profile()
-    if p == "phone":
-        return height(180)
-    if p == "tablet":
+    profile = device_profile()
+
+    if profile == "phone":
+        return height(220)
+    if profile == "tablet":
+        return height(185)
+    if profile == "m12":
         return height(160)
-    if p == "m12":
-        return height(150)
+
     return height(130)
 
 
@@ -103,8 +145,8 @@ class CalendarScreen(Screen):
 
         self.root_box = BoxLayout(
             orientation="vertical",
-            padding=height(10),
-            spacing=height(8)
+            padding=padding_size(),
+            spacing=spacing_size()
         )
         self.add_widget(self.root_box)
         self.build_list_view()
@@ -412,9 +454,16 @@ class CalendarScreen(Screen):
         self.root_box.clear_widgets()
 
     def make_btn(self, text, callback, color=(0.10, 0.15, 0.25, 1), fs=18):
+        if fs <= 13:
+            use_font = compact_button_font()
+        elif fs <= 16:
+            use_font = calendar_filter_font()
+        else:
+            use_font = button_font()
+
         btn = Button(
             text=text,
-            font_size=cal_font(fs),
+            font_size=use_font,
             background_normal="",
             background_color=color
         )
@@ -432,12 +481,12 @@ class CalendarScreen(Screen):
 
         self.root_box.add_widget(Label(
             text="Calendar Events",
-            font_size=cal_font(30),
+            font_size=title_font(),
             bold=True,
             size_hint=(1, 0.08)
         ))
 
-        filters = BoxLayout(orientation="horizontal", spacing=height(5), size_hint=(1, 0.08))
+        filters = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.08))
         for label, key in [
             ("Upcoming", "upcoming"),
             ("Today", "today"),
@@ -451,7 +500,7 @@ class CalendarScreen(Screen):
 
         scroll = ScrollView(size_hint=(1, 0.57), do_scroll_x=False, do_scroll_y=True)
 
-        self.list_box = GridLayout(cols=1, spacing=height(6), size_hint_y=None)
+        self.list_box = GridLayout(cols=1, spacing=spacing_size(), size_hint_y=None)
         self.list_box.bind(minimum_height=self.list_box.setter("height"))
 
         visible_events = self.filtered_events_with_indexes()
@@ -459,14 +508,14 @@ class CalendarScreen(Screen):
         if not self.events:
             self.list_box.add_widget(Label(
                 text="No events yet.\nPress Add Event.",
-                font_size=cal_font(22),
+                font_size=button_font(),
                 size_hint_y=None,
                 height=event_row_height() * 2
             ))
         elif not visible_events:
             self.list_box.add_widget(Label(
                 text="No events for this filter.",
-                font_size=cal_font(22),
+                font_size=button_font(),
                 size_hint_y=None,
                 height=event_row_height()
             ))
@@ -474,7 +523,7 @@ class CalendarScreen(Screen):
             for index, event in visible_events:
                 btn = Button(
                     text=self.event_display_text(event),
-                    font_size=cal_font(16),
+                    font_size=list_font(),
                     size_hint_y=None,
                     height=event_row_height(),
                     halign="left",
@@ -482,20 +531,20 @@ class CalendarScreen(Screen):
                     background_normal="",
                     background_color=self.event_color(event, index == self.selected_index)
                 )
-                btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - height(16), val[1])))
+                btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1])))
                 btn.bind(on_press=lambda inst, i=index: self.select_event(i))
                 self.list_box.add_widget(btn)
 
         scroll.add_widget(self.list_box)
         self.root_box.add_widget(scroll)
 
-        buttons1 = BoxLayout(orientation="horizontal", spacing=height(6), size_hint=(1, 0.10))
+        buttons1 = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.10))
         buttons1.add_widget(self.make_btn("Add", self.add_event_view, (0.12, 0.20, 0.35, 1)))
         buttons1.add_widget(self.make_btn("Edit", self.edit_selected_event))
         buttons1.add_widget(self.make_btn("Delete", self.delete_selected_event, (0.35, 0.12, 0.12, 1)))
         self.root_box.add_widget(buttons1)
 
-        buttons2 = BoxLayout(orientation="horizontal", spacing=height(6), size_hint=(1, 0.10))
+        buttons2 = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.10))
         buttons2.add_widget(self.make_btn("Refresh", self.build_list_view))
         buttons2.add_widget(self.make_btn("< Back", self.go_back))
         self.root_box.add_widget(buttons2)
@@ -555,7 +604,7 @@ class CalendarScreen(Screen):
 
         self.root_box.add_widget(Label(
             text="Add Event" if is_new else "Edit Event",
-            font_size=cal_font(28),
+            font_size=title_font(),
             bold=True,
             size_hint=(1, 0.07)
         ))
@@ -563,7 +612,7 @@ class CalendarScreen(Screen):
         self.title_input = TextInput(
             text=event.get("title", ""),
             hint_text="Event title",
-            font_size=cal_font(18),
+            font_size=input_font(),
             multiline=False,
             size_hint=(1, 0.075),
             use_bubble=False,
@@ -576,12 +625,12 @@ class CalendarScreen(Screen):
 
         self.root_box.add_widget(self.title_input)
 
-        date_time_row = BoxLayout(orientation="horizontal", spacing=height(5), size_hint=(1, 0.075))
+        date_time_row = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.075))
 
         self.date_input = TextInput(
             text=event.get("date", ""),
             hint_text="Tap date",
-            font_size=cal_font(18),
+            font_size=input_font(),
             multiline=False,
             readonly=True,
             use_bubble=False,
@@ -592,7 +641,7 @@ class CalendarScreen(Screen):
         self.time_input = TextInput(
             text=event.get("time", ""),
             hint_text="Tap time",
-            font_size=cal_font(18),
+            font_size=input_font(),
             multiline=False,
             readonly=True,
             use_bubble=False,
@@ -607,7 +656,7 @@ class CalendarScreen(Screen):
         self.notes_input = TextInput(
             text=event.get("notes", ""),
             hint_text="Notes",
-            font_size=cal_font(16),
+            font_size=list_font(),
             multiline=True,
             size_hint=(1, 0.14),
             use_bubble=False,
@@ -627,7 +676,7 @@ class CalendarScreen(Screen):
         self.reminder_spinner = Spinner(
             text=reminder_text,
             values=REMINDER_OPTIONS,
-            font_size=cal_font(18),
+            font_size=input_font(),
             size_hint=(1, 0.075),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
@@ -638,7 +687,7 @@ class CalendarScreen(Screen):
         self.days = list(event.get("days", []))
         self.until_date = event.get("until_date", "")
 
-        repeat_row = BoxLayout(orientation="horizontal", spacing=height(5), size_hint=(1, 0.07))
+        repeat_row = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.07))
 
         self.once_btn = self.make_btn("Once", self.set_once, fs=12)
         self.every_btn = self.make_btn("Every Day", self.set_every_day, fs=12)
@@ -649,7 +698,7 @@ class CalendarScreen(Screen):
         repeat_row.add_widget(self.days_btn)
         self.root_box.add_widget(repeat_row)
 
-        days_row = BoxLayout(orientation="horizontal", spacing=height(3), size_hint=(1, 0.07))
+        days_row = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.07))
         self.day_buttons = {}
 
         for day in DAY_NAMES:
@@ -661,28 +710,28 @@ class CalendarScreen(Screen):
 
         until_label = Label(
             text="Repeat Until   None = Forever",
-            font_size=cal_font(12),
+            font_size=compact_button_font(),
             size_hint=(1, 0.04)
         )
         self.root_box.add_widget(until_label)
 
-        until_row = BoxLayout(orientation="horizontal", spacing=height(5), size_hint=(1, 0.065))
+        until_row = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.065))
 
         until_row.add_widget(self.make_btn("-M", lambda x: self.change_until_month(-1), fs=11))
-        self.until_month_label = Label(text="None", font_size=cal_font(12))
+        self.until_month_label = Label(text="None", font_size=compact_button_font())
         until_row.add_widget(self.until_month_label)
 
         until_row.add_widget(self.make_btn("-D", lambda x: self.change_until_day(-1), fs=11))
-        self.until_day_label = Label(text="--", font_size=cal_font(12))
+        self.until_day_label = Label(text="--", font_size=compact_button_font())
         until_row.add_widget(self.until_day_label)
 
         until_row.add_widget(self.make_btn("-Y", lambda x: self.change_until_year(-1), fs=11))
-        self.until_year_label = Label(text="----", font_size=cal_font(12))
+        self.until_year_label = Label(text="----", font_size=compact_button_font())
         until_row.add_widget(self.until_year_label)
 
         self.root_box.add_widget(until_row)
 
-        until_row2 = BoxLayout(orientation="horizontal", spacing=height(5), size_hint=(1, 0.065))
+        until_row2 = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.065))
 
         until_row2.add_widget(self.make_btn("+M", lambda x: self.change_until_month(1), fs=11))
         until_row2.add_widget(self.make_btn("+D", lambda x: self.change_until_day(1), fs=11))
@@ -696,7 +745,7 @@ class CalendarScreen(Screen):
 
         self.status_label = Label(
             text="",
-            font_size=cal_font(13),
+            font_size=status_font(),
             size_hint=(1, 0.035),
             halign="center",
             valign="middle"
@@ -704,7 +753,7 @@ class CalendarScreen(Screen):
         self.status_label.bind(size=lambda inst, val: setattr(inst, "text_size", val))
         self.root_box.add_widget(self.status_label)
 
-        buttons = BoxLayout(orientation="horizontal", spacing=height(6), size_hint=(1, 0.09))
+        buttons = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.09))
         buttons.add_widget(self.make_btn("Save", lambda inst: self.save_event(index), (0.12, 0.20, 0.35, 1)))
         buttons.add_widget(self.make_btn("Cancel", self.build_list_view))
         self.root_box.add_widget(buttons)
@@ -881,7 +930,7 @@ class CalendarScreen(Screen):
 
         values = {"year": current.year, "month": current.month, "day": current.day}
 
-        box = BoxLayout(orientation="vertical", spacing=height(8), padding=height(8))
+        box = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
         display = Label(text=self.format_picker_date(values), font_size=cal_font(26), bold=True, size_hint=(1, 0.18))
         box.add_widget(display)
 
@@ -890,9 +939,9 @@ class CalendarScreen(Screen):
             display.text = self.format_picker_date(values)
 
         def add_row(label, key):
-            row = BoxLayout(orientation="horizontal", spacing=height(6), size_hint=(1, 0.18))
+            row = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.18))
             minus = self.make_btn("-", lambda inst: None, (0.35, 0.12, 0.12, 1), fs=28)
-            mid = Label(text=label, font_size=cal_font(22), bold=True)
+            mid = Label(text=label, font_size=button_font(), bold=True)
             plus = self.make_btn("+", lambda inst: None, (0.12, 0.20, 0.35, 1), fs=28)
 
             def dec(instance):
@@ -926,7 +975,7 @@ class CalendarScreen(Screen):
 
         pop = Popup(title="Pick Date", content=box, size_hint=(0.90, 0.80))
 
-        buttons = BoxLayout(orientation="horizontal", spacing=height(6), size_hint=(1, 0.16))
+        buttons = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.16))
 
         def today(instance):
             n = datetime.now()
@@ -952,7 +1001,7 @@ class CalendarScreen(Screen):
             n = datetime.now()
             values = {"hour": n.hour, "minute": (n.minute // 5) * 5}
 
-        box = BoxLayout(orientation="vertical", spacing=height(8), padding=height(8))
+        box = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
         display = Label(text=self.format_picker_time(values), font_size=cal_font(34), bold=True, size_hint=(1, 0.24))
         box.add_widget(display)
 
@@ -960,7 +1009,7 @@ class CalendarScreen(Screen):
             display.text = self.format_picker_time(values)
 
         def add_row(label, key, step, max_value):
-            row = BoxLayout(orientation="horizontal", spacing=height(6), size_hint=(1, 0.22))
+            row = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.22))
             minus = self.make_btn("-", lambda inst: None, (0.35, 0.12, 0.12, 1), fs=30)
             mid = Label(text=label, font_size=cal_font(24), bold=True)
             plus = self.make_btn("+", lambda inst: None, (0.12, 0.20, 0.35, 1), fs=30)
@@ -988,7 +1037,7 @@ class CalendarScreen(Screen):
         add_row("Minute", "minute", 5, 55)
 
         pop = Popup(title="Pick Time", content=box, size_hint=(0.90, 0.72))
-        buttons = BoxLayout(orientation="horizontal", spacing=height(6), size_hint=(1, 0.16))
+        buttons = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.16))
 
         def now_btn(instance):
             n = datetime.now()

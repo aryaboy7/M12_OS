@@ -10,41 +10,47 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 
 from utils.logger import log
+from utils.ui_scale import (
+    device_profile,
+    button_font,
+    text_font,
+    status_font,
+    clock_time_font,
+    clock_date_font,
+    button_height,
+    padding_size,
+    spacing_size,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ALARMS_FILE = BASE_DIR / "data" / "alarms" / "alarms.json"
 
 
-def device_profile():
-    w = Window.width
-    h = Window.height
-
-    if h >= 1800:
-        return "phone"
-
-    if w < 700 and h >= 900:
-        return "m12"
-
-    if h >= 1100:
-        return "tablet"
-
-    return "desktop"
-
-
-def clock_font(base):
+def alarm_info_font():
     profile = device_profile()
 
     if profile == "phone":
-        scale = 1.85
-    elif profile == "tablet":
-        scale = 1.45
-    elif profile == "m12":
-        scale = 1.30
-    else:
-        scale = 1.00
+        return 40
+    if profile == "tablet":
+        return 28
+    if profile == "m12":
+        return 22
 
-    return max(14, int(base * scale))
+    return status_font()
+
+
+def clock_info_font():
+    profile = device_profile()
+
+    if profile == "phone":
+        return 38
+    if profile == "tablet":
+        return 28
+    if profile == "m12":
+        return 22
+
+    return text_font()
 
 
 class ClockScreen(Screen):
@@ -54,17 +60,21 @@ class ClockScreen(Screen):
 
         self.root_box = BoxLayout(
             orientation="vertical",
-            spacing=10,
-            padding=12
+            spacing=spacing_size(),
+            padding=padding_size(),
         )
 
-        top = BoxLayout(size_hint=(1, 0.12))
+        top = BoxLayout(
+            size_hint=(1, None),
+            height=button_height(),
+            spacing=spacing_size(),
+        )
 
         self.back_btn = Button(
             text="< Back",
-            font_size=clock_font(20),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
+            background_color=(0.12, 0.20, 0.35, 1),
         )
         self.back_btn.bind(on_press=self.go_back)
 
@@ -73,62 +83,62 @@ class ClockScreen(Screen):
 
         self.time_label = Label(
             text="00:00 AM",
-            font_size=clock_font(68),
+            font_size=clock_time_font(),
             bold=True,
             size_hint=(1, 0.34),
             halign="center",
-            valign="middle"
+            valign="middle",
         )
         self.root_box.add_widget(self.time_label)
 
         self.date_label = Label(
             text="Date",
-            font_size=clock_font(26),
+            font_size=clock_date_font(),
             size_hint=(1, 0.13),
             halign="center",
-            valign="middle"
+            valign="middle",
         )
         self.root_box.add_widget(self.date_label)
 
         self.alarm_info_label = Label(
             text="No Alarm",
-            font_size=clock_font(14),
-            size_hint=(1, 0.06),
+            font_size=alarm_info_font(),
+            size_hint=(1, 0.07),
             color=(0.75, 0.85, 1, 1),
             halign="center",
-            valign="middle"
+            valign="middle",
         )
         self.root_box.add_widget(self.alarm_info_label)
 
         buttons = BoxLayout(
             orientation="horizontal",
-            spacing=10,
-            size_hint=(1, 0.15)
+            spacing=spacing_size(),
+            size_hint=(1, 0.15),
         )
 
         self.timer_btn = Button(
             text="Timer",
-            font_size=clock_font(22),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
+            background_color=(0.12, 0.20, 0.35, 1),
         )
         self.timer_btn.bind(on_press=self.open_timer)
         buttons.add_widget(self.timer_btn)
 
         self.stopwatch_btn = Button(
             text="Stopwatch",
-            font_size=clock_font(22),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
+            background_color=(0.12, 0.20, 0.35, 1),
         )
         self.stopwatch_btn.bind(on_press=self.open_stopwatch)
         buttons.add_widget(self.stopwatch_btn)
 
         self.alarm_btn = Button(
             text="Alarm",
-            font_size=clock_font(22),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.16, 0.32, 0.42, 1)
+            background_color=(0.16, 0.32, 0.42, 1),
         )
         self.alarm_btn.bind(on_press=self.open_alarm)
         buttons.add_widget(self.alarm_btn)
@@ -137,10 +147,10 @@ class ClockScreen(Screen):
 
         self.info_label = Label(
             text="M12 Clock",
-            font_size=clock_font(18),
+            font_size=clock_info_font(),
             size_hint=(1, 0.10),
             halign="center",
-            valign="middle"
+            valign="middle",
         )
         self.root_box.add_widget(self.info_label)
 
@@ -167,77 +177,79 @@ class ClockScreen(Screen):
         profile = device_profile()
         portrait = Window.height > Window.width
 
-        self.back_btn.font_size = clock_font(20)
-        self.timer_btn.font_size = clock_font(22)
-        self.stopwatch_btn.font_size = clock_font(22)
-        self.alarm_btn.font_size = clock_font(22)
-        self.alarm_info_label.font_size = clock_font(14)
+        self.back_btn.font_size = button_font()
+        self.timer_btn.font_size = button_font()
+        self.stopwatch_btn.font_size = button_font()
+        self.alarm_btn.font_size = button_font()
+        self.date_label.font_size = clock_date_font()
+        self.alarm_info_label.font_size = alarm_info_font()
+        self.info_label.font_size = clock_info_font()
 
         if portrait:
             if profile == "phone":
-                self.time_label.font_size = 110
-                self.date_label.font_size = 42
-                self.alarm_info_label.font_size = 26
-                self.info_label.font_size = 32
-                self.time_label.size_hint = (1, 0.34)
+                self.time_label.font_size = 118
+                self.date_label.font_size = 46
+                self.alarm_info_label.font_size = 40
+                self.info_label.font_size = 38
+                self.time_label.size_hint = (1, 0.36)
                 self.date_label.size_hint = (1, 0.13)
-                self.alarm_info_label.size_hint = (1, 0.06)
+                self.alarm_info_label.size_hint = (1, 0.07)
 
             elif profile == "tablet":
-                self.time_label.font_size = 78
-                self.date_label.font_size = 32
-                self.alarm_info_label.font_size = 22
-                self.info_label.font_size = 25
-                self.time_label.size_hint = (1, 0.34)
+                self.time_label.font_size = 84
+                self.date_label.font_size = 34
+                self.alarm_info_label.font_size = 28
+                self.info_label.font_size = 28
+                self.time_label.size_hint = (1, 0.35)
                 self.date_label.size_hint = (1, 0.13)
-                self.alarm_info_label.size_hint = (1, 0.06)
+                self.alarm_info_label.size_hint = (1, 0.07)
 
             elif profile == "m12":
-                self.time_label.font_size = 56
-                self.date_label.font_size = 24
-                self.alarm_info_label.font_size = 18
-                self.info_label.font_size = 20
-                self.time_label.size_hint = (1, 0.32)
+                self.time_label.font_size = 64
+                self.date_label.font_size = 26
+                self.alarm_info_label.font_size = 22
+                self.info_label.font_size = 22
+                self.time_label.size_hint = (1, 0.34)
                 self.date_label.size_hint = (1, 0.13)
-                self.alarm_info_label.size_hint = (1, 0.06)
+                self.alarm_info_label.size_hint = (1, 0.07)
 
             else:
-                self.time_label.font_size = clock_font(44)
-                self.date_label.font_size = clock_font(20)
-                self.alarm_info_label.font_size = clock_font(14)
-                self.info_label.font_size = clock_font(16)
-                self.time_label.size_hint = (1, 0.32)
+                self.time_label.font_size = clock_time_font()
+                self.date_label.font_size = clock_date_font()
+                self.alarm_info_label.font_size = alarm_info_font()
+                self.info_label.font_size = clock_info_font()
+                self.time_label.size_hint = (1, 0.34)
                 self.date_label.size_hint = (1, 0.13)
-                self.alarm_info_label.size_hint = (1, 0.06)
+                self.alarm_info_label.size_hint = (1, 0.07)
 
         else:
             if profile == "phone":
-                self.time_label.font_size = 96
-                self.date_label.font_size = 36
-                self.alarm_info_label.font_size = 26
-                self.info_label.font_size = 28
+                self.time_label.font_size = 104
+                self.date_label.font_size = 40
+                self.alarm_info_label.font_size = 36
+                self.info_label.font_size = 34
 
             elif profile == "tablet":
-                self.time_label.font_size = 80
-                self.date_label.font_size = 32
-                self.alarm_info_label.font_size = 22
-                self.info_label.font_size = 25
+                self.time_label.font_size = 84
+                self.date_label.font_size = 34
+                self.alarm_info_label.font_size = 28
+                self.info_label.font_size = 28
 
             elif profile == "m12":
-                self.time_label.font_size = 70
-                self.date_label.font_size = 27
-                self.alarm_info_label.font_size = 20
-                self.info_label.font_size = 21
+                self.time_label.font_size = 72
+                self.date_label.font_size = 28
+                self.alarm_info_label.font_size = 22
+                self.info_label.font_size = 22
 
             else:
-                self.time_label.font_size = clock_font(68)
-                self.date_label.font_size = clock_font(26)
-                self.alarm_info_label.font_size = clock_font(16)
-                self.info_label.font_size = clock_font(18)
+                self.time_label.font_size = clock_time_font()
+                self.date_label.font_size = clock_date_font()
+                self.alarm_info_label.font_size = alarm_info_font()
+                self.info_label.font_size = clock_info_font()
 
             self.time_label.size_hint = (1, 0.34)
             self.date_label.size_hint = (1, 0.13)
-            self.alarm_info_label.size_hint = (1, 0.06)
+            self.alarm_info_label.size_hint = (1, 0.07)
 
     def update_clock(self, dt):
         now = datetime.now()

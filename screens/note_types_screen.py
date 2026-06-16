@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-from kivy.core.window import Window
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -10,59 +9,23 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
 
-from utils.ui_scale import height
 from utils.logger import log
+from utils.ui_scale import (
+    title_font,
+    button_font,
+    list_font,
+    input_font,
+    row_height,
+    input_height,
+    button_height,
+    padding_size,
+    spacing_size,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TYPES_FILE = BASE_DIR / "config" / "note_types.json"
 TYPES_FILE.parent.mkdir(parents=True, exist_ok=True)
-
-
-def device_profile():
-    w = Window.width
-    h = Window.height
-
-    if h >= 1800:
-        return "phone"
-
-    if w < 700 and h >= 900:
-        return "m12"
-
-    if h >= 1100:
-        return "tablet"
-
-    return "desktop"
-
-
-def types_font(base):
-    profile = device_profile()
-
-    if profile == "phone":
-        scale = 1.75
-    elif profile == "tablet":
-        scale = 1.45
-    elif profile == "m12":
-        scale = 1.30
-    else:
-        scale = 1.00
-
-    return max(14, int(base * scale))
-
-
-def row_height():
-    profile = device_profile()
-
-    if profile == "phone":
-        return height(82)
-
-    if profile == "tablet":
-        return height(76)
-
-    if profile == "m12":
-        return height(70)
-
-    return height(60)
 
 
 class NoteTypesScreen(Screen):
@@ -72,75 +35,41 @@ class NoteTypesScreen(Screen):
 
         self.selected_type = None
 
-        profile = device_profile()
-
-        if profile == "phone":
-            title_hint = 0.10
-            input_hint = 0.11
-            list_hint = 0.59
-            bottom_hint = 0.20
-            title_size = 30
-            input_size = 24
-            button_size = 24
-        elif profile == "tablet":
-            title_hint = 0.10
-            input_hint = 0.11
-            list_hint = 0.59
-            bottom_hint = 0.20
-            title_size = 30
-            input_size = 23
-            button_size = 23
-        elif profile == "m12":
-            title_hint = 0.10
-            input_hint = 0.11
-            list_hint = 0.59
-            bottom_hint = 0.20
-            title_size = 28
-            input_size = 21
-            button_size = 21
-        else:
-            title_hint = 0.12
-            input_hint = 0.12
-            list_hint = 0.56
-            bottom_hint = 0.20
-            title_size = 32
-            input_size = 24
-            button_size = 22
-
         root = BoxLayout(
             orientation="vertical",
-            spacing=height(10),
-            padding=height(10)
+            spacing=spacing_size(),
+            padding=padding_size(),
         )
 
         title = Label(
             text="Note Types",
-            font_size=types_font(title_size),
+            font_size=title_font(),
             bold=True,
-            size_hint=(1, title_hint)
+            size_hint=(1, 0.10),
         )
         root.add_widget(title)
 
         self.type_input = TextInput(
             hint_text="New type name",
-            font_size=types_font(input_size),
-            size_hint=(1, input_hint),
+            font_size=input_font(),
+            size_hint=(1, None),
+            height=input_height(),
             multiline=False,
             use_bubble=False,
-            use_handles=False
+            use_handles=False,
         )
         root.add_widget(self.type_input)
 
         scroll = ScrollView(
-            size_hint=(1, list_hint),
+            size_hint=(1, 0.60),
             do_scroll_x=False,
-            do_scroll_y=True
+            do_scroll_y=True,
         )
 
         self.types_box = GridLayout(
             cols=1,
-            spacing=height(8),
-            size_hint_y=None
+            spacing=spacing_size(),
+            size_hint_y=None,
         )
         self.types_box.bind(
             minimum_height=self.types_box.setter("height")
@@ -150,33 +79,33 @@ class NoteTypesScreen(Screen):
         root.add_widget(scroll)
 
         bottom = BoxLayout(
-            size_hint=(1, bottom_hint),
-            spacing=height(8)
+            size_hint=(1, 0.18),
+            spacing=spacing_size(),
         )
 
         add_btn = Button(
             text="Add",
-            font_size=types_font(button_size),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
+            background_color=(0.12, 0.20, 0.35, 1),
         )
         add_btn.bind(on_press=self.add_type)
         bottom.add_widget(add_btn)
 
         delete_btn = Button(
             text="Delete",
-            font_size=types_font(button_size),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.35, 0.12, 0.12, 1)
+            background_color=(0.35, 0.12, 0.12, 1),
         )
         delete_btn.bind(on_press=self.delete_type)
         bottom.add_widget(delete_btn)
 
         back_btn = Button(
             text="Back",
-            font_size=types_font(button_size),
+            font_size=button_font(),
             background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1)
+            background_color=(0.10, 0.15, 0.25, 1),
         )
         back_btn.bind(on_press=self.go_back)
         bottom.add_widget(back_btn)
@@ -225,13 +154,13 @@ class NoteTypesScreen(Screen):
 
             btn = Button(
                 text=note_type,
-                font_size=types_font(22),
+                font_size=list_font(),
                 size_hint_y=None,
                 height=row_height(),
                 background_normal="",
                 background_color=color,
                 halign="center",
-                valign="middle"
+                valign="middle",
             )
             btn.bind(size=lambda inst, val: setattr(inst, "text_size", val))
 
