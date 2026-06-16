@@ -434,6 +434,12 @@ class CalendarScreen(Screen):
             elif self.active_filter == "all":
                 result.append((index, event))
 
+            # Past events: newest first
+        if self.active_filter == "past":
+            result.sort(
+                key=lambda item: self.parse_event_datetime(item[1]) or datetime.min,
+                reverse=True
+            )
         return result
 
     def on_enter(self):
