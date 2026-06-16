@@ -1,3 +1,4 @@
+# M12 OS Alarm Screen - shared UI scale version
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -9,12 +10,49 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 
 from utils.logger import log
+from utils.ui_scale import (
+    device_profile,
+    button_font,
+    text_font,
+    status_font,
+    clock_time_font,
+    clock_date_font,
+    button_height,
+    padding_size,
+    spacing_size,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ALARMS_FILE = BASE_DIR / "data" / "alarms" / "alarms.json"
 
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def day_button_font():
+    profile = device_profile()
+
+    if profile == "phone":
+        return 34
+    if profile == "tablet":
+        return 28
+    if profile == "m12":
+        return 22
+
+    return status_font()
+
+
+def alarm_small_label_font():
+    profile = device_profile()
+
+    if profile == "phone":
+        return 40
+    if profile == "tablet":
+        return 30
+    if profile == "m12":
+        return 24
+
+    return text_font()
 
 
 class AlarmScreen(Screen):
@@ -28,13 +66,13 @@ class AlarmScreen(Screen):
         self.days = []
         self.until_date = ""
 
-        root = BoxLayout(orientation="vertical", spacing=6, padding=10)
+        root = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
 
-        top = BoxLayout(size_hint=(1, 0.08), spacing=8)
+        top = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
 
         back_btn = Button(
             text="< Back",
-            font_size=20,
+            font_size=button_font(),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
         )
@@ -44,40 +82,42 @@ class AlarmScreen(Screen):
 
         self.current_time = Label(
             text="00:00:00",
-            font_size=30,
+            font_size=clock_date_font(),
             bold=True,
-            size_hint=(1, 0.10)
+            size_hint=(1, 0.13)
         )
         root.add_widget(self.current_time)
 
         self.alarm_label = Label(
             text="07:30",
-            font_size=42,
+            font_size=clock_time_font(),
             bold=True,
             size_hint=(1, 0.11)
         )
         root.add_widget(self.alarm_label)
 
-        row1 = BoxLayout(size_hint=(1, 0.08), spacing=6)
+        row1 = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
         row1.add_widget(self.make_button("- Hour", lambda x: self.change_hour(-1)))
         row1.add_widget(self.make_button("+ Hour", lambda x: self.change_hour(1)))
         root.add_widget(row1)
 
-        row2 = BoxLayout(size_hint=(1, 0.08), spacing=6)
+        row2 = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
         row2.add_widget(self.make_button("- Min", lambda x: self.change_minute(-1)))
         row2.add_widget(self.make_button("+ Min", lambda x: self.change_minute(1)))
         root.add_widget(row2)
 
         self.enable_btn = Button(
             text="Alarm OFF",
-            size_hint=(1, 0.08),
+            font_size=button_font(),
+            size_hint=(1, None),
+            height=button_height(),
             background_normal="",
             background_color=(0.45, 0.15, 0.15, 1)
         )
         self.enable_btn.bind(on_press=self.toggle_alarm)
         root.add_widget(self.enable_btn)
 
-        repeat_row = BoxLayout(size_hint=(1, 0.08), spacing=6)
+        repeat_row = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
 
         self.once_btn = self.make_button("Once", self.set_once)
         self.every_btn = self.make_button("Every Day", self.set_every_day)
@@ -88,13 +128,13 @@ class AlarmScreen(Screen):
         repeat_row.add_widget(self.days_btn)
         root.add_widget(repeat_row)
 
-        days_row = BoxLayout(size_hint=(1, 0.08), spacing=3)
+        days_row = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
         self.day_buttons = {}
 
         for day in DAY_NAMES:
             btn = Button(
                 text=day,
-                font_size=16,
+                font_size=day_button_font(),
                 background_normal="",
                 background_color=(0.10, 0.15, 0.25, 1)
             )
@@ -106,45 +146,47 @@ class AlarmScreen(Screen):
 
         root.add_widget(Label(
             text="Repeat Until   None = Forever",
-            font_size=16,
-            size_hint=(1, 0.05)
+            font_size=status_font(),
+            size_hint=(1, 0.055)
         ))
 
-        month_row = BoxLayout(size_hint=(1, 0.07), spacing=6)
+        month_row = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
         month_row.add_widget(self.make_button("- Month", lambda x: self.change_until_month(-1)))
-        self.until_month_label = Label(text="None", font_size=18)
+        self.until_month_label = Label(text="None", font_size=alarm_small_label_font())
         month_row.add_widget(self.until_month_label)
         month_row.add_widget(self.make_button("+ Month", lambda x: self.change_until_month(1)))
         root.add_widget(month_row)
 
-        day_row = BoxLayout(size_hint=(1, 0.07), spacing=6)
+        day_row = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
         day_row.add_widget(self.make_button("- Day", lambda x: self.change_until_day(-1)))
-        self.until_day_label = Label(text="--", font_size=18)
+        self.until_day_label = Label(text="--", font_size=alarm_small_label_font())
         day_row.add_widget(self.until_day_label)
         day_row.add_widget(self.make_button("+ Day", lambda x: self.change_until_day(1)))
         root.add_widget(day_row)
 
-        year_row = BoxLayout(size_hint=(1, 0.07), spacing=6)
+        year_row = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
         year_row.add_widget(self.make_button("- Year", lambda x: self.change_until_year(-1)))
-        self.until_year_label = Label(text="----", font_size=18)
+        self.until_year_label = Label(text="----", font_size=alarm_small_label_font())
         year_row.add_widget(self.until_year_label)
         year_row.add_widget(self.make_button("+ Year", lambda x: self.change_until_year(1)))
         root.add_widget(year_row)
 
         clear_until_btn = Button(
             text="Clear Until",
-            font_size=18,
-            size_hint=(1, 0.07),
+            font_size=button_font(),
+            size_hint=(1, None),
+            height=button_height(),
             background_normal="",
             background_color=(0.35, 0.15, 0.15, 1)
         )
         clear_until_btn.bind(on_press=self.clear_until)
         root.add_widget(clear_until_btn)
 
-        action_row = BoxLayout(size_hint=(1, 0.08), spacing=6)
+        action_row = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
 
         save_btn = Button(
             text="Save",
+            font_size=button_font(),
             background_normal="",
             background_color=(0.10, 0.45, 0.20, 1)
         )
@@ -152,6 +194,7 @@ class AlarmScreen(Screen):
 
         delete_btn = Button(
             text="Delete",
+            font_size=button_font(),
             background_normal="",
             background_color=(0.50, 0.15, 0.15, 1)
         )
@@ -161,7 +204,7 @@ class AlarmScreen(Screen):
         action_row.add_widget(delete_btn)
         root.add_widget(action_row)
 
-        self.status_label = Label(text="", font_size=16, size_hint=(1, 0.07))
+        self.status_label = Label(text="", font_size=status_font(), size_hint=(1, 0.06))
         root.add_widget(self.status_label)
 
         self.add_widget(root)
@@ -169,7 +212,7 @@ class AlarmScreen(Screen):
     def make_button(self, text, callback):
         btn = Button(
             text=text,
-            font_size=16,
+            font_size=button_font(),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
         )

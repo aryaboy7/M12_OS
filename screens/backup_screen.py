@@ -1,3 +1,4 @@
+# M12 OS Backup Screen - shared UI scale version
 import json
 import re
 import shutil
@@ -16,7 +17,16 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.uix.popup import Popup
 
 from utils.logger import log
-from utils.ui_scale import font, height
+from utils.ui_scale import (
+    title_font,
+    button_font,
+    text_font,
+    status_font,
+    row_height,
+    button_height,
+    padding_size,
+    spacing_size,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -66,15 +76,22 @@ class BackupScreen(Screen):
     def make_button(self, text, color=(0.12, 0.20, 0.35, 1)):
         return Button(
             text=text,
-            font_size=font(24),
+            font_size=button_font(),
             background_normal="",
             background_color=color,
         )
 
     def make_wrapped_label(self, text, font_size, size_hint, bold=False):
+        if bold:
+            fs = title_font()
+        elif font_size >= 20:
+            fs = text_font()
+        else:
+            fs = status_font()
+
         label = Label(
             text=text,
-            font_size=font(font_size),
+            font_size=fs,
             bold=bold,
             size_hint=size_hint,
             halign="center",
@@ -87,16 +104,16 @@ class BackupScreen(Screen):
         self.clear_screen()
         self.ensure_google_config_file()
 
-        root = BoxLayout(orientation="vertical", padding=12, spacing=8)
+        root = BoxLayout(orientation="vertical", padding=padding_size(), spacing=spacing_size())
 
         root.add_widget(Label(
             text="Backup",
-            font_size=font(38),
+            font_size=title_font(),
             bold=True,
             size_hint=(1, 0.10),
         ))
 
-        tabs = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, 0.10))
+        tabs = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.10))
 
         self.backup_tab = self.make_button("Backup")
         self.restore_tab = self.make_button("Restore")
@@ -111,10 +128,10 @@ class BackupScreen(Screen):
         tabs.add_widget(self.google_tab)
         root.add_widget(tabs)
 
-        self.body = BoxLayout(orientation="vertical", spacing=8, size_hint=(1, 0.68))
+        self.body = BoxLayout(orientation="vertical", spacing=spacing_size(), size_hint=(1, 0.68))
         root.add_widget(self.body)
 
-        bottom = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, 0.10))
+        bottom = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.10))
 
         settings_btn = self.make_button("< Settings", (0.10, 0.15, 0.25, 1))
         settings_btn.bind(on_press=self.go_settings)
@@ -149,7 +166,7 @@ class BackupScreen(Screen):
 
         create_btn = Button(
             text="Create Backup",
-            font_size=font(30),
+            font_size=button_font(),
             size_hint=(1, 0.18),
             background_normal="",
             background_color=(0.10, 0.45, 0.20, 1),
@@ -171,14 +188,14 @@ class BackupScreen(Screen):
         self.body.add_widget(self.restore_status)
 
         scroll = ScrollView(size_hint=(1, 0.43), do_scroll_x=False, do_scroll_y=True)
-        self.backup_list = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        self.backup_list = GridLayout(cols=1, spacing=spacing_size(), size_hint_y=None)
         self.backup_list.bind(minimum_height=self.backup_list.setter("height"))
         scroll.add_widget(self.backup_list)
         self.body.add_widget(scroll)
 
         restore_btn = Button(
             text="Restore Selected",
-            font_size=font(25),
+            font_size=button_font(),
             size_hint=(1, 0.12),
             background_normal="",
             background_color=(0.45, 0.30, 0.10, 1),
@@ -188,7 +205,7 @@ class BackupScreen(Screen):
 
         delete_btn = Button(
             text="Delete Selected",
-            font_size=font(25),
+            font_size=button_font(),
             size_hint=(1, 0.12),
             background_normal="",
             background_color=(0.50, 0.15, 0.15, 1),
@@ -220,7 +237,7 @@ class BackupScreen(Screen):
 
         download_btn = Button(
             text="Download Backup",
-            font_size=font(30),
+            font_size=button_font(),
             size_hint=(1, 0.16),
             background_normal="",
             background_color=(0.45, 0.30, 0.10, 1),
@@ -230,7 +247,7 @@ class BackupScreen(Screen):
 
         clear_btn = Button(
             text="Clear Saved Link",
-            font_size=font(24),
+            font_size=button_font(),
             size_hint=(1, 0.12),
             background_normal="",
             background_color=(0.50, 0.15, 0.15, 1),
@@ -286,9 +303,9 @@ class BackupScreen(Screen):
         for backup in backups:
             btn = Button(
                 text=backup.name,
-                font_size=font(20),
+                font_size=text_font(),
                 size_hint_y=None,
-                height=height(64),
+                height=row_height(),
                 background_normal="",
                 background_color=(0.10, 0.15, 0.25, 1),
                 halign="center",
@@ -307,7 +324,7 @@ class BackupScreen(Screen):
             self.restore_status.text = "Select a backup first."
             return
 
-        box = BoxLayout(orientation="vertical", padding=height(10), spacing=height(8))
+        box = BoxLayout(orientation="vertical", padding=padding_size(), spacing=spacing_size())
         msg = self.make_wrapped_label(
             "Restore Backup?\n\n"
             f"{self.selected_backup.name}\n\n"
@@ -316,19 +333,19 @@ class BackupScreen(Screen):
             22,
             (1, 0.75),
         )
-        msg.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - height(20), val[1])))
+        msg.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1])))
         box.add_widget(msg)
 
-        buttons = BoxLayout(orientation="horizontal", spacing=height(8), size_hint=(1, 0.25))
+        buttons = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, None), height=button_height())
         yes_btn = Button(
             text="Yes Restore",
-            font_size=font(24),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.50, 0.15, 0.15, 1),
         )
         no_btn = Button(
             text="No",
-            font_size=font(24),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1),
         )
@@ -507,7 +524,7 @@ class BackupScreen(Screen):
             self.restore_status.text = "Select a backup first."
             return
 
-        box = BoxLayout(orientation="vertical", padding=height(10), spacing=height(8))
+        box = BoxLayout(orientation="vertical", padding=padding_size(), spacing=spacing_size())
         msg = self.make_wrapped_label(
             "Delete Backup?\n\n"
             f"{self.selected_backup.name}\n\n"
@@ -515,19 +532,19 @@ class BackupScreen(Screen):
             22,
             (1, 0.75),
         )
-        msg.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - height(20), val[1])))
+        msg.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1])))
         box.add_widget(msg)
 
-        buttons = BoxLayout(orientation="horizontal", spacing=height(8), size_hint=(1, 0.25))
+        buttons = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, None), height=button_height())
         delete_btn = Button(
             text="Delete",
-            font_size=font(24),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.50, 0.15, 0.15, 1),
         )
         cancel_btn = Button(
             text="Cancel",
-            font_size=font(24),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1),
         )
