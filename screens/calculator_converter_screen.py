@@ -58,7 +58,7 @@ class CalculatorConverterScreen(Screen):
         back.bind(on_press=self.go_back)
 
         title = Label(
-            text="Calculator - Converter",
+            text="Calculator",
             font_size=title_font(),
             bold=True,
             color=(0.85, 0.95, 1, 1)
