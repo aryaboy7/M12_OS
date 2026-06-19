@@ -9,6 +9,7 @@ Config.set("graphics", "minimum_height", "650")
 Config.set("graphics", "resizable", "0")
 
 from kivy.app import App
+from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.uix.screenmanager import ScreenManager
 from kivy.utils import platform
@@ -37,6 +38,7 @@ from screens.calculator_converter_screen import CalculatorConverterScreen
 from screens.alarm_screen import AlarmScreen
 from utils.alarm_notifier import AlarmNotifier
 from screens.backup_screen import BackupScreen
+from screens.bluetooth_screen import BluetoothScreen
 
 print("PLATFORM =", platform)
 print("WINDOW WIDTH =", Window.width)
@@ -71,6 +73,7 @@ class M12OS(App):
         sm.add_widget(CalculatorConverterScreen(name="calculator"))
         sm.add_widget(AlarmScreen(name="alarm"))
         sm.add_widget(BackupScreen(name="backup"))
+        sm.add_widget(BluetoothScreen(name="bluetooth"))
 
         start_screen = config.get("start_screen", "home")
         sm.current = start_screen if sm.has_screen(start_screen) else "home"
@@ -86,16 +89,26 @@ class M12OS(App):
 
         self.event_notifier = EventNotifier(interval_seconds=30)
         self.event_notifier.start()
+
         self.alarm_notifier = AlarmNotifier(interval_seconds=30)
         self.alarm_notifier.start()
+
+        try:
+            if sm.has_screen("bluetooth"):
+                bt_screen = sm.get_screen("bluetooth")
+                Clock.schedule_once(lambda dt: bt_screen.auto_connect_default(), 3)
+        except Exception as e:
+            log.error(f"Bluetooth auto connect schedule failed: {e}")
 
         return sm
 
     def on_stop(self):
         if hasattr(self, "event_notifier"):
             self.event_notifier.stop()
+
         if hasattr(self, "alarm_notifier"):
             self.alarm_notifier.stop()
+
 
 if __name__ == "__main__":
     M12OS().run()

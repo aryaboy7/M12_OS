@@ -36,6 +36,8 @@ from utils.ui_scale import (
 BASE_DIR = Path(__file__).resolve().parent.parent
 EVENTS_FILE = BASE_DIR / "data" / "events" / "events.json"
 ALARMS_FILE = BASE_DIR / "data" / "alarms" / "alarms.json"
+BT_DEFAULT_FILE = BASE_DIR / "data" / "bluetooth" / "default_speaker.json"
+MUSIC_STATUS_FILE = BASE_DIR / "data" / "music" / "player_status.json"
 
 BG = (0.04, 0.07, 0.12, 1)
 CARD_CLOCK = (0.08, 0.18, 0.32, 1)
@@ -115,16 +117,16 @@ class HomeScreen(Screen):
             color=(0.75, 0.85, 1, 1),
             halign="left",
             valign="middle",
-            size_hint=(0.35, 1)
+            size_hint=(0.20, 1)
         )
 
         self.status_center = Label(
-            text="WiFi: OK",
+            text="WiFi",
             font_size=status_font(),
             color=(0.75, 1, 0.80, 1),
             halign="center",
             valign="middle",
-            size_hint=(0.40, 1)
+            size_hint=(0.60, 1)
         )
 
         self.status_time = Label(
@@ -133,7 +135,7 @@ class HomeScreen(Screen):
             color=(1, 1, 1, 1),
             halign="right",
             valign="middle",
-            size_hint=(0.25, 1)
+            size_hint=(0.20, 1)
         )
 
         self.status_left.bind(size=lambda inst, val: setattr(inst, "text_size", val))
@@ -384,6 +386,64 @@ class HomeScreen(Screen):
         count = self.get_today_calendar_count()
         btn.text = f"Calendar ({count})" if count > 0 else "Calendar"
 
+    def bluetooth_status_text(self):
+        try:
+            if not BT_DEFAULT_FILE.exists():
+                return ""
+
+            data = json.loads(BT_DEFAULT_FILE.read_text(encoding="utf-8"))
+
+            if not isinstance(data, dict):
+                return ""
+
+            name = str(data.get("name", "")).strip()
+
+            if not name:
+                return "BT"
+
+            # Keep Home status short.
+            if "bose" in name.lower():
+                return "BT Bose"
+
+            if len(name) > 10:
+                name = name[:10]
+
+            return f"BT {name}"
+
+        except Exception as e:
+            log.error(f"Home: bluetooth status failed {e}")
+            return ""
+
+    def music_is_playing(self):
+        try:
+            if not MUSIC_STATUS_FILE.exists():
+                return False
+
+            data = json.loads(MUSIC_STATUS_FILE.read_text(encoding="utf-8"))
+
+            if not isinstance(data, dict):
+                return False
+
+            return bool(data.get("playing", False))
+
+        except Exception:
+            return False
+
+    def refresh_status_bar(self):
+        parts = ["WiFi"]
+
+        bt_text = self.bluetooth_status_text()
+        if bt_text:
+            parts.append(bt_text)
+
+        if self.music_is_playing():
+            parts.append("Music")
+
+        if self.is_alarm_active():
+            parts.append("AL")
+
+        self.status_center.text = " | ".join(parts)
+
     def update_bg(self, instance, value):
         self.bg_rect.pos = instance.pos
         self.bg_rect.size = instance.size
@@ -401,6 +461,7 @@ class HomeScreen(Screen):
         self.refresh_weather_card()
         self.refresh_calendar_button()
         self.refresh_clock_button()
+        self.refresh_status_bar()
 
         Clock.unschedule(self.update_time)
         Clock.schedule_interval(self.update_time, 1)
@@ -426,6 +487,7 @@ class HomeScreen(Screen):
         now = datetime.now()
         self.clock_label.text = now.strftime("%I:%M %p")
         self.date_label.text = now.strftime("%A, %B %d")
+        self.refresh_status_bar()
         self.status_time.text = now.strftime("%H:%M:%S")
 
     def get_columns(self):

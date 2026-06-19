@@ -160,6 +160,10 @@ class SettingsScreen(Screen):
         backup_btn.bind(on_press=self.open_backup)
         root.add_widget(backup_btn)
 
+        bluetooth_btn = self.make_button("Bluetooth", BLUE)
+        bluetooth_btn.bind(on_press=self.open_bluetooth)
+        root.add_widget(bluetooth_btn)
+
         log_btn = self.make_button("View Log", ORANGE)
         log_btn.bind(on_press=self.build_log_view)
         root.add_widget(log_btn)
@@ -175,6 +179,12 @@ class SettingsScreen(Screen):
             self.manager.current = "backup"
         else:
             log.error("Settings: backup screen missing")
+
+    def open_bluetooth(self, instance):
+        if self.manager and self.manager.has_screen("bluetooth"):
+            self.manager.current = "bluetooth"
+        else:
+            log.error("Settings: bluetooth screen missing")
 
     def build_log_view(self, instance=None):
         self.clear_screen()

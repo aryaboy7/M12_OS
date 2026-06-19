@@ -150,8 +150,8 @@
         "until_date": "",
         "last_reminder_date": "",
         "last_event_date": "",
-        "reminder_notified": false,
-        "event_notified": false
+        "reminder_notified": true,
+        "event_notified": true
     },
     {
         "title": "Boarding Pass Check in",

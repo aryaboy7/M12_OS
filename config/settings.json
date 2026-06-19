@@ -1,23 +1,24 @@
 {
-    "city": "Brooklyn, New York",
+    "city": "Odesa, Odesa",
     "temperature_unit": "C",
     "theme": "dark",
     "auto_update": true,
     "update_channel": "stable",
     "start_screen": "home",
     "last_update_check": "2026-06-14T13:17:57",
-    "last_temperature": 31,
+    "last_temperature": 18,
     "last_condition": "Mostly Clear",
-    "last_humidity": 39,
-    "last_wind": 9,
-    "last_advice": "Hot today. Shorts and T-shirt recommended.",
+    "last_humidity": 70,
+    "last_wind": 5,
+    "last_advice": "Nice weather. Shirt is fine.",
     "last_icon_type": "sun_cloud",
-    "last_feels_like": 33,
-    "last_uv": 7.7,
-    "last_aqi": 42,
-    "last_sunrise": "05:24 AM",
-    "last_sunset": "08:27 PM",
+    "last_feels_like": 17,
+    "last_uv": 7.25,
+    "last_aqi": 31,
+    "last_sunrise": "05:03 AM",
+    "last_sunset": "08:52 PM",
     "weather_cities": [
+        "Bologna, Emilia-Romagna",
         "Odesa, Odesa",
         "Lviv, Lviv Oblast",
         "Tbilisi, Tbilisi",
@@ -27,6 +28,7 @@
         "Tbilisi, GE",
         "Lvov, UA",
         "Lviv, UA",
-        "Odessa, UA"
+        "Odessa, UA",
+        "Bologna, IT"
     ]
 }
