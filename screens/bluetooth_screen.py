@@ -3,6 +3,14 @@ import re
 import subprocess
 from pathlib import Path
 
+try:
+    from android.permissions import request_permissions, Permission
+    from jnius import autoclass
+except Exception:
+    request_permissions = None
+    Permission = None
+    autoclass = None
+
 from kivy.clock import Clock
 from kivy.utils import platform
 from kivy.uix.screenmanager import Screen
@@ -190,9 +198,116 @@ class BluetoothScreen(Screen):
             return "Install blueutil first:\nbrew install blueutil"
 
         if platform == "android":
-            return "Android Bluetooth support will be added after Mac version."
+            return (
+                "Android Bluetooth ready.\n"
+                "Paired = list paired speakers.\n"
+                "Phone BT = Android Bluetooth settings."
+            )
 
-        return "M12 Bluetooth support will be added after Mac and Android."
+        return "Bluetooth support for this platform will be added later."
+
+    def request_android_bt_permissions(self):
+        if platform != "android":
+            return
+
+        if request_permissions is None or Permission is None:
+            self.status_label.text = "Android permission API not available."
+            return
+
+        try:
+            permissions = [
+                Permission.BLUETOOTH,
+                Permission.BLUETOOTH_ADMIN,
+                Permission.ACCESS_FINE_LOCATION,
+            ]
+
+            for name in ("BLUETOOTH_CONNECT", "BLUETOOTH_SCAN"):
+                if hasattr(Permission, name):
+                    permissions.append(getattr(Permission, name))
+
+            request_permissions(permissions)
+            log.info("Bluetooth: Android permissions requested")
+
+        except Exception as e:
+            self.status_label.text = f"Permission request failed:\n{e}"
+            log.error(f"Bluetooth: Android permission request failed {e}")
+
+    def get_android_adapter(self):
+        if platform != "android" or autoclass is None:
+            return None
+
+        try:
+            BluetoothAdapter = autoclass("android.bluetooth.BluetoothAdapter")
+            return BluetoothAdapter.getDefaultAdapter()
+        except Exception as e:
+            log.error(f"Bluetooth: Android adapter failed {e}")
+            return None
+
+    def open_android_bluetooth_settings(self):
+        if platform != "android" or autoclass is None:
+            self.status_label.text = "Android settings API not available."
+            return
+
+        try:
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            Intent = autoclass("android.content.Intent")
+            Settings = autoclass("android.provider.Settings")
+
+            intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+            PythonActivity.mActivity.startActivity(intent)
+            self.status_label.text = "Opened Android Bluetooth Settings."
+            log.info("Bluetooth: opened Android Bluetooth settings")
+
+        except Exception as e:
+            self.status_label.text = f"Open BT settings failed:\n{e}"
+            log.error(f"Bluetooth: open Android settings failed {e}")
+
+    def scan_android_paired_devices(self):
+        self.request_android_bt_permissions()
+
+        adapter = self.get_android_adapter()
+
+        if adapter is None:
+            self.status_label.text = "No Android Bluetooth adapter."
+            return []
+
+        try:
+            if not adapter.isEnabled():
+                self.status_label.text = "Bluetooth is OFF. Turn it ON in Phone BT."
+                return []
+
+            bonded = adapter.getBondedDevices()
+            iterator = bonded.iterator()
+            devices = []
+
+            while iterator.hasNext():
+                dev = iterator.next()
+
+                try:
+                    name = dev.getName() or "Unknown"
+                except Exception:
+                    name = "Unknown"
+
+                try:
+                    address = dev.getAddress() or ""
+                except Exception:
+                    address = ""
+
+                if address:
+                    devices.append({
+                        "name": name,
+                        "address": address.lower(),
+                        "connected": False,
+                        "saved": False,
+                        "android_paired": True,
+                    })
+
+            return devices
+
+        except Exception as e:
+            self.status_label.text = f"Android paired scan failed:\n{e}"
+            log.error(f"Bluetooth: Android paired scan failed {e}")
+            return []
 
     def load_default_speaker(self):
         try:
@@ -285,6 +400,12 @@ class BluetoothScreen(Screen):
             self.update_auto_button()
 
     def auto_connect_default(self):
+        if platform == "android":
+            data = self.load_default_speaker()
+            if data and data.get("auto_connect"):
+                log.info("Bluetooth: Android auto connect uses Android system Bluetooth")
+            return
+
         if platform != "macosx":
             return
 
@@ -355,11 +476,52 @@ class BluetoothScreen(Screen):
 
     def scan_devices(self, instance):
         self.last_scan_mode = "paired"
+
+        if platform == "android":
+            self.status_label.text = "Scanning paired Android Bluetooth devices..."
+            Clock.schedule_once(lambda dt: self.do_scan_android_devices(), 0.1)
+            return
+
         self.status_label.text = "Scanning paired/recent Bluetooth devices..."
         Clock.schedule_once(lambda dt: self.do_scan_devices(), 0.1)
 
+    def do_scan_android_devices(self):
+        self.devices = []
+
+        found = self.scan_android_paired_devices()
+
+        saved = self.load_saved_devices()
+        saved_by_address = {
+            d.get("address", "").lower(): d
+            for d in saved
+            if d.get("address")
+        }
+
+        for dev in found:
+            address = dev.get("address", "").lower()
+            if address in saved_by_address:
+                dev["saved"] = True
+
+        self.devices = sorted(
+            found,
+            key=lambda d: (
+                not d.get("saved", False),
+                d.get("name", "").lower(),
+            )
+        )
+
+        self.status_label.text = (
+            f"Paired devices: {len(self.devices)}\n"
+            "Select speaker. If missing, press Phone BT."
+        )
+        self.rebuild_device_list()
+
     def scan_nearby_devices(self, instance):
         self.last_scan_mode = "nearby"
+
+        if platform == "android":
+            self.open_android_bluetooth_settings()
+            return
 
         if platform != "macosx":
             self.status_label.text = self.platform_status_text()
@@ -697,7 +859,7 @@ class BluetoothScreen(Screen):
                 text="No Bluetooth devices found.\nFor new speakers: put speaker in pairing mode, then press Nearby.",
                 font_size=text_font(),
                 size_hint_y=None,
-                height=row_height() * 2,
+                height=max(button_height(), int(row_height() * 0.90)),
                 halign="center",
                 valign="middle",
             ))
@@ -719,9 +881,9 @@ class BluetoothScreen(Screen):
 
             btn = Button(
                 text=text,
-                font_size=list_font(),
+                font_size=text_font(),
                 size_hint_y=None,
-                height=row_height(),
+                height=max(button_height(), int(row_height() * 0.62)),
                 background_normal="",
                 background_color=(0.25, 0.45, 0.75, 1)
                 if self.selected_device and self.selected_device.get("address") == address
@@ -742,7 +904,15 @@ class BluetoothScreen(Screen):
 
     def pair_selected(self, instance):
         if not self.selected_device:
+            if platform == "android":
+                self.open_android_bluetooth_settings()
+                return
+
             self.status_label.text = "Select a nearby Bluetooth device first."
+            return
+
+        if platform == "android":
+            self.open_android_bluetooth_settings()
             return
 
         if platform != "macosx":
@@ -779,6 +949,26 @@ class BluetoothScreen(Screen):
             self.status_label.text = "Select a Bluetooth speaker first."
             return
 
+        if platform == "android":
+            name = self.selected_device.get("name", "Unknown")
+            address = self.selected_device.get("address", "")
+
+            if address:
+                self.save_default_speaker_data({
+                    "name": name,
+                    "address": address,
+                    "auto_connect": True,
+                    "platform": "android"
+                })
+                self.update_auto_button()
+
+            self.status_label.text = (
+                "Speaker saved as default.\n"
+                "Connect audio in Android Bluetooth settings."
+            )
+            self.open_android_bluetooth_settings()
+            return
+
         if platform != "macosx":
             self.status_label.text = self.platform_status_text()
             return
@@ -811,6 +1001,10 @@ class BluetoothScreen(Screen):
     def disconnect_selected(self, instance):
         if not self.selected_device:
             self.status_label.text = "Select a Bluetooth device first."
+            return
+
+        if platform == "android":
+            self.open_android_bluetooth_settings()
             return
 
         if platform != "macosx":

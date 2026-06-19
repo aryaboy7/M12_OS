@@ -54,7 +54,11 @@ elif platform == "android":
         "Music": Path("/storage/emulated/0/Music"),
         "Movies": Path("/storage/emulated/0/Movies"),
         "Download": Path("/storage/emulated/0/Download"),
+        "Downloads": Path("/storage/emulated/0/Downloads"),
         "DCIM": Path("/storage/emulated/0/DCIM"),
+        "Android Media": Path("/storage/emulated/0/Android/media"),
+        "WhatsApp": Path("/storage/emulated/0/WhatsApp/Media"),
+        "Telegram": Path("/storage/emulated/0/Telegram"),
     }
 else:
     MEDIA_FOLDERS = {
@@ -416,6 +420,13 @@ class MusicScreen(Screen):
     def is_audio_file(self, path):
         return Path(path).suffix.lower() in AUDIO_EXTENSIONS
 
+    def is_existing_media_file(self, path):
+        try:
+            p = Path(path)
+            return p.exists() and p.is_file() and p.suffix.lower() in MEDIA_EXTENSIONS
+        except Exception:
+            return False
+
     def normalized_path(self, path):
         try:
             return str(Path(path).expanduser().resolve())
@@ -427,7 +438,10 @@ class MusicScreen(Screen):
             if FAVORITES_FILE.exists():
                 data = json.loads(FAVORITES_FILE.read_text(encoding="utf-8"))
                 if isinstance(data, list):
-                    self.favorite_paths = set(str(x) for x in data)
+                    self.favorite_paths = {
+                        str(x) for x in data
+                        if self.is_existing_media_file(x)
+                    }
                     return
         except Exception as e:
             log.error(f"Music: favorites load failed {e}")
@@ -494,9 +508,11 @@ class MusicScreen(Screen):
                     self.last_scan_total_files += 1
                     suffix = Path(name).suffix.lower()
 
-                    if suffix in MEDIA_EXTENSIONS:
+                    full_path = Path(root) / name
+
+                    if suffix in MEDIA_EXTENSIONS and full_path.exists() and full_path.is_file():
                         self.last_scan_supported += 1
-                        found.append(Path(root) / name)
+                        found.append(full_path)
                     else:
                         self.last_scan_unsupported += 1
 
@@ -516,7 +532,14 @@ class MusicScreen(Screen):
         for folder in MEDIA_FOLDERS.values():
             found.extend(self.scan_folder(folder))
 
-        unique = sorted(set(found), key=lambda p: str(p).lower())
+        unique = sorted(
+            {p for p in found if self.is_existing_media_file(p)},
+            key=lambda p: str(p).lower()
+        )
+
+        for p in unique[:25]:
+            log.info(f"MEDIA FOUND: {p}")
+
         log.info(
             "Music scan result: "
             f"total={self.last_scan_total_files} "
@@ -531,10 +554,16 @@ class MusicScreen(Screen):
         self.status_label.text = "Scanning media files..."
         self.load_favorites()
         self.media_files = self.scan_media_files()
+
+        if self.selected_file and not self.is_existing_media_file(self.selected_file):
+            self.selected_file = None
+
         self.apply_filters()
 
     def apply_filters(self):
-        files = list(self.media_files)
+        # Always remove phantom/deleted/inaccessible files before displaying.
+        files = [p for p in self.media_files if self.is_existing_media_file(p)]
+        self.media_files = files
 
         if self.active_folder == "Favorites":
             files = [
@@ -663,6 +692,11 @@ class MusicScreen(Screen):
         )
 
     def select_file(self, path):
+        if not self.is_existing_media_file(path):
+            self.status_label.text = "File no longer exists. Press Rescan."
+            self.refresh_media(None)
+            return
+
         old_key = self.normalized_path(self.selected_file) if self.selected_file else None
 
         self.selected_file = Path(path)
@@ -697,6 +731,8 @@ class MusicScreen(Screen):
         return None
 
     def choose_next_file(self, forward=True, auto=False):
+        self.visible_files = [p for p in self.visible_files if self.is_existing_media_file(p)]
+
         if not self.visible_files:
             return None
 
@@ -878,6 +914,12 @@ class MusicScreen(Screen):
             else:
                 self.status_label.text = "Select a file first."
                 return
+
+        if not self.is_existing_media_file(self.selected_file):
+            self.status_label.text = "File no longer exists. Press Rescan."
+            self.selected_file = None
+            self.refresh_media(None)
+            return
 
         self.is_starting = True
         self.play_btn.disabled = True
