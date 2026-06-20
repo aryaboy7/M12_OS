@@ -2101,3 +2101,41 @@
 2026-06-20 14:39:32,346 | INFO | Music scan result: total=7735 supported=803 unique=803 unsupported=6932 errors=0
 2026-06-20 14:39:57,925 | INFO | EventNotifier FINAL: stopped
 2026-06-20 14:39:57,925 | INFO | AlarmNotifier: stopped
+2026-06-20 15:17:12,141 | INFO | M12 OS 0.4.24 started
+2026-06-20 15:17:12,199 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 15:17:12,199 | INFO | EventNotifier FINAL: started
+2026-06-20 15:17:12,199 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 15:17:12,199 | INFO | AlarmNotifier: started
+2026-06-20 15:17:14,073 | INFO | Home: open settings
+2026-06-20 15:17:14,720 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 15:17:41,800 | INFO | Settings: storage roots reset {'internal_root': '/storage/emulated/0', 'external_root': '/storage/M12SD'}
+2026-06-20 15:18:00,630 | INFO | Settings: storage roots saved {'internal_root': '/storage/emulated/0', 'external_root': '/storage/M12SD'}
+2026-06-20 15:18:21,145 | INFO | EventNotifier FINAL: stopped
+2026-06-20 15:18:21,145 | INFO | AlarmNotifier: stopped
+2026-06-20 15:22:08,907 | INFO | M12 OS 0.4.24 started
+2026-06-20 15:22:08,959 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 15:22:08,960 | INFO | EventNotifier FINAL: started
+2026-06-20 15:22:08,960 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 15:22:08,960 | INFO | AlarmNotifier: started
+2026-06-20 15:22:11,598 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 15:22:12,145 | INFO | Home: open settings
+2026-06-20 15:25:10,796 | INFO | EventNotifier FINAL: stopped
+2026-06-20 15:25:10,797 | INFO | AlarmNotifier: stopped
+2026-06-20 15:25:51,455 | INFO | M12 OS 0.4.24 started
+2026-06-20 15:25:51,507 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 15:25:51,508 | INFO | EventNotifier FINAL: started
+2026-06-20 15:25:51,508 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 15:25:51,508 | INFO | AlarmNotifier: started
+2026-06-20 15:25:54,142 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 15:25:54,610 | INFO | Home: open settings
+2026-06-20 15:26:35,210 | INFO | EventNotifier FINAL: stopped
+2026-06-20 15:26:35,210 | INFO | AlarmNotifier: stopped
+2026-06-20 15:30:00,573 | INFO | M12 OS 0.4.24 started
+2026-06-20 15:30:00,626 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 15:30:00,627 | INFO | EventNotifier FINAL: started
+2026-06-20 15:30:00,627 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 15:30:00,627 | INFO | AlarmNotifier: started
+2026-06-20 15:30:02,241 | INFO | Home: open settings
+2026-06-20 15:30:03,277 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 15:30:37,824 | INFO | EventNotifier FINAL: stopped
+2026-06-20 15:30:37,825 | INFO | AlarmNotifier: stopped

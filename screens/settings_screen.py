@@ -1,6 +1,8 @@
 # M12 OS Settings Screen - shared UI scale version
+# v0.4.21 - added Storage Settings page for media roots
 from pathlib import Path
 import subprocess
+import os
 
 from kivy.utils import platform
 from kivy.uix.screenmanager import Screen
@@ -10,11 +12,16 @@ from kivy.uix.label import Label
 from kivy.uix.spinner import Spinner
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
+from kivy.uix.textinput import TextInput
 from kivy.graphics import Color, Rectangle
 
 from config.version import version_text
 from utils.config_manager import ConfigManager
 from utils.logger import log
+from utils.storage_roots import (
+    load_storage_roots,
+    save_storage_roots,
+)
 from utils.ui_scale import (
     title_font,
     button_font,
@@ -164,6 +171,10 @@ class SettingsScreen(Screen):
         bluetooth_btn.bind(on_press=self.open_bluetooth)
         root.add_widget(bluetooth_btn)
 
+        storage_btn = self.make_button("Storage", BLUE)
+        storage_btn.bind(on_press=self.build_storage_view)
+        root.add_widget(storage_btn)
+
         log_btn = self.make_button("View Log", ORANGE)
         log_btn.bind(on_press=self.build_log_view)
         root.add_widget(log_btn)
@@ -171,6 +182,339 @@ class SettingsScreen(Screen):
         back_btn = self.make_button("< Back", DARK)
         back_btn.bind(on_press=self.go_back)
         root.add_widget(back_btn)
+
+        self.add_widget(root)
+
+    def make_text_input(self, text):
+        return TextInput(
+            text=text,
+            font_size=text_font(),
+            multiline=False,
+            size_hint=(1, None),
+            height=button_height(),
+            background_color=(1, 1, 1, 1),
+            foreground_color=(0, 0, 0, 1),
+            cursor_color=(0, 0, 0, 1),
+            padding=(spacing_size(), spacing_size())
+        )
+
+    def build_storage_view(self, instance=None):
+        self.clear_screen()
+
+        roots = load_storage_roots()
+
+        root = BoxLayout(
+            orientation="vertical",
+            padding=padding_size(),
+            spacing=spacing_size()
+        )
+        self.add_bg(root)
+
+        root.add_widget(Label(
+            text="Storage Settings",
+            font_size=title_font(),
+            bold=True,
+            color=(1, 1, 1, 1),
+            size_hint=(1, 0.10)
+        ))
+
+        root.add_widget(Label(
+            text="These roots are used by Music screen Internal / External SD switch.",
+            font_size=status_font(),
+            color=(0.70, 0.85, 1, 1),
+            size_hint=(1, 0.08),
+            halign="center",
+            valign="middle"
+        ))
+
+        root.add_widget(Label(
+            text="Internal Storage Root",
+            font_size=text_font(),
+            bold=True,
+            color=(0.80, 0.95, 1, 1),
+            size_hint=(1, 0.07)
+        ))
+
+        self.internal_root_input = self.make_text_input(
+            roots.get("internal_root", "/storage/emulated/0")
+        )
+        root.add_widget(self.internal_root_input)
+
+        root.add_widget(Label(
+            text="External SD Root",
+            font_size=text_font(),
+            bold=True,
+            color=(0.80, 0.95, 1, 1),
+            size_hint=(1, 0.07)
+        ))
+
+        self.external_root_input = self.make_text_input(
+            roots.get("external_root", "/storage/M12SD")
+        )
+        root.add_widget(self.external_root_input)
+
+        self.storage_status = Label(
+            text="Default External SD Root: /storage/M12SD",
+            font_size=status_font(),
+            color=(0.80, 0.90, 1, 1),
+            size_hint=(1, 0.10),
+            halign="center",
+            valign="middle"
+        )
+        self.storage_status.bind(size=lambda inst, val: setattr(inst, "text_size", val))
+        root.add_widget(self.storage_status)
+
+        save_btn = self.make_button("Save Storage Roots", GREEN)
+        save_btn.bind(on_press=self.save_storage_roots_clicked)
+        root.add_widget(save_btn)
+
+        reset_btn = self.make_button("Reset Storage Defaults", ORANGE)
+        reset_btn.bind(on_press=self.reset_storage_roots_clicked)
+        root.add_widget(reset_btn)
+
+        detect_btn = self.make_button("View Detected Storage Paths", BLUE)
+        detect_btn.bind(on_press=self.build_storage_paths_view)
+        root.add_widget(detect_btn)
+
+        back_btn = self.make_button("< Settings", DARK)
+        back_btn.bind(on_press=self.build_settings_view)
+        root.add_widget(back_btn)
+
+        self.add_widget(root)
+
+    def save_storage_roots_clicked(self, instance):
+        try:
+            roots = save_storage_roots(
+                self.internal_root_input.text,
+                self.external_root_input.text
+            )
+
+            self.storage_status.text = (
+                "Saved: Internal="
+                + roots.get("internal_root", "")
+                + " | External="
+                + roots.get("external_root", "")
+            )
+            log.info(
+                "Settings: storage roots saved "
+                + str(roots)
+            )
+        except Exception as e:
+            self.storage_status.text = f"Save failed: {e}"
+            log.error(f"Settings: storage roots save failed: {e}")
+
+    def reset_storage_roots_clicked(self, instance):
+        try:
+            self.internal_root_input.text = "/storage/emulated/0"
+            self.external_root_input.text = "/storage/M12SD"
+
+            roots = save_storage_roots(
+                self.internal_root_input.text,
+                self.external_root_input.text
+            )
+
+            self.storage_status.text = "Storage roots reset to defaults."
+            log.info(
+                "Settings: storage roots reset "
+                + str(roots)
+            )
+        except Exception as e:
+            self.storage_status.text = f"Reset failed: {e}"
+            log.error(f"Settings: storage roots reset failed: {e}")
+
+    def detect_storage_paths(self):
+        paths = []
+
+        paths.append(f"Platform: {platform}")
+        paths.append("")
+
+        if platform != "android":
+            home = Path.home()
+
+            desktop_candidates = [
+                home,
+                home / "Music",
+                home / "Movies",
+                home / "Videos",
+                home / "Downloads",
+                BASE_DIR,
+                BASE_DIR / "media",
+                BASE_DIR / "music",
+                BASE_DIR / "videos",
+            ]
+
+            paths.append("Android storage detection works only on Android device.")
+            paths.append("On Mac/Desktop this screen shows local folders only.")
+            paths.append("")
+
+            seen = set()
+            for p in desktop_candidates:
+                raw = str(p)
+                if raw in seen:
+                    continue
+                seen.add(raw)
+
+                try:
+                    exists = p.exists()
+                    is_dir = p.is_dir()
+                except Exception:
+                    exists = False
+                    is_dir = False
+
+                status = "OK" if exists and is_dir else "missing"
+                label = f"{raw}  [{status}]"
+
+                if exists and is_dir:
+                    media_hits = []
+                    for name in ["Music", "Audio", "Movies", "Video", "Videos", "Download", "Downloads", "DCIM"]:
+                        try:
+                            child = p / name
+                            if child.exists() and child.is_dir():
+                                media_hits.append(name)
+                        except Exception:
+                            pass
+
+                    if media_hits:
+                        label += "  media: " + ", ".join(media_hits)
+
+                paths.append(label)
+
+            return paths
+
+        paths.append("Android storage paths:")
+        paths.append("")
+
+        candidates = [
+            "/storage/emulated/0",
+            "/sdcard",
+            "/mnt/sdcard",
+            "/storage/self/primary",
+            "/storage/M12SD",
+        ]
+
+        try:
+            storage_dir = Path("/storage")
+            if storage_dir.exists() and storage_dir.is_dir():
+                for item in storage_dir.iterdir():
+                    try:
+                        candidates.append(str(item))
+                    except Exception:
+                        pass
+        except Exception as e:
+            paths.append(f"/storage scan error: {e}")
+
+        try:
+            mnt_dir = Path("/mnt/media_rw")
+            if mnt_dir.exists() and mnt_dir.is_dir():
+                for item in mnt_dir.iterdir():
+                    try:
+                        candidates.append(str(item))
+                    except Exception:
+                        pass
+        except Exception as e:
+            paths.append(f"/mnt/media_rw scan error: {e}")
+
+        seen = set()
+
+        for raw in candidates:
+            if not raw or raw in seen:
+                continue
+
+            seen.add(raw)
+            p = Path(raw)
+
+            try:
+                exists = p.exists()
+                is_dir = p.is_dir()
+            except Exception:
+                exists = False
+                is_dir = False
+
+            status = "OK" if exists and is_dir else "missing"
+            label = f"{raw}  [{status}]"
+
+            if exists and is_dir:
+                media_hits = []
+                for name in ["Music", "Audio", "Movies", "Video", "Download", "Downloads", "DCIM"]:
+                    try:
+                        child = p / name
+                        if child.exists() and child.is_dir():
+                            media_hits.append(name)
+                    except Exception:
+                        pass
+
+                if media_hits:
+                    label += "  media: " + ", ".join(media_hits)
+
+            paths.append(label)
+
+        return paths
+
+    def build_storage_paths_view(self, instance=None):
+        self.clear_screen()
+
+        root = BoxLayout(
+            orientation="vertical",
+            padding=padding_size(),
+            spacing=spacing_size()
+        )
+        self.add_bg(root)
+
+        root.add_widget(Label(
+            text="Detected Storage Paths",
+            font_size=title_font(),
+            bold=True,
+            color=(1, 1, 1, 1),
+            size_hint=(1, 0.10)
+        ))
+
+        root.add_widget(Label(
+            text="View only. Use this list to find the real Internal or SD card root.",
+            font_size=status_font(),
+            color=(0.70, 0.85, 1, 1),
+            size_hint=(1, 0.08),
+            halign="center",
+            valign="middle"
+        ))
+
+        buttons = BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint=(1, None),
+            height=button_height()
+        )
+
+        refresh_btn = self.make_small_button("Refresh", BLUE)
+        refresh_btn.bind(on_press=self.build_storage_paths_view)
+        buttons.add_widget(refresh_btn)
+
+        storage_btn = self.make_small_button("< Storage", DARK)
+        storage_btn.bind(on_press=self.build_storage_view)
+        buttons.add_widget(storage_btn)
+
+        root.add_widget(buttons)
+
+        scroll = ScrollView(size_hint=(1, 0.72), do_scroll_x=False, do_scroll_y=True)
+        path_list = GridLayout(cols=1, spacing=spacing_size(), size_hint_y=None)
+        path_list.bind(minimum_height=path_list.setter("height"))
+
+        for line in self.detect_storage_paths():
+            btn = Button(
+                text=line,
+                font_size=text_font(),
+                size_hint_y=None,
+                height=row_height(),
+                halign="left",
+                valign="middle",
+                background_normal="",
+                background_color=DARK,
+                color=(1, 1, 1, 1)
+            )
+            btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1])))
+            path_list.add_widget(btn)
+
+        scroll.add_widget(path_list)
+        root.add_widget(scroll)
 
         self.add_widget(root)
 
