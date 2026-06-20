@@ -1,3 +1,155 @@
 2026-06-20 17:57:58,021 | INFO | Settings: log cleared
 2026-06-20 17:57:59,862 | INFO | EventNotifier FINAL: stopped
 2026-06-20 17:57:59,862 | INFO | AlarmNotifier: stopped
+2026-06-20 18:27:16,790 | INFO | M12 OS 0.4.28 started
+2026-06-20 18:27:16,846 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 18:27:16,847 | INFO | EventNotifier FINAL: started
+2026-06-20 18:27:16,847 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 18:27:16,847 | INFO | AlarmNotifier: started
+2026-06-20 18:27:19,385 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 18:27:20,978 | INFO | Home: open music
+2026-06-20 18:27:21,409 | INFO | Music: opened
+2026-06-20 18:27:21,412 | INFO | Music: scanning /Users/aryaboy/Music
+2026-06-20 18:27:21,501 | INFO | Music: scan folder done /Users/aryaboy/Music total=994 supported=797
+2026-06-20 18:27:21,501 | INFO | Music: scanning /Users/aryaboy/Movies
+2026-06-20 18:27:21,502 | INFO | Music: scan folder done /Users/aryaboy/Movies total=53 supported=4
+2026-06-20 18:27:21,503 | INFO | Music: scanning /Users/aryaboy/Downloads
+2026-06-20 18:27:21,514 | INFO | Music: scan folder done /Users/aryaboy/Downloads total=535 supported=0
+2026-06-20 18:27:21,514 | INFO | Music: scanning /Users/aryaboy/Desktop
+2026-06-20 18:27:21,594 | INFO | Music: scan folder done /Users/aryaboy/Desktop total=6161 supported=2
+2026-06-20 18:27:21,603 | INFO | MEDIA FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/examples/libs/ffmpeg/birds.mp4
+2026-06-20 18:27:21,603 | INFO | MEDIA FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/tests/src/test_assets/test_video_birds.mp4
+2026-06-20 18:27:21,603 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-20 18:27:21,603 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-20 18:27:21,603 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Русская Лолита - полнометражный русский порно фильм (Клубничка).mp4
+2026-06-20 18:27:21,603 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Русская нимфетка_ Искушение.mp4
+2026-06-20 18:27:21,603 | INFO | MEDIA FOUND: /Users/aryaboy/Music/02 Stayin' Alive.m4a
+2026-06-20 18:27:21,603 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-20 18:27:21,603 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Beautiful Celtic Music • Relaxing Fantasy Music for Relaxation & Meditation, Peaceful Music.mp3
+2026-06-20 18:27:21,603 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Best French Songs 2021 Playlist   Playlist French Songs 2021  Best French Music 2021.mp3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/DPM 0001.mp3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/DPM 0002.mp3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/FV0001.MP3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/FV0002.MP3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/-M- - MOJO (clip officiel).mp3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/05 Equation - Camille (From The Little Prince).mp3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/4 mots sur un piano.mp3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amine - Señorita - Clip Officiel.mp3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amir - J'ai cherché (Clip officiel).mp3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Aude Gagnier -  J'ai Dans Le Coeur (Somewhere Only We Know_French) Le Petit Prince 2015.mp3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Claque-le (Clip officiel).mp3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BAGARRE - Mourir au club (Clip Officiel).mp3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Ris pas (Clip officiel).mp3
+2026-06-20 18:27:21,604 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BB BRUNES - Aficionado [Clip Officiel].mp3
+2026-06-20 18:27:21,604 | INFO | Music scan result: storage=Internal internal_root= external_root= total=7743 supported=803 unique=803 unsupported=6940 errors=0
+2026-06-20 18:27:21,604 | INFO | ===== SELECTED STORAGE: Internal =====
+2026-06-20 18:27:21,604 | INFO | ===== AUDIO FOLDERS =====
+2026-06-20 18:27:21,604 | INFO | AUDIO: /Users/aryaboy/Music
+2026-06-20 18:27:21,604 | INFO | ===== VIDEO FOLDERS =====
+2026-06-20 18:27:21,604 | INFO | VIDEO: /Users/aryaboy/Movies
+2026-06-20 18:27:21,604 | INFO | ===== DOWNLOAD FOLDERS =====
+2026-06-20 18:27:21,604 | INFO | DOWNLOAD: /Users/aryaboy/Downloads
+2026-06-20 18:27:21,605 | INFO | MEDIA FOUND COUNT: 803
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/examples/libs/ffmpeg/birds.mp4
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/tests/src/test_assets/test_video_birds.mp4
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Movies/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Movies/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Movies/Русская Лолита - полнометражный русский порно фильм (Клубничка).mp4
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Movies/Русская нимфетка_ Искушение.mp4
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/02 Stayin' Alive.m4a
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/Beautiful Celtic Music • Relaxing Fantasy Music for Relaxation & Meditation, Peaceful Music.mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/Best French Songs 2021 Playlist   Playlist French Songs 2021  Best French Music 2021.mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/DPM 0001.mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/DPM 0002.mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/FV0001.MP3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/FV0002.MP3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/-M- - MOJO (clip officiel).mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/05 Equation - Camille (From The Little Prince).mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/4 mots sur un piano.mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amine - Señorita - Clip Officiel.mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amir - J'ai cherché (Clip officiel).mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Aude Gagnier -  J'ai Dans Le Coeur (Somewhere Only We Know_French) Le Petit Prince 2015.mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Claque-le (Clip officiel).mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BAGARRE - Mourir au club (Clip Officiel).mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Ris pas (Clip officiel).mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BB BRUNES - Aficionado [Clip Officiel].mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BB BRUNES - Dis-Moi [Clip Officiel].mp3
+2026-06-20 18:27:21,605 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Ben L'Oncle Soul - Etre Un Homme Comme Vous.mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Ben L'Oncle Soul - Petite Soeur.mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Ben L'Oncle Soul - Soulman (Official Video).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bigflo & Oli - Gangsta.mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Brigitte - A bouche que veux-tu (Clip officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Brigitte - Hier encore (Clip officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Camélia Jordana - Moi c'est (Clip officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Camille - Suis-moi (Le Petit Prince) (Clip Officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Canardo « M'en Aller » feat. Tal (Clip officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Casseurs Flowters - 06h16 - Des histoires à raconter.mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Casseurs Flowters - Inachevés [Clip officiel].mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Cats on Trees, Calogero - Jimmy.mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/cendrillon-Téléphone.mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Christine and the Queens - Saint Claude (Clip Officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Christophe Maé - Il est où le bonheur (Clip officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Christophe Maé - Je Me Lâche (Clip Officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Christophe Maé - Un Peu De Blues (Clip Officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Coeur de Pirate & Julien Doré - Pour un infidèle (clip officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Coeur de pirate - Adieu (clip officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Cookie Dingler - Femme Liberee.mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Corneille - Des Pères, des Hommes et des Frères (feat. La Fouine).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Corneille- Parce qu'on vient de loin.mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Diam's - Coeur De Bombe (Clip officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Diam's - Peter Pan (Clip officiel).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Dr. Beriz - A force (Audio).mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Elle a les yeux revolvers.mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/FAUVE ≠ BLIZZARD.mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/FAUVE ≠ HAUT LES CŒURS.mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/FAUVE ≠ INFIRMIÈRE.mp3
+2026-06-20 18:27:21,606 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Flavel & Neto - Tchu Tcha Tcha (version française) (Clip officiel).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/France Gall - Ella, elle l'a (Clip officiel).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/France Gall - Poupée de cire, poupée de son (1965) Stéréo HQ.mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Fréro Delavega - Le Chant Des Sirènes.mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Gad elmaleh Petit Oiseau   YouTube.mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Grand Corps Malade - Roméo kiffe Juliette (Clip Officiel).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Guillaume Grand - Toi et moi.mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/I Woks Sound - Toi qui me juges.mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Iam - Petit Frère.mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Indila - Dernière Danse (Clip Officiel).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Indila - Tourner Dans Le Vide.mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Indochine l'aventurier parole.mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Initials BB - Serge Gainsbourg.mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Jenifer - Sur le fil (clip officiel).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/JoeyStarr - Métèque (Clip officiel).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Josef Salvat - Open Season (Une Autre Saison) [Audio].mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Josef Salvat - Paradise (Le Paradis Nous Trouvera) [Audio].mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Joyce Jonathan - Le bonheur.mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Julien Doré - Chou wasabi (Clip officiel) ft. Micky Green.mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Julien Doré - Les limites (Julien danse  Patricia chante) (Clip officiel).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Julien Doré - Paris-Seychelles (Clip officiel).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Kamelancien - Le charme de la tristesse ( Clip Officiel ).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Kendji Girac - Andalouse (Clip Officiel).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Kendji Girac - Color Gitano (Official Video).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Kendji Girac - Conmigo (Clip Officiel).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Kendji Girac - Cool.mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Khaled - C'est la vie (Clip officiel).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/KIDS UNITED - On Ecrit Sur Les Murs (Clip Officiel).mp3
+2026-06-20 18:27:21,607 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Kyo - Dernière danse (Clip officiel).mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Kyo - Le Graal (Clip officiel).mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/L.E.J - La dalle (Clip Offiicel).mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/L.E.J - SEINE SAINT-DENIS STYLE (NTM & Grand Corps Malade Cover).mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/La Femme - Sur La Planche 2013.mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Lefa - Quelques minutes (Clip officiel).mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Les Choristes - Les choristes.mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Les mots Bleus interprété par Alain Bashung.mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Louane - Avenir (clip officiel).mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Louane - Maman.mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Louane - Nos Secrets (Clip Officiel).mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Louise Attaque - Anomalie (Clip Officiel).mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Louise Attaque - Du grand banditisme (Clip Officiel).mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Luke - Quelque part en France (Audio + paroles).mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Luke - Quelque part en France (Audio).mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/M - Onde Sensuelle (.).mp3
+2026-06-20 18:27:21,608 | INFO | FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/M - Qui De Nous Deux.mp3
+2026-06-20 18:27:29,727 | INFO | EventNotifier FINAL: stopped
+2026-06-20 18:27:29,728 | INFO | AlarmNotifier: stopped

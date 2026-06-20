@@ -1,5 +1,5 @@
 APP_NAME = "M12 OS"
-VERSION = "0.4.28"
+VERSION = "0.4.29"
 
 
 def version_text():

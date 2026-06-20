@@ -693,7 +693,7 @@ class MusicScreen(Screen):
 
                     full_path = Path(root) / name
 
-                    if full_path.exists() and full_path.is_file() and self.is_supported_on_this_platform(full_path):
+                    if self.is_supported_on_this_platform(full_path):
                         self.last_scan_supported += 1
                         found.append(full_path)
                     else:
