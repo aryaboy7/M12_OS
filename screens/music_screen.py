@@ -19,7 +19,6 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.slider import Slider
 from kivy.uix.textinput import TextInput
-from kivy.uix.popup import Popup
 
 try:
     from jnius import autoclass
@@ -47,7 +46,6 @@ DATA_MUSIC_DIR = BASE_DIR / "data" / "music"
 DATA_MUSIC_DIR.mkdir(parents=True, exist_ok=True)
 FAVORITES_FILE = DATA_MUSIC_DIR / "favorites.json"
 PLAYER_STATUS_FILE = DATA_MUSIC_DIR / "player_status.json"
-MEDIA_CONFIG_FILE = DATA_MUSIC_DIR / "media_config.json"
 
 if platform == "macosx":
     MEDIA_FOLDERS = {
@@ -58,7 +56,9 @@ if platform == "macosx":
     }
 elif platform == "android":
     MEDIA_FOLDERS = {
-        "Selected": Path("/storage/emulated/0/Music"),
+        "Music": Path("/storage/emulated/0/Music"),
+        "Video": Path("/storage/emulated/0/Movies"),
+        "Downloads": Path("/storage/emulated/0/Download"),
     }
 else:
     MEDIA_FOLDERS = {
@@ -149,7 +149,7 @@ class MusicScreen(Screen):
             except Exception:
                 pass
 
-        self.active_folder = "All"
+        self.active_folder = "Music" if platform == "android" else "All"
         self.search_text = ""
         self.is_playing = False
         self.shuffle_on = False
@@ -159,8 +159,6 @@ class MusicScreen(Screen):
         self.last_scan_supported = 0
         self.last_scan_unsupported = 0
         self.last_scan_errors = 0
-
-        self.update_android_media_folder()
 
         root = BoxLayout(
             orientation="vertical",
@@ -193,7 +191,13 @@ class MusicScreen(Screen):
         )
 
         self.folder_buttons = {}
-        for name in ["All", "Favorites"] + list(MEDIA_FOLDERS.keys()):
+        folder_names = (
+            ["Music", "Video", "Downloads", "Favorites"]
+            if platform == "android"
+            else ["All", "Favorites"] + list(MEDIA_FOLDERS.keys())
+        )
+
+        for name in folder_names:
             btn = Button(
                 text=name,
                 font_size=max(14, int(button_font() * 0.72)),
@@ -238,47 +242,6 @@ class MusicScreen(Screen):
         search_row.add_widget(clear_search_btn)
 
         root.add_widget(search_row)
-
-        if platform == "android":
-            path_row = BoxLayout(
-                orientation="horizontal",
-                spacing=spacing_size(),
-                size_hint=(1, None),
-                height=self.search_height(),
-            )
-
-            self.path_input = TextInput(
-                hint_text="/storage/emulated/0/Music",
-                text=str(self.get_android_media_folder()),
-                font_size=max(14, int(input_font() * 0.58)),
-                multiline=False,
-                use_bubble=False,
-                use_handles=False,
-                size_hint=(0.58, 1),
-            )
-            path_row.add_widget(self.path_input)
-
-            set_folder_btn = Button(
-                text="Set Folder",
-                font_size=max(14, int(button_font() * 0.60)),
-                background_normal="",
-                background_color=(0.10, 0.45, 0.20, 1),
-                size_hint=(0.27, 1),
-            )
-            set_folder_btn.bind(on_press=self.open_folder_picker)
-            path_row.add_widget(set_folder_btn)
-
-            reset_folder_btn = Button(
-                text="Reset",
-                font_size=max(14, int(button_font() * 0.60)),
-                background_normal="",
-                background_color=(0.35, 0.12, 0.12, 1),
-                size_hint=(0.15, 1),
-            )
-            reset_folder_btn.bind(on_press=self.reset_android_folder)
-            path_row.add_widget(reset_folder_btn)
-
-            root.add_widget(path_row)
 
         self.song_scroll = ScrollView(
             size_hint=(1, 0.58),
@@ -436,242 +399,16 @@ class MusicScreen(Screen):
         return max(34, int(input_height() * 0.62))
 
     def folder_text(self):
-        folders = "\n".join(f"{name}: {path}" for name, path in MEDIA_FOLDERS.items())
         if platform == "android":
             return (
-                f"Android audio folder:\n{folders}\n"
-                "Enter folder path above and press Set Folder."
+                "Android folders:\n"
+                "Music: /storage/emulated/0/Music\n"
+                "Video: /storage/emulated/0/Movies\n"
+                "Downloads: /storage/emulated/0/Download"
             )
 
+        folders = "\n".join(f"{name}: {path}" for name, path in MEDIA_FOLDERS.items())
         return f"Media folders:\n{folders}"
-
-    def load_media_config(self):
-        try:
-            if MEDIA_CONFIG_FILE.exists():
-                data = json.loads(MEDIA_CONFIG_FILE.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    return data
-        except Exception as e:
-            log.error(f"Music: media config load failed {e}")
-
-        return {}
-
-    def save_media_config(self, folder_path):
-        try:
-            MEDIA_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-            MEDIA_CONFIG_FILE.write_text(
-                json.dumps({"android_media_folder": str(folder_path)}, indent=4),
-                encoding="utf-8",
-            )
-        except Exception as e:
-            log.error(f"Music: media config save failed {e}")
-
-    def get_android_media_folder(self):
-        data = self.load_media_config()
-        folder = str(data.get("android_media_folder", "")).strip()
-        return Path(folder) if folder else Path("/storage/emulated/0/Music")
-
-    def update_android_media_folder(self):
-        if platform != "android":
-            return
-
-        folder = self.get_android_media_folder()
-        MEDIA_FOLDERS.clear()
-        MEDIA_FOLDERS["Selected"] = folder
-
-        if hasattr(self, "path_input"):
-            self.path_input.text = str(folder)
-
-    def set_android_folder(self, instance):
-        if platform != "android":
-            self.status_label.text = "Media folder selection is for Android."
-            return
-
-        folder_text = self.path_input.text.strip()
-
-        if not folder_text:
-            self.status_label.text = "Enter folder path first."
-            return
-
-        folder = Path(folder_text)
-
-        if not folder.exists():
-            self.status_label.text = f"Folder not found:\n{folder}"
-            return
-
-        if not folder.is_dir():
-            self.status_label.text = f"Not a folder:\n{folder}"
-            return
-
-        self.save_media_config(folder)
-        self.update_android_media_folder()
-        self.active_folder = "Selected"
-        self.update_folder_button_colors()
-        self.refresh_media(None)
-
-    def reset_android_folder(self, instance):
-        if platform != "android":
-            return
-
-        self.save_media_config("/storage/emulated/0/Music")
-        self.update_android_media_folder()
-        self.active_folder = "Selected"
-        self.update_folder_button_colors()
-        self.refresh_media(None)
-
-    def open_folder_picker(self, instance):
-        if platform != "android":
-            self.set_android_folder(instance)
-            return
-
-        start_path = Path(self.path_input.text.strip() or "/storage/emulated/0/Music")
-
-        if not start_path.exists():
-            start_path = Path("/storage/emulated/0")
-
-        self.folder_current_path = start_path
-
-        root = BoxLayout(
-            orientation="vertical",
-            spacing=spacing_size(),
-            padding=padding_size(),
-        )
-
-        self.folder_title = Label(
-            text=str(self.folder_current_path),
-            font_size=status_font(),
-            size_hint=(1, 0.10),
-            halign="center",
-            valign="middle",
-        )
-        self.folder_title.bind(size=lambda inst, val: setattr(inst, "text_size", val))
-        root.add_widget(self.folder_title)
-
-        scroll = ScrollView(size_hint=(1, 0.68), do_scroll_x=False, do_scroll_y=True)
-
-        self.folder_list = GridLayout(cols=1, spacing=spacing_size(), size_hint_y=None)
-        self.folder_list.bind(minimum_height=self.folder_list.setter("height"))
-
-        scroll.add_widget(self.folder_list)
-        root.add_widget(scroll)
-
-        row = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.16))
-
-        up_btn = Button(
-            text="Up",
-            font_size=max(14, int(button_font() * 0.70)),
-            background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1),
-        )
-        up_btn.bind(on_press=self.folder_go_up)
-        row.add_widget(up_btn)
-
-        select_btn = Button(
-            text="Select",
-            font_size=max(14, int(button_font() * 0.70)),
-            background_normal="",
-            background_color=(0.10, 0.45, 0.20, 1),
-        )
-        select_btn.bind(on_press=self.select_current_folder)
-        row.add_widget(select_btn)
-
-        cancel_btn = Button(
-            text="Cancel",
-            font_size=max(14, int(button_font() * 0.70)),
-            background_normal="",
-            background_color=(0.35, 0.12, 0.12, 1),
-        )
-        cancel_btn.bind(on_press=self.close_folder_popup)
-        row.add_widget(cancel_btn)
-
-        root.add_widget(row)
-
-        self.folder_popup = Popup(
-            title="Select Music Folder",
-            content=root,
-            size_hint=(0.95, 0.90),
-            auto_dismiss=False,
-        )
-        self.folder_popup.open()
-        self.refresh_folder_list()
-
-    def refresh_folder_list(self):
-        self.folder_list.clear_widgets()
-
-        try:
-            folders = []
-            for item in self.folder_current_path.iterdir():
-                try:
-                    if item.is_dir() and not item.name.startswith("."):
-                        folders.append(item)
-                except Exception:
-                    pass
-
-            folders = sorted(folders, key=lambda p: p.name.lower())
-
-            if not folders:
-                self.folder_list.add_widget(Label(
-                    text="No folders here.",
-                    font_size=text_font(),
-                    size_hint_y=None,
-                    height=self.media_row_height() * 2,
-                ))
-                return
-
-            for folder in folders:
-                btn = Button(
-                    text=folder.name,
-                    font_size=max(14, int(text_font() * 0.86)),
-                    size_hint_y=None,
-                    height=max(self.media_row_height(), int(button_height() * 0.70)),
-                    background_normal="",
-                    background_color=(0.10, 0.15, 0.25, 1),
-                    halign="left",
-                    valign="middle",
-                )
-                btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1] - 4)))
-                btn.bind(on_press=lambda inst, p=folder: self.open_folder_in_picker(p))
-                self.folder_list.add_widget(btn)
-
-        except Exception as e:
-            self.folder_list.add_widget(Label(
-                text=f"Cannot read folder:\n{e}",
-                font_size=text_font(),
-                size_hint_y=None,
-                height=self.media_row_height() * 2,
-            ))
-
-    def open_folder_in_picker(self, folder):
-        self.folder_current_path = Path(folder)
-        self.folder_title.text = str(self.folder_current_path)
-        self.refresh_folder_list()
-
-    def folder_go_up(self, instance):
-        try:
-            parent = self.folder_current_path.parent
-            if str(parent).startswith("/storage"):
-                self.folder_current_path = parent
-                self.folder_title.text = str(self.folder_current_path)
-                self.refresh_folder_list()
-        except Exception as e:
-            self.status_label.text = str(e)
-
-    def select_current_folder(self, instance):
-        if not self.folder_current_path:
-            return
-
-        self.path_input.text = str(self.folder_current_path)
-        self.set_android_folder(None)
-        self.close_folder_popup(None)
-
-    def close_folder_popup(self, instance):
-        try:
-            if self.folder_popup:
-                self.folder_popup.dismiss()
-        except Exception:
-            pass
-
-        self.folder_popup = None
 
     def on_app_stop(self, *args):
         self.stop_media(None)
@@ -695,7 +432,6 @@ class MusicScreen(Screen):
 
     def on_enter(self):
         log.info("Music: opened")
-        self.update_android_media_folder()
         self.load_favorites()
         self.refresh_media(None)
         Clock.unschedule(self.check_playback_finished)
@@ -877,18 +613,39 @@ class MusicScreen(Screen):
 
         elif self.active_folder != "All":
             folder = MEDIA_FOLDERS.get(self.active_folder)
+
             if folder:
                 try:
                     folder_resolved = folder.resolve()
                     filtered = []
+
                     for p in files:
                         try:
                             p_resolved = p.resolve()
-                            if folder_resolved in p_resolved.parents or p_resolved == folder_resolved:
-                                filtered.append(p)
+                            in_folder = folder_resolved in p_resolved.parents or p_resolved == folder_resolved
+
+                            if not in_folder:
+                                continue
+
+                            # Folder rules:
+                            # Music = audio only.
+                            # Video/Movies = video only.
+                            # Downloads/Desktop/All/Favorites = mixed media.
+                            if self.active_folder in ("Music",):
+                                if not self.is_audio_file(p):
+                                    continue
+
+                            if self.active_folder in ("Video", "Movies"):
+                                if not self.is_video_file(p):
+                                    continue
+
+                            filtered.append(p)
+
                         except Exception:
                             pass
+
                     files = filtered
+
                 except Exception:
                     pass
 
@@ -902,6 +659,7 @@ class MusicScreen(Screen):
         self.visible_files = files
         self.rebuild_file_list()
 
+
     def rebuild_file_list(self):
         self.file_list.clear_widgets()
         self.file_buttons = {}
@@ -909,8 +667,8 @@ class MusicScreen(Screen):
         if not self.visible_files:
             self.file_list.add_widget(Label(
                 text=(
-                    "No media files for this view.\n\n"
-                    "Try All, Refresh, or clear Search."
+                    f"No files in {self.active_folder}.\n\n"
+                    "Try Rescan or clear Search."
                 ),
                 font_size=text_font(),
                 size_hint_y=None,
@@ -1458,15 +1216,6 @@ class MusicScreen(Screen):
                 self.status_label.text = self.folder_text()
         except Exception as e:
             self.status_label.text = f"Open folder failed:\n{e}"
-
-    def save_favorites(self):
-        try:
-            FAVORITES_FILE.write_text(
-                json.dumps(sorted(self.favorite_paths), indent=4),
-                encoding="utf-8",
-            )
-        except Exception as e:
-            log.error(f"Music: favorites save failed {e}")
 
     def go_back(self, instance):
         if self.manager:

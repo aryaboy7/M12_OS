@@ -1804,3 +1804,260 @@
 2026-06-19 23:23:15,469 | INFO | Music scan result: total=7721 supported=803 unique=803 unsupported=6918 errors=0
 2026-06-19 23:23:19,216 | INFO | EventNotifier FINAL: stopped
 2026-06-19 23:23:19,217 | INFO | AlarmNotifier: stopped
+2026-06-19 23:41:42,755 | INFO | M12 OS 0.4.22 started
+2026-06-19 23:41:42,811 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-19 23:41:42,812 | INFO | EventNotifier FINAL: started
+2026-06-19 23:41:42,812 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-19 23:41:42,812 | INFO | AlarmNotifier: started
+2026-06-19 23:41:44,732 | INFO | Home: open music
+2026-06-19 23:41:45,155 | INFO | Music: opened
+2026-06-19 23:41:45,156 | INFO | Music: scanning /Users/aryaboy/Music
+2026-06-19 23:41:45,198 | INFO | Music: scanning /Users/aryaboy/Movies
+2026-06-19 23:41:45,200 | INFO | Music: scanning /Users/aryaboy/Downloads
+2026-06-19 23:41:45,213 | INFO | Music: scanning /Users/aryaboy/Desktop
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/examples/libs/ffmpeg/birds.mp4
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/tests/src/test_assets/test_video_birds.mp4
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Русская Лолита - полнометражный русский порно фильм (Клубничка).mp4
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Русская нимфетка_ Искушение.mp4
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/02 Stayin' Alive.m4a
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Beautiful Celtic Music • Relaxing Fantasy Music for Relaxation & Meditation, Peaceful Music.mp3
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Best French Songs 2021 Playlist   Playlist French Songs 2021  Best French Music 2021.mp3
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/DPM 0001.mp3
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/DPM 0002.mp3
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/FV0001.MP3
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/FV0002.MP3
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/-M- - MOJO (clip officiel).mp3
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/05 Equation - Camille (From The Little Prince).mp3
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/4 mots sur un piano.mp3
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amine - Señorita - Clip Officiel.mp3
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amir - J'ai cherché (Clip officiel).mp3
+2026-06-19 23:41:45,326 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Aude Gagnier -  J'ai Dans Le Coeur (Somewhere Only We Know_French) Le Petit Prince 2015.mp3
+2026-06-19 23:41:45,327 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Claque-le (Clip officiel).mp3
+2026-06-19 23:41:45,327 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BAGARRE - Mourir au club (Clip Officiel).mp3
+2026-06-19 23:41:45,327 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Ris pas (Clip officiel).mp3
+2026-06-19 23:41:45,327 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BB BRUNES - Aficionado [Clip Officiel].mp3
+2026-06-19 23:41:45,327 | INFO | Music scan result: total=7722 supported=803 unique=803 unsupported=6919 errors=0
+2026-06-19 23:41:47,404 | INFO | EventNotifier FINAL: stopped
+2026-06-19 23:41:47,404 | INFO | AlarmNotifier: stopped
+2026-06-20 00:43:02,404 | INFO | M12 OS 0.4.22 started
+2026-06-20 00:43:02,461 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 00:43:02,462 | INFO | EventNotifier FINAL: started
+2026-06-20 00:43:02,462 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 00:43:02,462 | INFO | AlarmNotifier: started
+2026-06-20 00:43:05,010 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 00:43:08,199 | INFO | EventNotifier FINAL: stopped
+2026-06-20 00:43:08,200 | INFO | AlarmNotifier: stopped
+2026-06-20 09:26:25,274 | INFO | M12 OS 0.4.22 started
+2026-06-20 09:26:25,330 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 09:26:25,331 | INFO | EventNotifier FINAL: started
+2026-06-20 09:26:25,331 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 09:26:25,331 | INFO | AlarmNotifier: started
+2026-06-20 09:26:27,865 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 09:26:28,714 | INFO | EventNotifier FINAL: stopped
+2026-06-20 09:26:28,714 | INFO | AlarmNotifier: stopped
+2026-06-20 09:34:43,000 | INFO | M12 OS 0.4.22 started
+2026-06-20 09:34:43,054 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 09:34:43,054 | INFO | EventNotifier FINAL: started
+2026-06-20 09:34:43,054 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 09:34:43,055 | INFO | AlarmNotifier: started
+2026-06-20 09:34:45,695 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 09:34:46,952 | INFO | EventNotifier FINAL: stopped
+2026-06-20 09:34:46,952 | INFO | AlarmNotifier: stopped
+2026-06-20 09:43:00,948 | INFO | M12 OS 0.4.22 started
+2026-06-20 09:43:01,005 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 09:43:01,006 | INFO | EventNotifier FINAL: started
+2026-06-20 09:43:01,006 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 09:43:01,006 | INFO | AlarmNotifier: started
+2026-06-20 09:43:03,559 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 09:43:04,357 | INFO | EventNotifier FINAL: stopped
+2026-06-20 09:43:04,358 | INFO | AlarmNotifier: stopped
+2026-06-20 09:50:58,153 | INFO | M12 OS 0.4.22 started
+2026-06-20 09:50:58,208 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 09:50:58,209 | INFO | EventNotifier FINAL: started
+2026-06-20 09:50:58,209 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 09:50:58,209 | INFO | AlarmNotifier: started
+2026-06-20 09:51:00,903 | INFO | EventNotifier FINAL: stopped
+2026-06-20 09:51:00,903 | INFO | AlarmNotifier: stopped
+2026-06-20 10:01:29,390 | INFO | M12 OS 0.4.22 started
+2026-06-20 10:01:29,445 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 10:01:29,445 | INFO | EventNotifier FINAL: started
+2026-06-20 10:01:29,446 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 10:01:29,446 | INFO | AlarmNotifier: started
+2026-06-20 10:01:31,995 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 10:01:33,977 | INFO | EventNotifier FINAL: stopped
+2026-06-20 10:01:33,977 | INFO | AlarmNotifier: stopped
+2026-06-20 10:23:14,856 | INFO | M12 OS 0.4.22 started
+2026-06-20 10:23:14,912 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 10:23:14,913 | INFO | EventNotifier FINAL: started
+2026-06-20 10:23:14,913 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 10:23:14,913 | INFO | AlarmNotifier: started
+2026-06-20 10:23:17,455 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 10:23:18,970 | INFO | EventNotifier FINAL: stopped
+2026-06-20 10:23:18,971 | INFO | AlarmNotifier: stopped
+2026-06-20 10:41:26,312 | INFO | M12 OS 0.4.22 started
+2026-06-20 10:41:26,364 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 10:41:26,364 | INFO | EventNotifier FINAL: started
+2026-06-20 10:41:26,364 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 10:41:26,365 | INFO | AlarmNotifier: started
+2026-06-20 10:41:29,019 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 10:41:30,355 | INFO | EventNotifier FINAL: stopped
+2026-06-20 10:41:30,355 | INFO | AlarmNotifier: stopped
+2026-06-20 10:50:23,321 | INFO | M12 OS 0.4.22 started
+2026-06-20 10:50:23,382 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 10:50:23,383 | INFO | EventNotifier FINAL: started
+2026-06-20 10:50:23,383 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 10:50:23,383 | INFO | AlarmNotifier: started
+2026-06-20 10:50:25,892 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 10:50:27,766 | INFO | Home: open music
+2026-06-20 10:50:28,187 | INFO | Music: opened
+2026-06-20 10:50:28,188 | INFO | Music: scanning /Users/aryaboy/Music
+2026-06-20 10:50:28,264 | INFO | Music: scanning /Users/aryaboy/Movies
+2026-06-20 10:50:28,276 | INFO | Music: scanning /Users/aryaboy/Downloads
+2026-06-20 10:50:28,298 | INFO | Music: scanning /Users/aryaboy/Desktop
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/examples/libs/ffmpeg/birds.mp4
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/tests/src/test_assets/test_video_birds.mp4
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Русская Лолита - полнометражный русский порно фильм (Клубничка).mp4
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Русская нимфетка_ Искушение.mp4
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Music/02 Stayin' Alive.m4a
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Beautiful Celtic Music • Relaxing Fantasy Music for Relaxation & Meditation, Peaceful Music.mp3
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Best French Songs 2021 Playlist   Playlist French Songs 2021  Best French Music 2021.mp3
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Music/DPM 0001.mp3
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Music/DPM 0002.mp3
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Music/FV0001.MP3
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Music/FV0002.MP3
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/-M- - MOJO (clip officiel).mp3
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/05 Equation - Camille (From The Little Prince).mp3
+2026-06-20 10:50:28,422 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/4 mots sur un piano.mp3
+2026-06-20 10:50:28,423 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amine - Señorita - Clip Officiel.mp3
+2026-06-20 10:50:28,423 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amir - J'ai cherché (Clip officiel).mp3
+2026-06-20 10:50:28,423 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Aude Gagnier -  J'ai Dans Le Coeur (Somewhere Only We Know_French) Le Petit Prince 2015.mp3
+2026-06-20 10:50:28,423 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Claque-le (Clip officiel).mp3
+2026-06-20 10:50:28,423 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BAGARRE - Mourir au club (Clip Officiel).mp3
+2026-06-20 10:50:28,423 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Ris pas (Clip officiel).mp3
+2026-06-20 10:50:28,423 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BB BRUNES - Aficionado [Clip Officiel].mp3
+2026-06-20 10:50:28,423 | INFO | Music scan result: total=7732 supported=803 unique=803 unsupported=6929 errors=0
+2026-06-20 10:53:54,683 | INFO | Music: afplay Ben L'Oncle Soul - Soulman (Official Video).mp3
+2026-06-20 10:54:08,173 | INFO | Music: afplay Canardo « M'en Aller » feat. Tal (Clip officiel).mp3
+2026-06-20 10:54:14,065 | INFO | Music: afplay FAUVE ≠ HAUT LES CŒURS.mp3
+2026-06-20 10:54:25,807 | INFO | Music: afplay Julien Doré - Paris-Seychelles (Clip officiel).mp3
+2026-06-20 10:54:33,458 | INFO | Music: afplay Louane - Avenir (clip officiel).mp3
+2026-06-20 10:54:44,655 | INFO | Music: afplay Mylène Farmer feat. Sting - Stolen Car (Clip Officiel HD).mp3
+2026-06-20 10:54:51,129 | INFO | Music: afplay Stromae - quand c'est  (Clip Officiel).mp3
+2026-06-20 10:54:57,570 | INFO | Music: afplay Stromae - ta fête (Clip Officiel).mp3
+2026-06-20 10:55:02,100 | INFO | Music: afplay Stromae - Tous Les Mêmes (Clip Officiel).mp3
+2026-06-20 10:55:10,757 | INFO | Music: afplay SUPERBUS - Apprends-moi (clip officiel).mp3
+2026-06-20 10:55:14,290 | INFO | Music: afplay Téléphone -  Ça (C'est Vraiment Toi).mp3
+2026-06-20 10:55:33,060 | INFO | Music: afplay Téléphone - New york avec toi.mp3
+2026-06-20 10:55:40,807 | INFO | Music: afplay Vanessa Paradis - Divine Idylle.mp3
+2026-06-20 10:55:46,600 | INFO | Music: afplay Chantal Chamberland - Crazy 2.mp3
+2026-06-20 10:55:53,396 | INFO | Music: afplay Chantal Chamberland - Crazy.mp3
+2026-06-20 10:55:58,540 | INFO | Music: afplay Chantal Chamberland - Don´t Explain 2.mp3
+2026-06-20 10:56:05,368 | INFO | Music: afplay Dream a Little Dream - Pink Martini ft. The von Trapps  Official Music Video.mp3
+2026-06-20 10:56:11,473 | INFO | Music: afplay Marty Balin - Hearts.mp3
+2026-06-20 10:59:21,843 | INFO | EventNotifier FINAL: stopped
+2026-06-20 10:59:21,844 | INFO | AlarmNotifier: stopped
+2026-06-20 11:34:59,135 | INFO | M12 OS 0.4.22 started
+2026-06-20 11:34:59,189 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 11:34:59,190 | INFO | EventNotifier FINAL: started
+2026-06-20 11:34:59,190 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 11:34:59,190 | INFO | AlarmNotifier: started
+2026-06-20 11:35:01,755 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 11:35:02,054 | INFO | Home: open music
+2026-06-20 11:35:02,480 | INFO | Music: opened
+2026-06-20 11:35:02,481 | INFO | Music: scanning /Users/aryaboy/Music
+2026-06-20 11:35:02,511 | INFO | Music: scanning /Users/aryaboy/Movies
+2026-06-20 11:35:02,512 | INFO | Music: scanning /Users/aryaboy/Downloads
+2026-06-20 11:35:02,522 | INFO | Music: scanning /Users/aryaboy/Desktop
+2026-06-20 11:35:02,608 | INFO | MEDIA FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/examples/libs/ffmpeg/birds.mp4
+2026-06-20 11:35:02,608 | INFO | MEDIA FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/tests/src/test_assets/test_video_birds.mp4
+2026-06-20 11:35:02,608 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-20 11:35:02,608 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-20 11:35:02,608 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Русская Лолита - полнометражный русский порно фильм (Клубничка).mp4
+2026-06-20 11:35:02,608 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Русская нимфетка_ Искушение.mp4
+2026-06-20 11:35:02,608 | INFO | MEDIA FOUND: /Users/aryaboy/Music/02 Stayin' Alive.m4a
+2026-06-20 11:35:02,608 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-20 11:35:02,608 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Beautiful Celtic Music • Relaxing Fantasy Music for Relaxation & Meditation, Peaceful Music.mp3
+2026-06-20 11:35:02,608 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Best French Songs 2021 Playlist   Playlist French Songs 2021  Best French Music 2021.mp3
+2026-06-20 11:35:02,608 | INFO | MEDIA FOUND: /Users/aryaboy/Music/DPM 0001.mp3
+2026-06-20 11:35:02,608 | INFO | MEDIA FOUND: /Users/aryaboy/Music/DPM 0002.mp3
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/FV0001.MP3
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/FV0002.MP3
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/-M- - MOJO (clip officiel).mp3
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/05 Equation - Camille (From The Little Prince).mp3
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/4 mots sur un piano.mp3
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amine - Señorita - Clip Officiel.mp3
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amir - J'ai cherché (Clip officiel).mp3
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Aude Gagnier -  J'ai Dans Le Coeur (Somewhere Only We Know_French) Le Petit Prince 2015.mp3
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Claque-le (Clip officiel).mp3
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BAGARRE - Mourir au club (Clip Officiel).mp3
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Ris pas (Clip officiel).mp3
+2026-06-20 11:35:02,609 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BB BRUNES - Aficionado [Clip Officiel].mp3
+2026-06-20 11:35:02,609 | INFO | Music scan result: total=7732 supported=803 unique=803 unsupported=6929 errors=0
+2026-06-20 11:40:09,734 | INFO | EventNotifier FINAL: stopped
+2026-06-20 11:40:09,734 | INFO | AlarmNotifier: stopped
+2026-06-20 11:40:24,418 | INFO | M12 OS 0.4.22 started
+2026-06-20 11:40:24,469 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 11:40:24,470 | INFO | EventNotifier FINAL: started
+2026-06-20 11:40:24,470 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 11:40:24,470 | INFO | AlarmNotifier: started
+2026-06-20 11:40:27,119 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 11:40:28,319 | INFO | Home: open music
+2026-06-20 11:40:28,738 | INFO | Music: opened
+2026-06-20 11:40:28,740 | INFO | Music: scanning /Users/aryaboy/Music
+2026-06-20 11:40:28,763 | INFO | Music: scanning /Users/aryaboy/Movies
+2026-06-20 11:40:28,765 | INFO | Music: scanning /Users/aryaboy/Downloads
+2026-06-20 11:40:28,774 | INFO | Music: scanning /Users/aryaboy/Desktop
+2026-06-20 11:40:28,859 | INFO | MEDIA FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/examples/libs/ffmpeg/birds.mp4
+2026-06-20 11:40:28,859 | INFO | MEDIA FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/tests/src/test_assets/test_video_birds.mp4
+2026-06-20 11:40:28,859 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-20 11:40:28,859 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Русская Лолита - полнометражный русский порно фильм (Клубничка).mp4
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Русская нимфетка_ Искушение.mp4
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/02 Stayin' Alive.m4a
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Beautiful Celtic Music • Relaxing Fantasy Music for Relaxation & Meditation, Peaceful Music.mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Best French Songs 2021 Playlist   Playlist French Songs 2021  Best French Music 2021.mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/DPM 0001.mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/DPM 0002.mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/FV0001.MP3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/FV0002.MP3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/-M- - MOJO (clip officiel).mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/05 Equation - Camille (From The Little Prince).mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/4 mots sur un piano.mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amine - Señorita - Clip Officiel.mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amir - J'ai cherché (Clip officiel).mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Aude Gagnier -  J'ai Dans Le Coeur (Somewhere Only We Know_French) Le Petit Prince 2015.mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Claque-le (Clip officiel).mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BAGARRE - Mourir au club (Clip Officiel).mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Ris pas (Clip officiel).mp3
+2026-06-20 11:40:28,860 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BB BRUNES - Aficionado [Clip Officiel].mp3
+2026-06-20 11:40:28,860 | INFO | Music scan result: total=7733 supported=803 unique=803 unsupported=6930 errors=0
+2026-06-20 11:40:47,512 | INFO | Music: afplay 02 Stayin' Alive.m4a
+2026-06-20 11:43:38,556 | INFO | EventNotifier FINAL: stopped
+2026-06-20 11:43:38,557 | INFO | AlarmNotifier: stopped
+2026-06-20 12:02:43,388 | INFO | M12 OS 0.4.22 started
+2026-06-20 12:02:43,441 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 12:02:43,441 | INFO | EventNotifier FINAL: started
+2026-06-20 12:02:43,442 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 12:02:43,442 | INFO | AlarmNotifier: started
+2026-06-20 12:02:46,000 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 12:02:48,382 | INFO | EventNotifier FINAL: stopped
+2026-06-20 12:02:48,383 | INFO | AlarmNotifier: stopped
+2026-06-20 12:14:36,723 | INFO | M12 OS 0.4.22 started
+2026-06-20 12:14:36,776 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 12:14:36,776 | INFO | EventNotifier FINAL: started
+2026-06-20 12:14:36,776 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 12:14:36,776 | INFO | AlarmNotifier: started
+2026-06-20 12:14:39,334 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 12:14:40,226 | INFO | EventNotifier FINAL: stopped
+2026-06-20 12:14:40,226 | INFO | AlarmNotifier: stopped

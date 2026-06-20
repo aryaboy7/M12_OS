@@ -1,21 +1,19 @@
-# M12 OS Video Player Screen
+# M12 OS Video Player Screen - Android VideoView double-tap close
 from pathlib import Path
+import time
 
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.utils import platform
 
 from utils.logger import log
 from utils.ui_scale import (
     title_font,
-    button_font,
     text_font,
     status_font,
-    button_height,
     padding_size,
     spacing_size,
 )
@@ -38,24 +36,34 @@ except Exception:
         return func
 
 
-class AndroidVideoBackListener(PythonJavaClass):
-    __javainterfaces__ = ["android/view/View$OnKeyListener"]
+class AndroidDoubleTapListener(PythonJavaClass):
+    __javainterfaces__ = ["android/view/View$OnTouchListener"]
     __javacontext__ = "app"
 
     def __init__(self, callback):
         super().__init__()
         self.callback = callback
+        self.last_tap_time = 0
 
-    @java_method("(Landroid/view/View;ILandroid/view/KeyEvent;)Z")
-    def onKey(self, view, key_code, event):
+    @java_method("(Landroid/view/View;Landroid/view/MotionEvent;)Z")
+    def onTouch(self, view, event):
         try:
-            # Android KEYCODE_BACK = 4, ACTION_UP = 1
-            if int(key_code) == 4 and event.getAction() == 1:
-                self.callback()
-                return True
-        except Exception as e:
-            log.error(f"VideoPlayer: Android back failed {e}")
+            MotionEvent = autoclass("android.view.MotionEvent")
 
+            if event.getAction() == MotionEvent.ACTION_UP:
+                now = int(time.time() * 1000)
+
+                if now - self.last_tap_time < 450:
+                    self.last_tap_time = 0
+                    self.callback()
+                    return True
+
+                self.last_tap_time = now
+
+        except Exception as e:
+            log.error(f"VideoPlayer: double tap failed {e}")
+
+        # Return False so normal VideoView controls still work.
         return False
 
 
@@ -67,7 +75,8 @@ class VideoPlayerScreen(Screen):
         self.return_screen = "music"
         self.video_overlay = None
         self.video_view = None
-        self.back_listener = None
+        self.double_tap_listener = None
+        self.closing = False
 
         root = BoxLayout(
             orientation="vertical",
@@ -79,14 +88,14 @@ class VideoPlayerScreen(Screen):
             text="Video Player",
             font_size=title_font(),
             bold=True,
-            size_hint=(1, 0.16),
+            size_hint=(1, 0.10),
         )
         root.add_widget(self.title_label)
 
         self.info_label = Label(
             text="No video selected",
             font_size=text_font(),
-            size_hint=(1, 0.48),
+            size_hint=(1, 0.60),
             halign="center",
             valign="middle",
         )
@@ -96,23 +105,12 @@ class VideoPlayerScreen(Screen):
         self.status_label = Label(
             text="",
             font_size=status_font(),
-            size_hint=(1, 0.16),
+            size_hint=(1, 0.10),
             halign="center",
             valign="middle",
         )
         self.status_label.bind(size=lambda inst, val: setattr(inst, "text_size", val))
         root.add_widget(self.status_label)
-
-        back_btn = Button(
-            text="< Back to Music",
-            font_size=button_font(),
-            size_hint=(1, None),
-            height=button_height(),
-            background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1),
-        )
-        back_btn.bind(on_press=self.go_back)
-        root.add_widget(back_btn)
 
         self.add_widget(root)
 
@@ -130,6 +128,8 @@ class VideoPlayerScreen(Screen):
         self.status_label.text = "Ready"
 
     def on_enter(self):
+        self.closing = False
+
         if not self.video_path:
             self.status_label.text = "No video selected."
             return
@@ -137,15 +137,14 @@ class VideoPlayerScreen(Screen):
         self.info_label.text = Path(self.video_path).name
 
         if platform == "android":
-            self.status_label.text = "Opening Android video..."
+            self.status_label.text = "Opening video. Double tap video to return."
             self.start_android_video()
-        elif platform == "macosx":
-            self.status_label.text = "Mac video opens from Music screen."
         else:
-            self.status_label.text = "Video playback not available on this platform yet."
+            self.status_label.text = "Video playback for Android only in this version."
 
     def on_leave(self):
-        self.stop_android_video()
+        # Do not aggressively remove native view here; go_back handles it.
+        pass
 
     def on_keyboard(self, window, key, scancode, codepoint, modifiers):
         if self.manager and self.manager.current == self.name:
@@ -156,10 +155,28 @@ class VideoPlayerScreen(Screen):
         return False
 
     def go_back(self, instance):
-        self.stop_android_video()
+        if self.closing:
+            return
+
+        self.closing = True
+        self.status_label.text = "Closing video..."
+
+        if platform == "android":
+            self.close_android_video_safe()
+        else:
+            Clock.schedule_once(self.return_to_music, 0.1)
+
+    def close_from_double_tap(self):
+        Clock.schedule_once(lambda dt: self.go_back(None), 0)
+
+    def return_to_music(self, dt):
+        self.closing = False
 
         if self.manager:
-            self.manager.current = self.return_screen
+            if self.manager.has_screen(self.return_screen):
+                self.manager.current = self.return_screen
+            else:
+                self.manager.current = "music"
 
     @run_on_ui_thread
     def set_landscape(self):
@@ -189,48 +206,15 @@ class VideoPlayerScreen(Screen):
         except Exception as e:
             log.error(f"VideoPlayer: restore orientation failed {e}")
 
-    @run_on_ui_thread
-    def enter_fullscreen(self):
-        if platform != "android" or autoclass is None:
-            return
-
-        try:
-            PythonActivity = autoclass("org.kivy.android.PythonActivity")
-            View = autoclass("android.view.View")
-
-            decor = PythonActivity.mActivity.getWindow().getDecorView()
-            flags = (
-                View.SYSTEM_UI_FLAG_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            )
-            decor.setSystemUiVisibility(flags)
-        except Exception as e:
-            log.error(f"VideoPlayer: enter fullscreen failed {e}")
-
-    @run_on_ui_thread
-    def exit_fullscreen(self):
-        if platform != "android" or autoclass is None:
-            return
-
-        try:
-            PythonActivity = autoclass("org.kivy.android.PythonActivity")
-            decor = PythonActivity.mActivity.getWindow().getDecorView()
-            decor.setSystemUiVisibility(0)
-        except Exception as e:
-            log.error(f"VideoPlayer: exit fullscreen failed {e}")
-
     def start_android_video(self):
+        # Same working approach as before: rotate, then add native VideoView.
         self.set_landscape()
-        Clock.schedule_once(lambda dt: self._start_android_video_after_rotate(), 0.8)
+        Clock.schedule_once(lambda dt: self.open_android_video_overlay(), 0.8)
 
     @run_on_ui_thread
-    def _start_android_video_after_rotate(self):
+    def open_android_video_overlay(self):
         if platform != "android" or autoclass is None:
-            Clock.schedule_once(lambda dt: self._set_status("Android VideoView API not available."), 0)
+            Clock.schedule_once(lambda dt: self.set_status("Android VideoView API not available."), 0)
             return
 
         try:
@@ -244,9 +228,6 @@ class VideoPlayerScreen(Screen):
 
             activity = PythonActivity.mActivity
 
-            self._remove_video_overlay_only()
-            self.enter_fullscreen()
-
             overlay = FrameLayout(activity)
             overlay.setBackgroundColor(Color.BLACK)
             overlay.setClickable(True)
@@ -259,12 +240,13 @@ class VideoPlayerScreen(Screen):
             video.setMediaController(controller)
             video.setVideoPath(self.video_path)
 
-            params = LayoutParams(-1, -1)
-            params.gravity = Gravity.CENTER
-            overlay.addView(video, params)
+            video_params = LayoutParams(-1, -1)
+            video_params.gravity = Gravity.CENTER
+            overlay.addView(video, video_params)
 
-            self.back_listener = AndroidVideoBackListener(lambda: self._android_back_to_music())
-            overlay.setOnKeyListener(self.back_listener)
+            self.double_tap_listener = AndroidDoubleTapListener(lambda: self.close_from_double_tap())
+            overlay.setOnTouchListener(self.double_tap_listener)
+            video.setOnTouchListener(self.double_tap_listener)
 
             activity.addContentView(overlay, LayoutParams(-1, -1))
 
@@ -275,47 +257,105 @@ class VideoPlayerScreen(Screen):
             video.requestFocus()
             video.start()
 
-            Clock.schedule_once(lambda dt: self._set_status("Video playing. Use Android Back to return."), 0)
+            Clock.schedule_once(lambda dt: self.set_status("Video playing. Double tap video to return."), 0)
             log.info(f"VideoPlayer: Android VideoView started {self.video_path}")
 
         except Exception as e:
-            Clock.schedule_once(lambda dt: self._set_status(f"VideoView failed:\n{e}"), 0)
+            Clock.schedule_once(lambda dt: self.set_status(f"VideoView failed:\n{e}"), 0)
             log.error(f"VideoPlayer: Android VideoView failed {e}")
 
-    def _android_back_to_music(self):
-        Clock.schedule_once(lambda dt: self.go_back(None), 0)
-
-    def _set_status(self, text):
-        self.status_label.text = text
-
     @run_on_ui_thread
-    def _remove_video_overlay_only(self):
+    def hide_android_video_overlay(self):
         try:
-            if self.video_view:
+            View = autoclass("android.view.View")
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+
+            activity = PythonActivity.mActivity
+            local_video = self.video_view
+            local_overlay = self.video_overlay
+
+            if local_video:
+                # Hide the SurfaceView/VideoView first. Android can leave SurfaceView
+                # painted on top unless the view itself is hidden before removal.
                 try:
-                    self.video_view.stopPlayback()
+                    local_video.setVisibility(View.GONE)
                 except Exception:
                     pass
 
-            if self.video_overlay:
                 try:
-                    parent = self.video_overlay.getParent()
-                    if parent:
-                        parent.removeView(self.video_overlay)
+                    local_video.pause()
                 except Exception:
                     pass
+
+                try:
+                    local_video.stopPlayback()
+                except Exception:
+                    pass
+
+                # VideoView has suspend() on Android and it helps release the surface.
+                try:
+                    local_video.suspend()
+                except Exception:
+                    pass
+
+                try:
+                    local_video.destroyDrawingCache()
+                except Exception:
+                    pass
+
+            if local_overlay:
+                try:
+                    local_overlay.setVisibility(View.GONE)
+                except Exception:
+                    pass
+
+                try:
+                    local_overlay.removeAllViews()
+                except Exception:
+                    pass
+
+                try:
+                    parent = local_overlay.getParent()
+                    if parent:
+                        parent.removeView(local_overlay)
+
+                        try:
+                            parent.requestLayout()
+                        except Exception:
+                            pass
+
+                        try:
+                            parent.invalidate()
+                        except Exception:
+                            pass
+                except Exception as e:
+                    log.error(f"VideoPlayer: remove overlay failed {e}")
+
+            # Force Android decor redraw. This is what happens naturally when
+            # user goes to desktop and returns; we request it immediately.
+            try:
+                decor = activity.getWindow().getDecorView()
+                decor.requestLayout()
+                decor.invalidate()
+            except Exception:
+                pass
 
         except Exception as e:
-            log.error(f"VideoPlayer: remove overlay failed {e}")
+            log.error(f"VideoPlayer: hide overlay failed {e}")
 
         self.video_view = None
         self.video_overlay = None
 
-    @run_on_ui_thread
-    def stop_android_video(self):
-        if platform != "android":
-            return
 
-        self._remove_video_overlay_only()
-        self.exit_fullscreen()
-        self.restore_orientation()
+    def close_android_video_safe(self):
+        # Staged close:
+        # 1. Hide/remove native Android VideoView.
+        # 2. Wait for Android to finish cleanup.
+        # 3. Restore orientation.
+        # 4. Return to Music only after cleanup.
+        self.hide_android_video_overlay()
+        Clock.schedule_once(lambda dt: self.restore_orientation(), 0.75)
+        Clock.schedule_once(self.return_to_music, 2.00)
+
+    def set_status(self, text):
+        self.status_label.text = text
