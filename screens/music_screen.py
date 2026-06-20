@@ -577,7 +577,7 @@ class MusicScreen(Screen):
     def is_existing_media_file(self, path):
         try:
             p = Path(path)
-            return p.exists() and p.is_file() and self.is_supported_on_this_platform(p)
+            return self.is_supported_on_this_platform(p)
         except Exception:
             return False
 
