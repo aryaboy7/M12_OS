@@ -39,6 +39,7 @@ from screens.alarm_screen import AlarmScreen
 from utils.alarm_notifier import AlarmNotifier
 from screens.backup_screen import BackupScreen
 from screens.bluetooth_screen import BluetoothScreen
+from screens.video_player_screen import VideoPlayerScreen
 
 print("PLATFORM =", platform)
 print("WINDOW WIDTH =", Window.width)
@@ -74,6 +75,7 @@ class M12OS(App):
         sm.add_widget(AlarmScreen(name="alarm"))
         sm.add_widget(BackupScreen(name="backup"))
         sm.add_widget(BluetoothScreen(name="bluetooth"))
+        sm.add_widget(VideoPlayerScreen(name="video_player"))
 
         start_screen = config.get("start_screen", "home")
         sm.current = start_screen if sm.has_screen(start_screen) else "home"

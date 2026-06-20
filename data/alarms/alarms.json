@@ -2,12 +2,12 @@
     {
         "hour": 15,
         "minute": 20,
-        "enabled": true,
+        "enabled": false,
         "repeat_mode": "once",
         "days": [],
         "until_date": "",
-        "last_fired_date": "",
-        "last_fired_time": ""
+        "last_fired_date": "2026-06-19",
+        "last_fired_time": "15:20"
     },
     {
         "hour": 10,
