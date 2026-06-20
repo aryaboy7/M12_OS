@@ -954,11 +954,25 @@ class MusicScreen(Screen):
 
         display_files = self.visible_files[:MAX_VISIBLE_FILES]
 
+        # Always keep the current/selected song visible even when the list is limited.
+        if self.selected_file:
+            try:
+                selected_key = self.normalized_path(self.selected_file)
+                display_keys = {self.normalized_path(p) for p in display_files}
+
+                if selected_key not in display_keys:
+                    for p in self.visible_files:
+                        if self.normalized_path(p) == selected_key:
+                            display_files.append(p)
+                            break
+            except Exception:
+                pass
+
         if len(self.visible_files) > MAX_VISIBLE_FILES:
             self.file_list.add_widget(Label(
                 text=(
                     f"Showing first {MAX_VISIBLE_FILES} of {len(self.visible_files)} files.\n"
-                    "Use Search to narrow the list."
+                    "Current song is always included. Use Search to narrow the list."
                 ),
                 font_size=status_font(),
                 size_hint_y=None,
@@ -1001,24 +1015,26 @@ class MusicScreen(Screen):
 
         try:
             selected_key = self.normalized_path(self.selected_file)
-            index = None
+            visible_keys = [self.normalized_path(p) for p in self.visible_files]
 
-            for i, path in enumerate(self.visible_files):
-                if self.normalized_path(path) == selected_key:
-                    index = i
-                    break
-
-            if index is None:
+            if selected_key not in visible_keys:
                 return
 
-            total = len(self.visible_files)
+            index = visible_keys.index(selected_key)
+            total = len(visible_keys)
 
             if total <= 1:
                 self.song_scroll.scroll_y = 1
                 return
 
+            # If selected song is beyond the first MAX_VISIBLE_FILES, it is appended
+            # to the bottom of the displayed list, so scroll to bottom.
+            if index >= MAX_VISIBLE_FILES:
+                self.song_scroll.scroll_y = 0
+                return
+
             # ScrollView scroll_y: 1 = top, 0 = bottom.
-            self.song_scroll.scroll_y = 1 - (index / max(1, total - 1))
+            self.song_scroll.scroll_y = 1 - (index / max(1, min(total, MAX_VISIBLE_FILES) - 1))
 
         except Exception as e:
             log.error(f"Music: scroll to selected failed {e}")

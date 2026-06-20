@@ -196,21 +196,22 @@ class SettingsScreen(Screen):
 
     def make_text_input(self, text):
         # Dark input with white text is much more reliable on Android.
-        # Some Android/Kivy builds do not draw black TextInput text clearly
-        # until the field receives focus.
+        # Some Android/Kivy builds do not draw TextInput text clearly
+        # until the field receives focus, so we also show current paths
+        # in normal Labels above the fields.
         return TextInput(
-            text=text,
+            text=str(text),
             font_size=text_font(),
             multiline=False,
             size_hint=(1, None),
-            height=max(48, int(button_height() * 0.95)),
+            height=max(54, int(button_height() * 1.05)),
             background_normal="",
             background_active="",
             background_color=(0.10, 0.15, 0.25, 1),
             foreground_color=(1, 1, 1, 1),
             cursor_color=(1, 1, 1, 1),
             hint_text_color=(0.75, 0.85, 1, 1),
-            padding=(spacing_size(), 0, spacing_size(), 0),
+            padding=(spacing_size(), spacing_size(), spacing_size(), spacing_size()),
             use_bubble=False,
             use_handles=False,
         )
@@ -236,17 +237,31 @@ class SettingsScreen(Screen):
         ))
 
         # Path inputs are intentionally near the top so Android keyboard does not cover them.
+        internal_root_text = roots.get("internal_root", "/storage/emulated/0")
+        external_root_text = roots.get("external_root", "/mnt/sdcard")
+
         root.add_widget(Label(
             text="Internal Storage Root",
             font_size=text_font(),
             bold=True,
             color=WHITE,
-            size_hint=(1, 0.055)
+            size_hint=(1, 0.045)
         ))
 
-        self.internal_root_input = self.make_text_input(
-            roots.get("internal_root", "/storage/emulated/0")
+        self.internal_path_view = Label(
+            text=internal_root_text,
+            font_size=status_font(),
+            color=WHITE,
+            size_hint=(1, 0.055),
+            halign="left",
+            valign="middle"
         )
+        self.internal_path_view.bind(
+            size=lambda inst, val: setattr(inst, "text_size", (val[0], val[1]))
+        )
+        root.add_widget(self.internal_path_view)
+
+        self.internal_root_input = self.make_text_input(internal_root_text)
         root.add_widget(self.internal_root_input)
 
         root.add_widget(Label(
@@ -254,12 +269,23 @@ class SettingsScreen(Screen):
             font_size=text_font(),
             bold=True,
             color=WHITE,
-            size_hint=(1, 0.055)
+            size_hint=(1, 0.045)
         ))
 
-        self.external_root_input = self.make_text_input(
-            roots.get("external_root", "/mnt/sdcard")
+        self.external_path_view = Label(
+            text=external_root_text,
+            font_size=status_font(),
+            color=WHITE,
+            size_hint=(1, 0.055),
+            halign="left",
+            valign="middle"
         )
+        self.external_path_view.bind(
+            size=lambda inst, val: setattr(inst, "text_size", (val[0], val[1]))
+        )
+        root.add_widget(self.external_path_view)
+
+        self.external_root_input = self.make_text_input(external_root_text)
         root.add_widget(self.external_root_input)
 
         save_btn = self.make_button("Save Storage Roots", GREEN)
@@ -304,6 +330,9 @@ class SettingsScreen(Screen):
                 self.external_root_input.text
             )
 
+            self.internal_path_view.text = roots.get("internal_root", "")
+            self.external_path_view.text = roots.get("external_root", "")
+
             self.storage_status.text = (
                 "Saved roots:\n"
                 + "Internal: "
@@ -326,6 +355,9 @@ class SettingsScreen(Screen):
                 self.internal_root_input.text,
                 self.external_root_input.text
             )
+
+            self.internal_path_view.text = roots.get("internal_root", "")
+            self.external_path_view.text = roots.get("external_root", "")
 
             self.storage_status.text = (
                 "Storage roots reset to defaults:\n"
