@@ -248,16 +248,19 @@ class SettingsScreen(Screen):
             size_hint=(1, 0.045)
         ))
 
-        self.internal_path_view = Label(
+        self.internal_path_view = Button(
             text=internal_root_text,
             font_size=status_font(),
             color=WHITE,
-            size_hint=(1, 0.055),
+            size_hint=(1, None),
+            height=max(42, int(button_height() * 0.65)),
+            background_normal="",
+            background_color=(0.06, 0.11, 0.20, 1),
             halign="left",
             valign="middle"
         )
         self.internal_path_view.bind(
-            size=lambda inst, val: setattr(inst, "text_size", (val[0], val[1]))
+            size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1]))
         )
         root.add_widget(self.internal_path_view)
 
@@ -272,16 +275,19 @@ class SettingsScreen(Screen):
             size_hint=(1, 0.045)
         ))
 
-        self.external_path_view = Label(
+        self.external_path_view = Button(
             text=external_root_text,
             font_size=status_font(),
             color=WHITE,
-            size_hint=(1, 0.055),
+            size_hint=(1, None),
+            height=max(42, int(button_height() * 0.65)),
+            background_normal="",
+            background_color=(0.06, 0.11, 0.20, 1),
             halign="left",
             valign="middle"
         )
         self.external_path_view.bind(
-            size=lambda inst, val: setattr(inst, "text_size", (val[0], val[1]))
+            size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1]))
         )
         root.add_widget(self.external_path_view)
 

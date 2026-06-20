@@ -6,7 +6,6 @@ import random
 import signal
 import subprocess
 import sys
-import threading
 
 from kivy.app import App
 from kivy.clock import Clock
@@ -77,8 +76,8 @@ VIDEO_EXTENSIONS = {
 }
 MEDIA_EXTENSIONS = AUDIO_EXTENSIONS | VIDEO_EXTENSIONS
 
-# Keep UI responsive. Large SD cards can contain many files.
-MAX_VISIBLE_FILES = 300
+# M12 safety: do not create hundreds/thousands of Kivy buttons at once.
+MAX_VISIBLE_FILES = 120
 
 
 def existing_folders(candidates, fallback_first=True):
@@ -234,8 +233,6 @@ class MusicScreen(Screen):
         self.folder_current_path = None
         self.is_starting = False
         self.file_buttons = {}
-        self.scan_in_progress = False
-        self.scan_thread = None
 
         app = App.get_running_app()
         if app:
@@ -584,8 +581,8 @@ class MusicScreen(Screen):
         try:
             p = Path(path)
 
-            # Android SD card paths can be listed by os.walk(),
-            # but exists()/is_file()/resolve() can be slow or unreliable.
+            # On Android external SD, os.walk can see files while
+            # exists()/is_file()/resolve() may be slow or unreliable.
             if platform == "android":
                 return self.is_supported_on_this_platform(p)
 
@@ -654,7 +651,9 @@ class MusicScreen(Screen):
         self.active_folder = name
         self.selected_file = None
         self.update_folder_button_colors()
-        self.apply_filters()
+
+        # Switching tab should scan only that tab.
+        self.refresh_media(None)
 
     def update_folder_button_colors(self):
         for name, btn in self.folder_buttons.items():
@@ -732,23 +731,34 @@ class MusicScreen(Screen):
         self.last_scan_errors = 0
 
         found = []
-
         storage = self.active_storage if platform == "android" else "Internal"
 
-        for folder in audio_folders(storage):
-            found.extend(self.scan_folder(folder))
+        # Important M12 fix:
+        # scan ONLY the currently selected tab.
+        # Do not scan Audio + Video + Downloads all together.
+        if self.active_folder == "Audio":
+            scan_groups = [("Audio", audio_folders(storage))]
+        elif self.active_folder == "Video":
+            scan_groups = [("Video", video_folders(storage))]
+        elif self.active_folder == "Downloads":
+            scan_groups = [("Downloads", download_folders(storage))]
+        elif self.active_folder == "Favorites":
+            # Favorites are loaded from saved paths, no full SD scan needed.
+            return [
+                Path(p) for p in sorted(self.favorite_paths)
+                if self.is_existing_media_file(p)
+            ]
+        else:
+            scan_groups = []
+            for name, folder in MEDIA_FOLDERS.items():
+                scan_groups.append((name, [folder]))
 
-        for folder in video_folders(storage):
-            found.extend(self.scan_folder(folder))
-
-        for folder in download_folders(storage):
-            found.extend(self.scan_folder(folder))
-
-        if platform != "android":
-            desktop = Path.home() / "Desktop"
-
-            if desktop.exists():
-                found.extend(self.scan_folder(desktop))
+        for group_name, folders in scan_groups:
+            log.info(f"Music: scan group {group_name} storage={storage}")
+            if not folders:
+                log.info(f"Music: no folders for {group_name}")
+            for folder in folders:
+                found.extend(self.scan_folder(folder))
 
         if platform == "android":
             unique = sorted(
@@ -761,14 +771,12 @@ class MusicScreen(Screen):
                 key=lambda p: str(p).lower()
             )
 
-        for p in unique[:25]:
-            log.info(f"MEDIA FOUND: {p}")
-
         roots = load_storage_roots() if platform == "android" else {}
 
         log.info(
             "Music scan result: "
             f"storage={storage} "
+            f"folder={self.active_folder} "
             f"internal_root={roots.get('internal_root', '')} "
             f"external_root={roots.get('external_root', '')} "
             f"total={self.last_scan_total_files} "
@@ -778,85 +786,15 @@ class MusicScreen(Screen):
             f"errors={self.last_scan_errors}"
         )
 
-        log.info(f"===== SELECTED STORAGE: {storage} =====")
-
-        log.info("===== AUDIO FOLDERS =====")
-        audio_debug_folders = audio_folders(storage)
-        if not audio_debug_folders:
-            log.info("AUDIO: no folders found")
-        for f in audio_debug_folders:
-            log.info(f"AUDIO: {f}")
-
-        log.info("===== VIDEO FOLDERS =====")
-        video_debug_folders = video_folders(storage)
-        if not video_debug_folders:
-            log.info("VIDEO: no folders found")
-        for f in video_debug_folders:
-            log.info(f"VIDEO: {f}")
-
-        log.info("===== DOWNLOAD FOLDERS =====")
-        download_debug_folders = download_folders(storage)
-        if not download_debug_folders:
-            log.info("DOWNLOAD: no folders found")
-        for f in download_debug_folders:
-            log.info(f"DOWNLOAD: {f}")
-
-        log.info(f"MEDIA FOUND COUNT: {len(unique)}")
-
-        for p in unique[:100]:
+        for p in unique[:50]:
             log.info(f"FOUND: {p}")
 
         return unique
 
     def refresh_media(self, instance):
-        if self.scan_in_progress:
-            self.status_label.text = "Scan already running..."
-            return
-
-        self.scan_in_progress = True
-        self.status_label.text = f"Scanning {self.active_storage} media files..."
-
-        self.file_list.clear_widgets()
-        self.file_list.add_widget(Label(
-            text=f"Scanning {self.active_storage} storage...\nPlease wait.",
-            font_size=text_font(),
-            size_hint_y=None,
-            height=self.media_row_height() * 2,
-            halign="center",
-            valign="middle",
-        ))
-
+        self.status_label.text = "Scanning media files..."
         self.load_favorites()
-
-        def worker():
-            files = []
-            error = None
-
-            try:
-                files = self.scan_media_files()
-            except Exception as e:
-                error = e
-                log.error(f"Music: background scan failed {e}")
-
-            Clock.schedule_once(
-                lambda dt: self.finish_media_scan(files, error),
-                0
-            )
-
-        self.scan_thread = threading.Thread(
-            target=worker,
-            daemon=True
-        )
-        self.scan_thread.start()
-
-    def finish_media_scan(self, files, error=None):
-        self.scan_in_progress = False
-
-        if error:
-            self.status_label.text = f"Scan failed: {error}"
-            return
-
-        self.media_files = files
+        self.media_files = self.scan_media_files()
 
         if self.selected_file and not self.is_existing_media_file(self.selected_file):
             self.selected_file = None
@@ -954,7 +892,7 @@ class MusicScreen(Screen):
 
         display_files = self.visible_files[:MAX_VISIBLE_FILES]
 
-        # Always keep the current/selected song visible even when the list is limited.
+        # Always include current selected file even if it is past the display limit.
         if self.selected_file:
             try:
                 selected_key = self.normalized_path(self.selected_file)
@@ -972,7 +910,7 @@ class MusicScreen(Screen):
             self.file_list.add_widget(Label(
                 text=(
                     f"Showing first {MAX_VISIBLE_FILES} of {len(self.visible_files)} files.\n"
-                    "Current song is always included. Use Search to narrow the list."
+                    "Use Search to narrow the list."
                 ),
                 font_size=status_font(),
                 size_hint_y=None,
@@ -996,7 +934,7 @@ class MusicScreen(Screen):
                 height=row_h,
                 background_normal="",
                 background_color=(0.25, 0.45, 0.75, 1)
-                if path == self.selected_file
+                if self.selected_file and self.normalized_path(path) == self.normalized_path(self.selected_file)
                 else (0.10, 0.15, 0.25, 1),
                 halign="left",
                 valign="middle",
@@ -1015,26 +953,24 @@ class MusicScreen(Screen):
 
         try:
             selected_key = self.normalized_path(self.selected_file)
-            visible_keys = [self.normalized_path(p) for p in self.visible_files]
+            index = None
 
-            if selected_key not in visible_keys:
+            for i, path in enumerate(self.visible_files):
+                if self.normalized_path(path) == selected_key:
+                    index = i
+                    break
+
+            if index is None:
                 return
 
-            index = visible_keys.index(selected_key)
-            total = len(visible_keys)
+            total = len(self.visible_files)
 
             if total <= 1:
                 self.song_scroll.scroll_y = 1
                 return
 
-            # If selected song is beyond the first MAX_VISIBLE_FILES, it is appended
-            # to the bottom of the displayed list, so scroll to bottom.
-            if index >= MAX_VISIBLE_FILES:
-                self.song_scroll.scroll_y = 0
-                return
-
             # ScrollView scroll_y: 1 = top, 0 = bottom.
-            self.song_scroll.scroll_y = 1 - (index / max(1, min(total, MAX_VISIBLE_FILES) - 1))
+            self.song_scroll.scroll_y = 1 - (index / max(1, total - 1))
 
         except Exception as e:
             log.error(f"Music: scroll to selected failed {e}")

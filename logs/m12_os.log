@@ -179,3 +179,12 @@
 2026-06-20 19:29:50,132 | INFO | Settings: storage roots saved {'internal_root': '/storage/emulated/0', 'external_root': '/storage/0907-1477'}
 2026-06-20 19:30:18,501 | INFO | EventNotifier FINAL: stopped
 2026-06-20 19:30:18,501 | INFO | AlarmNotifier: stopped
+2026-06-20 19:46:48,367 | INFO | M12 OS 0.4.32 started
+2026-06-20 19:46:48,424 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 19:46:48,425 | INFO | EventNotifier FINAL: started
+2026-06-20 19:46:48,425 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 19:46:48,425 | INFO | AlarmNotifier: started
+2026-06-20 19:46:51,055 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 19:46:51,199 | INFO | Home: open settings
+2026-06-20 19:47:13,597 | INFO | EventNotifier FINAL: stopped
+2026-06-20 19:47:13,597 | INFO | AlarmNotifier: stopped
