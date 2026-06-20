@@ -6,6 +6,7 @@ import random
 import signal
 import subprocess
 import sys
+import threading
 
 from kivy.app import App
 from kivy.clock import Clock
@@ -75,6 +76,9 @@ VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".3gp", ".mpeg", ".mpg"
 }
 MEDIA_EXTENSIONS = AUDIO_EXTENSIONS | VIDEO_EXTENSIONS
+
+# Keep UI responsive. Large SD cards can contain many files.
+MAX_VISIBLE_FILES = 300
 
 
 def existing_folders(candidates, fallback_first=True):
@@ -230,6 +234,8 @@ class MusicScreen(Screen):
         self.folder_current_path = None
         self.is_starting = False
         self.file_buttons = {}
+        self.scan_in_progress = False
+        self.scan_thread = None
 
         app = App.get_running_app()
         if app:
@@ -577,7 +583,14 @@ class MusicScreen(Screen):
     def is_existing_media_file(self, path):
         try:
             p = Path(path)
-            return self.is_supported_on_this_platform(p)
+
+            # Android SD card paths can be listed by os.walk(),
+            # but exists()/is_file()/resolve() can be slow or unreliable.
+            if platform == "android":
+                return self.is_supported_on_this_platform(p)
+
+            return p.exists() and p.is_file() and self.is_supported_on_this_platform(p)
+
         except Exception:
             return False
 
@@ -737,10 +750,16 @@ class MusicScreen(Screen):
             if desktop.exists():
                 found.extend(self.scan_folder(desktop))
 
-        unique = sorted(
-            {p for p in found if self.is_existing_media_file(p)},
-            key=lambda p: str(p).lower()
-        )
+        if platform == "android":
+            unique = sorted(
+                {p for p in found if self.is_supported_on_this_platform(p)},
+                key=lambda p: str(p).lower()
+            )
+        else:
+            unique = sorted(
+                {p for p in found if self.is_existing_media_file(p)},
+                key=lambda p: str(p).lower()
+            )
 
         for p in unique[:25]:
             log.info(f"MEDIA FOUND: {p}")
@@ -790,9 +809,54 @@ class MusicScreen(Screen):
         return unique
 
     def refresh_media(self, instance):
-        self.status_label.text = "Scanning media files..."
+        if self.scan_in_progress:
+            self.status_label.text = "Scan already running..."
+            return
+
+        self.scan_in_progress = True
+        self.status_label.text = f"Scanning {self.active_storage} media files..."
+
+        self.file_list.clear_widgets()
+        self.file_list.add_widget(Label(
+            text=f"Scanning {self.active_storage} storage...\nPlease wait.",
+            font_size=text_font(),
+            size_hint_y=None,
+            height=self.media_row_height() * 2,
+            halign="center",
+            valign="middle",
+        ))
+
         self.load_favorites()
-        self.media_files = self.scan_media_files()
+
+        def worker():
+            files = []
+            error = None
+
+            try:
+                files = self.scan_media_files()
+            except Exception as e:
+                error = e
+                log.error(f"Music: background scan failed {e}")
+
+            Clock.schedule_once(
+                lambda dt: self.finish_media_scan(files, error),
+                0
+            )
+
+        self.scan_thread = threading.Thread(
+            target=worker,
+            daemon=True
+        )
+        self.scan_thread.start()
+
+    def finish_media_scan(self, files, error=None):
+        self.scan_in_progress = False
+
+        if error:
+            self.status_label.text = f"Scan failed: {error}"
+            return
+
+        self.media_files = files
 
         if self.selected_file and not self.is_existing_media_file(self.selected_file):
             self.selected_file = None
@@ -801,13 +865,14 @@ class MusicScreen(Screen):
 
     def path_is_inside_any(self, path, folders):
         try:
-            p_resolved = Path(path).resolve()
+            p_text = str(Path(path))
 
             for folder in folders:
-                root = Path(folder).resolve()
+                root_text = str(Path(folder)).rstrip("/")
 
-                if root in p_resolved.parents or p_resolved == root:
+                if p_text == root_text or p_text.startswith(root_text + "/"):
                     return True
+
         except Exception:
             pass
 
@@ -887,7 +952,22 @@ class MusicScreen(Screen):
             )
             return
 
-        for path in self.visible_files:
+        display_files = self.visible_files[:MAX_VISIBLE_FILES]
+
+        if len(self.visible_files) > MAX_VISIBLE_FILES:
+            self.file_list.add_widget(Label(
+                text=(
+                    f"Showing first {MAX_VISIBLE_FILES} of {len(self.visible_files)} files.\n"
+                    "Use Search to narrow the list."
+                ),
+                font_size=status_font(),
+                size_hint_y=None,
+                height=self.media_row_height() * 2,
+                halign="center",
+                valign="middle",
+            ))
+
+        for path in display_files:
             is_fav = self.normalized_path(path) in self.favorite_paths
             prefix = "[VIDEO] " if self.is_video_file(path) else "[AUDIO] "
             star = "★ " if is_fav else ""
@@ -953,8 +1033,14 @@ class MusicScreen(Screen):
         else:
             playlist_text = f"{pos + 1} / {len(self.visible_files)}"
 
+        storage_text = (
+            f"{self.active_storage} | "
+            if platform == "android"
+            else ""
+        )
+
         self.status_label.text = (
-            f"{playlist_text} | "
+            f"{storage_text}{playlist_text} | "
             f"Total: {len(self.media_files)} | "
             f"Shuffle: {'ON' if self.shuffle_on else 'OFF'} | "
             f"Repeat: {self.repeat_mode}"
