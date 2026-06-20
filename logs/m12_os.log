@@ -2061,3 +2061,43 @@
 2026-06-20 12:14:39,334 | WARNING | Bluetooth: auto connect has no address
 2026-06-20 12:14:40,226 | INFO | EventNotifier FINAL: stopped
 2026-06-20 12:14:40,226 | INFO | AlarmNotifier: stopped
+2026-06-20 14:39:25,700 | INFO | M12 OS 0.4.23 started
+2026-06-20 14:39:25,760 | INFO | EventNotifier FINAL: macOS sound ready for afplay: /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 14:39:25,761 | INFO | EventNotifier FINAL: started
+2026-06-20 14:39:25,761 | INFO | AlarmNotifier: macOS sound ready for afplay /Users/aryaboy/Documents/M12_OS/data/sounds/reminder.wav
+2026-06-20 14:39:25,761 | INFO | AlarmNotifier: started
+2026-06-20 14:39:28,284 | WARNING | Bluetooth: auto connect has no address
+2026-06-20 14:39:31,739 | INFO | Home: open music
+2026-06-20 14:39:32,170 | INFO | Music: opened
+2026-06-20 14:39:32,174 | INFO | Music: scanning /Users/aryaboy/Music
+2026-06-20 14:39:32,214 | INFO | Music: scanning /Users/aryaboy/Movies
+2026-06-20 14:39:32,216 | INFO | Music: scanning /Users/aryaboy/Downloads
+2026-06-20 14:39:32,229 | INFO | Music: scanning /Users/aryaboy/Desktop
+2026-06-20 14:39:32,345 | INFO | MEDIA FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/examples/libs/ffmpeg/birds.mp4
+2026-06-20 14:39:32,345 | INFO | MEDIA FOUND: /Users/aryaboy/Desktop/Arduino_ESP32Monitor/libraries/lvgl/tests/src/test_assets/test_video_birds.mp4
+2026-06-20 14:39:32,345 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-20 14:39:32,345 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-20 14:39:32,345 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Русская Лолита - полнометражный русский порно фильм (Клубничка).mp4
+2026-06-20 14:39:32,345 | INFO | MEDIA FOUND: /Users/aryaboy/Movies/Русская нимфетка_ Искушение.mp4
+2026-06-20 14:39:32,345 | INFO | MEDIA FOUND: /Users/aryaboy/Music/02 Stayin' Alive.m4a
+2026-06-20 14:39:32,345 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Alex Gaudino feat. Crystal Waters - Destination Calabria [Explicit Version] [Official Video].mp4
+2026-06-20 14:39:32,345 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Beautiful Celtic Music • Relaxing Fantasy Music for Relaxation & Meditation, Peaceful Music.mp3
+2026-06-20 14:39:32,345 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Best French Songs 2021 Playlist   Playlist French Songs 2021  Best French Music 2021.mp3
+2026-06-20 14:39:32,345 | INFO | MEDIA FOUND: /Users/aryaboy/Music/DPM 0001.mp3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/DPM 0002.mp3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/FV0001.MP3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/FV0002.MP3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/Hyuna (현아) - Lip & Hip  Areia Kpop Remix #302.mp4
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/-M- - MOJO (clip officiel).mp3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/05 Equation - Camille (From The Little Prince).mp3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/4 mots sur un piano.mp3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amine - Señorita - Clip Officiel.mp3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Amir - J'ai cherché (Clip officiel).mp3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Aude Gagnier -  J'ai Dans Le Coeur (Somewhere Only We Know_French) Le Petit Prince 2015.mp3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Claque-le (Clip officiel).mp3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BAGARRE - Mourir au club (Clip Officiel).mp3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/Bagarre - Ris pas (Clip officiel).mp3
+2026-06-20 14:39:32,346 | INFO | MEDIA FOUND: /Users/aryaboy/Music/MODERN FRENCH MUSIC PLAYLIST/BB BRUNES - Aficionado [Clip Officiel].mp3
+2026-06-20 14:39:32,346 | INFO | Music scan result: total=7735 supported=803 unique=803 unsupported=6932 errors=0
+2026-06-20 14:39:57,925 | INFO | EventNotifier FINAL: stopped
+2026-06-20 14:39:57,925 | INFO | AlarmNotifier: stopped

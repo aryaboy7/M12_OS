@@ -49,17 +49,18 @@ PLAYER_STATUS_FILE = DATA_MUSIC_DIR / "player_status.json"
 
 if platform == "macosx":
     MEDIA_FOLDERS = {
-        "Music": Path.home() / "Music",
-        "Movies": Path.home() / "Movies",
+        "Audio": Path.home() / "Music",
+        "Video": Path.home() / "Movies",
         "Downloads": Path.home() / "Downloads",
         "Desktop": Path.home() / "Desktop",
     }
 elif platform == "android":
     MEDIA_FOLDERS = {
-        "Music": Path("/storage/emulated/0/Music"),
+        "Audio": Path("/storage/emulated/0/Music"),
         "Video": Path("/storage/emulated/0/Movies"),
         "Downloads": Path("/storage/emulated/0/Download"),
     }
+
 else:
     MEDIA_FOLDERS = {
         "Music": DATA_MUSIC_DIR,
@@ -73,6 +74,101 @@ VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".3gp", ".mpeg", ".mpg"
 }
 MEDIA_EXTENSIONS = AUDIO_EXTENSIONS | VIDEO_EXTENSIONS
+
+
+ANDROID_MUSIC_FOLDER = Path("/storage/emulated/0/Music")
+ANDROID_AUDIO_FOLDER = Path("/storage/emulated/0/Audio")
+
+
+def android_audio_folders():
+    """
+    M12/Android can use either Music or Audio folder.
+    If both exist, scan both.
+    If neither exists yet, default to Music so user sees expected path.
+    """
+    folders = []
+
+    if ANDROID_MUSIC_FOLDER.exists():
+        folders.append(ANDROID_MUSIC_FOLDER)
+
+    if ANDROID_AUDIO_FOLDER.exists():
+        folders.append(ANDROID_AUDIO_FOLDER)
+
+    if not folders:
+        folders.append(ANDROID_MUSIC_FOLDER)
+
+    return folders
+
+def audio_folders():
+    folders = []
+
+    if platform == "android":
+        candidates = [
+            Path("/storage/emulated/0/Music"),
+            Path("/storage/emulated/0/Audio"),
+        ]
+    else:
+        candidates = [
+            Path.home() / "Music",
+            Path.home() / "Audio",
+        ]
+
+    for p in candidates:
+        if p.exists():
+            folders.append(p)
+
+    if not folders:
+        folders.append(candidates[0])
+
+    return folders
+
+
+def video_folders():
+    folders = []
+
+    if platform == "android":
+        candidates = [
+            Path("/storage/emulated/0/Movies"),
+            Path("/storage/emulated/0/Video"),
+        ]
+    else:
+        candidates = [
+            Path.home() / "Movies",
+            Path.home() / "Video",
+        ]
+
+    for p in candidates:
+        if p.exists():
+            folders.append(p)
+
+    if not folders:
+        folders.append(candidates[0])
+
+    return folders
+
+
+def download_folders():
+    folders = []
+
+    if platform == "android":
+        candidates = [
+            Path("/storage/emulated/0/Download"),
+            Path("/storage/emulated/0/Downloads"),
+        ]
+    else:
+        candidates = [
+            Path.home() / "Download",
+            Path.home() / "Downloads",
+        ]
+
+    for p in candidates:
+        if p.exists():
+            folders.append(p)
+
+    if not folders:
+        folders.append(candidates[0])
+
+    return folders
 
 REPEAT_OFF = "OFF"
 REPEAT_ONE = "ONE"
@@ -149,7 +245,7 @@ class MusicScreen(Screen):
             except Exception:
                 pass
 
-        self.active_folder = "Music" if platform == "android" else "All"
+        self.active_folder = "Audio" if platform == "android" else "All"
         self.search_text = ""
         self.is_playing = False
         self.shuffle_on = False
@@ -192,7 +288,7 @@ class MusicScreen(Screen):
 
         self.folder_buttons = {}
         folder_names = (
-            ["Music", "Video", "Downloads", "Favorites"]
+            ["Audio", "Video", "Downloads", "Favorites"]
             if platform == "android"
             else ["All", "Favorites"] + list(MEDIA_FOLDERS.keys())
         )
@@ -400,9 +496,10 @@ class MusicScreen(Screen):
 
     def folder_text(self):
         if platform == "android":
+            audio_paths = "\n".join(str(p) for p in android_audio_folders())
             return (
                 "Android folders:\n"
-                "Music: /storage/emulated/0/Music\n"
+                f"Audio:\n{audio_paths}\n"
                 "Video: /storage/emulated/0/Movies\n"
                 "Downloads: /storage/emulated/0/Download"
             )
@@ -569,8 +666,21 @@ class MusicScreen(Screen):
         self.last_scan_errors = 0
 
         found = []
-        for folder in MEDIA_FOLDERS.values():
+
+        for folder in audio_folders():
             found.extend(self.scan_folder(folder))
+
+        for folder in video_folders():
+            found.extend(self.scan_folder(folder))
+
+        for folder in download_folders():
+            found.extend(self.scan_folder(folder))
+
+        if platform != "android":
+            desktop = Path.home() / "Desktop"
+
+            if desktop.exists():
+                found.extend(self.scan_folder(desktop))
 
         unique = sorted(
             {p for p in found if self.is_existing_media_file(p)},
@@ -600,54 +710,54 @@ class MusicScreen(Screen):
 
         self.apply_filters()
 
+    def path_is_inside_any(self, path, folders):
+        try:
+            p_resolved = Path(path).resolve()
+
+            for folder in folders:
+                root = Path(folder).resolve()
+
+                if root in p_resolved.parents or p_resolved == root:
+                    return True
+        except Exception:
+            pass
+
+        return False
+
     def apply_filters(self):
-        # Always remove phantom/deleted/inaccessible files before displaying.
         files = [p for p in self.media_files if self.is_existing_media_file(p)]
         self.media_files = files
 
         if self.active_folder == "Favorites":
+            files = [p for p in files if self.normalized_path(p) in self.favorite_paths]
+
+        elif self.active_folder == "Audio":
             files = [
                 p for p in files
-                if self.normalized_path(p) in self.favorite_paths
+                if self.is_audio_file(p)
+                and self.path_is_inside_any(p, audio_folders())
+            ]
+
+        elif self.active_folder == "Video":
+            files = [
+                p for p in files
+                if self.is_video_file(p)
+                and self.path_is_inside_any(p, video_folders())
+            ]
+
+        elif self.active_folder == "Downloads":
+            files = [
+                p for p in files
+                if self.path_is_inside_any(p, download_folders())
             ]
 
         elif self.active_folder != "All":
             folder = MEDIA_FOLDERS.get(self.active_folder)
-
             if folder:
-                try:
-                    folder_resolved = folder.resolve()
-                    filtered = []
-
-                    for p in files:
-                        try:
-                            p_resolved = p.resolve()
-                            in_folder = folder_resolved in p_resolved.parents or p_resolved == folder_resolved
-
-                            if not in_folder:
-                                continue
-
-                            # Folder rules:
-                            # Music = audio only.
-                            # Video/Movies = video only.
-                            # Downloads/Desktop/All/Favorites = mixed media.
-                            if self.active_folder in ("Music",):
-                                if not self.is_audio_file(p):
-                                    continue
-
-                            if self.active_folder in ("Video", "Movies"):
-                                if not self.is_video_file(p):
-                                    continue
-
-                            filtered.append(p)
-
-                        except Exception:
-                            pass
-
-                    files = filtered
-
-                except Exception:
-                    pass
+                files = [
+                    p for p in files
+                    if self.path_is_inside_any(p, [folder])
+                ]
 
         if self.search_text:
             files = [
