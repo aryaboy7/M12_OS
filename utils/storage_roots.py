@@ -10,7 +10,7 @@ STORAGE_ROOTS_FILE = CONFIG_DIR / "storage_roots.json"
 
 DEFAULT_STORAGE_ROOTS = {
     "internal_root": "/storage/emulated/0",
-    "external_root": "/mnt/sdcard",
+    "external_root": "/storage/0907-1477",
 }
 
 
