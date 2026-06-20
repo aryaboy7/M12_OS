@@ -26,6 +26,7 @@ except Exception:
     autoclass = None
 
 from utils.logger import log
+from utils.storage_roots import load_storage_roots
 from utils.ui_scale import (
     title_font,
     button_font,
@@ -76,99 +77,91 @@ VIDEO_EXTENSIONS = {
 MEDIA_EXTENSIONS = AUDIO_EXTENSIONS | VIDEO_EXTENSIONS
 
 
-ANDROID_MUSIC_FOLDER = Path("/storage/emulated/0/Music")
-ANDROID_AUDIO_FOLDER = Path("/storage/emulated/0/Audio")
-
-
-def android_audio_folders():
-    """
-    M12/Android can use either Music or Audio folder.
-    If both exist, scan both.
-    If neither exists yet, default to Music so user sees expected path.
-    """
+def existing_folders(candidates, fallback_first=True):
     folders = []
-
-    if ANDROID_MUSIC_FOLDER.exists():
-        folders.append(ANDROID_MUSIC_FOLDER)
-
-    if ANDROID_AUDIO_FOLDER.exists():
-        folders.append(ANDROID_AUDIO_FOLDER)
-
-    if not folders:
-        folders.append(ANDROID_MUSIC_FOLDER)
-
-    return folders
-
-def audio_folders():
-    folders = []
-
-    if platform == "android":
-        candidates = [
-            Path("/storage/emulated/0/Music"),
-            Path("/storage/emulated/0/Audio"),
-        ]
-    else:
-        candidates = [
-            Path.home() / "Music",
-            Path.home() / "Audio",
-        ]
 
     for p in candidates:
-        if p.exists():
-            folders.append(p)
+        try:
+            if p.exists() and p.is_dir():
+                folders.append(p)
+        except Exception:
+            pass
 
-    if not folders:
+    if not folders and fallback_first and candidates:
         folders.append(candidates[0])
 
     return folders
 
 
-def video_folders():
-    folders = []
+def android_roots_for_storage(storage="Internal"):
+    roots = load_storage_roots()
 
+    internal_root = Path(
+        roots.get("internal_root", "/storage/emulated/0")
+        or "/storage/emulated/0"
+    )
+    external_root = Path(
+        roots.get("external_root", "/mnt/sdcard")
+        or "/mnt/sdcard"
+    )
+
+    if storage == "External":
+        return [external_root]
+
+    if storage == "Both":
+        return [internal_root, external_root]
+
+    return [internal_root]
+
+
+def android_media_folders(storage, names):
+    candidates = []
+
+    for root in android_roots_for_storage(storage):
+        for name in names:
+            candidates.append(root / name)
+
+    return existing_folders(candidates, fallback_first=False)
+
+
+def android_audio_folders(storage="Internal"):
+    return android_media_folders(storage, ["Music", "Audio"])
+
+
+def audio_folders(storage="Internal"):
     if platform == "android":
-        candidates = [
-            Path("/storage/emulated/0/Movies"),
-            Path("/storage/emulated/0/Video"),
-        ]
-    else:
-        candidates = [
-            Path.home() / "Movies",
-            Path.home() / "Video",
-        ]
+        return android_audio_folders(storage)
 
-    for p in candidates:
-        if p.exists():
-            folders.append(p)
+    candidates = [
+        Path.home() / "Music",
+        Path.home() / "Audio",
+    ]
 
-    if not folders:
-        folders.append(candidates[0])
-
-    return folders
+    return existing_folders(candidates)
 
 
-def download_folders():
-    folders = []
-
+def video_folders(storage="Internal"):
     if platform == "android":
-        candidates = [
-            Path("/storage/emulated/0/Download"),
-            Path("/storage/emulated/0/Downloads"),
-        ]
-    else:
-        candidates = [
-            Path.home() / "Download",
-            Path.home() / "Downloads",
-        ]
+        return android_media_folders(storage, ["Movies", "Video"])
 
-    for p in candidates:
-        if p.exists():
-            folders.append(p)
+    candidates = [
+        Path.home() / "Movies",
+        Path.home() / "Video",
+    ]
 
-    if not folders:
-        folders.append(candidates[0])
+    return existing_folders(candidates)
 
-    return folders
+
+def download_folders(storage="Internal"):
+    if platform == "android":
+        return android_media_folders(storage, ["Download", "Downloads"])
+
+    candidates = [
+        Path.home() / "Download",
+        Path.home() / "Downloads",
+    ]
+
+    return existing_folders(candidates)
 
 REPEAT_OFF = "OFF"
 REPEAT_ONE = "ONE"
@@ -245,6 +238,7 @@ class MusicScreen(Screen):
             except Exception:
                 pass
 
+        self.active_storage = "Internal" if platform == "android" else "Local"
         self.active_folder = "Audio" if platform == "android" else "All"
         self.search_text = ""
         self.is_playing = False
@@ -278,6 +272,31 @@ class MusicScreen(Screen):
         )
         self.now_label.bind(size=lambda inst, val: setattr(inst, "text_size", val))
         root.add_widget(self.now_label)
+
+        self.storage_buttons = {}
+
+        if platform == "android":
+            storage_row = BoxLayout(
+                orientation="horizontal",
+                spacing=spacing_size(),
+                size_hint=(1, None),
+                height=self.control_height(),
+            )
+
+            for name in ["Internal", "External"]:
+                btn = Button(
+                    text=name,
+                    font_size=max(14, int(button_font() * 0.72)),
+                    background_normal="",
+                    background_color=(0.10, 0.45, 0.20, 1)
+                    if name == self.active_storage
+                    else (0.10, 0.15, 0.25, 1),
+                )
+                btn.bind(on_press=lambda inst, n=name: self.set_storage(n))
+                storage_row.add_widget(btn)
+                self.storage_buttons[name] = btn
+
+            root.add_widget(storage_row)
 
         folder_row = BoxLayout(
             orientation="horizontal",
@@ -496,12 +515,18 @@ class MusicScreen(Screen):
 
     def folder_text(self):
         if platform == "android":
-            audio_paths = "\n".join(str(p) for p in android_audio_folders())
+            roots = load_storage_roots()
+            audio_paths = "\n".join(str(p) for p in audio_folders(self.active_storage)) or "No audio folders found"
+            video_paths = "\n".join(str(p) for p in video_folders(self.active_storage)) or "No video folders found"
+            download_paths = "\n".join(str(p) for p in download_folders(self.active_storage)) or "No download folders found"
+
             return (
-                "Android folders:\n"
+                f"Storage: {self.active_storage}\n"
+                f"Internal root: {roots.get('internal_root', '/storage/emulated/0')}\n"
+                f"External root: {roots.get('external_root', '/mnt/sdcard')}\n"
                 f"Audio:\n{audio_paths}\n"
-                "Video: /storage/emulated/0/Movies\n"
-                "Downloads: /storage/emulated/0/Download"
+                f"Video:\n{video_paths}\n"
+                f"Downloads:\n{download_paths}"
             )
 
         folders = "\n".join(f"{name}: {path}" for name, path in MEDIA_FOLDERS.items())
@@ -594,6 +619,24 @@ class MusicScreen(Screen):
         except Exception as e:
             log.error(f"Music: favorites save failed {e}")
 
+    def set_storage(self, name):
+        if platform != "android":
+            return
+
+        self.active_storage = name
+        self.selected_file = None
+        self.update_storage_button_colors()
+        self.status_label.text = f"Storage: {self.active_storage}. Scanning..."
+        self.refresh_media(None)
+
+    def update_storage_button_colors(self):
+        for name, btn in self.storage_buttons.items():
+            btn.background_color = (
+                (0.10, 0.45, 0.20, 1)
+                if name == self.active_storage
+                else (0.10, 0.15, 0.25, 1)
+            )
+
     def set_folder(self, name):
         self.active_folder = name
         self.selected_file = None
@@ -667,13 +710,15 @@ class MusicScreen(Screen):
 
         found = []
 
-        for folder in audio_folders():
+        storage = self.active_storage if platform == "android" else "Internal"
+
+        for folder in audio_folders(storage):
             found.extend(self.scan_folder(folder))
 
-        for folder in video_folders():
+        for folder in video_folders(storage):
             found.extend(self.scan_folder(folder))
 
-        for folder in download_folders():
+        for folder in download_folders(storage):
             found.extend(self.scan_folder(folder))
 
         if platform != "android":
@@ -698,6 +743,24 @@ class MusicScreen(Screen):
             f"unsupported={self.last_scan_unsupported} "
             f"errors={self.last_scan_errors}"
         )
+        log.info("===== AUDIO FOLDERS =====")
+        for f in audio_folders():
+            log.info(f"AUDIO: {f}")
+
+        log.info("===== VIDEO FOLDERS =====")
+        for f in video_folders():
+            log.info(f"VIDEO: {f}")
+
+        log.info("===== DOWNLOAD FOLDERS =====")
+        for f in download_folders():
+            log.info(f"DOWNLOAD: {f}")
+
+        log.info(f"MEDIA FOUND COUNT: {len(unique)}")
+
+        for p in unique[:100]:
+            log.info(f"FOUND: {p}")
+
+
         return unique
 
     def refresh_media(self, instance):
@@ -735,20 +798,20 @@ class MusicScreen(Screen):
             files = [
                 p for p in files
                 if self.is_audio_file(p)
-                and self.path_is_inside_any(p, audio_folders())
+                and self.path_is_inside_any(p, audio_folders(self.active_storage))
             ]
 
         elif self.active_folder == "Video":
             files = [
                 p for p in files
                 if self.is_video_file(p)
-                and self.path_is_inside_any(p, video_folders())
+                and self.path_is_inside_any(p, video_folders(self.active_storage))
             ]
 
         elif self.active_folder == "Downloads":
             files = [
                 p for p in files
-                if self.path_is_inside_any(p, download_folders())
+                if self.path_is_inside_any(p, download_folders(self.active_storage))
             ]
 
         elif self.active_folder != "All":

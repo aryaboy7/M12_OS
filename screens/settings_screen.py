@@ -1,10 +1,11 @@
 # M12 OS Settings Screen - shared UI scale version
-# v0.4.21 - added Storage Settings page for media roots
+# v0.4.25 - Storage Settings page improved for Android keyboard
 from pathlib import Path
 import subprocess
 import os
 
 from kivy.utils import platform
+from kivy.core.window import Window
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -34,6 +35,9 @@ from utils.ui_scale import (
 )
 
 
+Window.softinput_mode = "resize"
+
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 LOG_FILE = BASE_DIR / "logs" / "m12_os.log"
 COPY_FILE = BASE_DIR / "logs" / "copied_log_text.txt"
@@ -45,6 +49,7 @@ GREEN = (0.10, 0.45, 0.20, 1)
 ORANGE = (0.45, 0.30, 0.10, 1)
 RED = (0.50, 0.15, 0.15, 1)
 DARK = (0.10, 0.15, 0.25, 1)
+WHITE = (1, 1, 1, 1)
 
 
 class SettingsScreen(Screen):
@@ -76,7 +81,7 @@ class SettingsScreen(Screen):
             text=text,
             font_size=title_font(),
             bold=True,
-            color=(1, 1, 1, 1),
+            color=WHITE,
             size_hint=(1, 0.10)
         )
 
@@ -105,7 +110,7 @@ class SettingsScreen(Screen):
             height=button_height(),
             background_normal="",
             background_color=color,
-            color=(1, 1, 1, 1),
+            color=WHITE,
             bold=True
         )
 
@@ -115,7 +120,7 @@ class SettingsScreen(Screen):
             font_size=button_font(),
             background_normal="",
             background_color=color,
-            color=(1, 1, 1, 1),
+            color=WHITE,
             bold=True
         )
 
@@ -128,14 +133,18 @@ class SettingsScreen(Screen):
             height=button_height(),
             background_normal="",
             background_color=BLUE,
-            color=(1, 1, 1, 1)
+            color=WHITE
         )
 
     def build_settings_view(self, instance=None):
         self.clear_screen()
         self.config = ConfigManager()
 
-        root = BoxLayout(orientation="vertical", padding=padding_size(), spacing=spacing_size())
+        root = BoxLayout(
+            orientation="vertical",
+            padding=padding_size(),
+            spacing=spacing_size()
+        )
         self.add_bg(root)
 
         root.add_widget(self.make_title("Settings"))
@@ -191,11 +200,13 @@ class SettingsScreen(Screen):
             font_size=text_font(),
             multiline=False,
             size_hint=(1, None),
-            height=button_height(),
+            height=max(42, int(button_height() * 0.85)),
             background_color=(1, 1, 1, 1),
             foreground_color=(0, 0, 0, 1),
             cursor_color=(0, 0, 0, 1),
-            padding=(spacing_size(), spacing_size())
+            padding=(spacing_size(), spacing_size()),
+            use_bubble=False,
+            use_handles=False,
         )
 
     def build_storage_view(self, instance=None):
@@ -214,25 +225,17 @@ class SettingsScreen(Screen):
             text="Storage Settings",
             font_size=title_font(),
             bold=True,
-            color=(1, 1, 1, 1),
-            size_hint=(1, 0.10)
+            color=WHITE,
+            size_hint=(1, 0.08)
         ))
 
-        root.add_widget(Label(
-            text="These roots are used by Music screen Internal / External SD switch.",
-            font_size=status_font(),
-            color=(0.70, 0.85, 1, 1),
-            size_hint=(1, 0.08),
-            halign="center",
-            valign="middle"
-        ))
-
+        # Path inputs are intentionally near the top so Android keyboard does not cover them.
         root.add_widget(Label(
             text="Internal Storage Root",
             font_size=text_font(),
             bold=True,
-            color=(0.80, 0.95, 1, 1),
-            size_hint=(1, 0.07)
+            color=WHITE,
+            size_hint=(1, 0.055)
         ))
 
         self.internal_root_input = self.make_text_input(
@@ -244,29 +247,35 @@ class SettingsScreen(Screen):
             text="External SD Root",
             font_size=text_font(),
             bold=True,
-            color=(0.80, 0.95, 1, 1),
-            size_hint=(1, 0.07)
+            color=WHITE,
+            size_hint=(1, 0.055)
         ))
 
         self.external_root_input = self.make_text_input(
-            roots.get("external_root", "/storage/M12SD")
+            roots.get("external_root", "/mnt/sdcard")
         )
         root.add_widget(self.external_root_input)
-
-        self.storage_status = Label(
-            text="Default External SD Root: /storage/M12SD",
-            font_size=status_font(),
-            color=(0.80, 0.90, 1, 1),
-            size_hint=(1, 0.10),
-            halign="center",
-            valign="middle"
-        )
-        self.storage_status.bind(size=lambda inst, val: setattr(inst, "text_size", val))
-        root.add_widget(self.storage_status)
 
         save_btn = self.make_button("Save Storage Roots", GREEN)
         save_btn.bind(on_press=self.save_storage_roots_clicked)
         root.add_widget(save_btn)
+
+        self.storage_status = Label(
+            text=(
+                "Current roots:\n"
+                f"Internal: {roots.get('internal_root', '/storage/emulated/0')}\n"
+                f"External: {roots.get('external_root', '/mnt/sdcard')}"
+            ),
+            font_size=status_font(),
+            color=WHITE,
+            size_hint=(1, 0.16),
+            halign="left",
+            valign="middle"
+        )
+        self.storage_status.bind(
+            size=lambda inst, val: setattr(inst, "text_size", (val[0], val[1]))
+        )
+        root.add_widget(self.storage_status)
 
         reset_btn = self.make_button("Reset Storage Defaults", ORANGE)
         reset_btn.bind(on_press=self.reset_storage_roots_clicked)
@@ -290,15 +299,14 @@ class SettingsScreen(Screen):
             )
 
             self.storage_status.text = (
-                "Saved: Internal="
+                "Saved roots:\n"
+                + "Internal: "
                 + roots.get("internal_root", "")
-                + " | External="
+                + "\nExternal: "
                 + roots.get("external_root", "")
             )
-            log.info(
-                "Settings: storage roots saved "
-                + str(roots)
-            )
+            log.info("Settings: storage roots saved " + str(roots))
+
         except Exception as e:
             self.storage_status.text = f"Save failed: {e}"
             log.error(f"Settings: storage roots save failed: {e}")
@@ -306,18 +314,20 @@ class SettingsScreen(Screen):
     def reset_storage_roots_clicked(self, instance):
         try:
             self.internal_root_input.text = "/storage/emulated/0"
-            self.external_root_input.text = "/storage/M12SD"
+            self.external_root_input.text = "/mnt/sdcard"
 
             roots = save_storage_roots(
                 self.internal_root_input.text,
                 self.external_root_input.text
             )
 
-            self.storage_status.text = "Storage roots reset to defaults."
-            log.info(
-                "Settings: storage roots reset "
-                + str(roots)
+            self.storage_status.text = (
+                "Storage roots reset to defaults:\n"
+                f"Internal: {roots.get('internal_root', '')}\n"
+                f"External: {roots.get('external_root', '')}"
             )
+            log.info("Settings: storage roots reset " + str(roots))
+
         except Exception as e:
             self.storage_status.text = f"Reset failed: {e}"
             log.error(f"Settings: storage roots reset failed: {e}")
@@ -366,7 +376,10 @@ class SettingsScreen(Screen):
 
                 if exists and is_dir:
                     media_hits = []
-                    for name in ["Music", "Audio", "Movies", "Video", "Videos", "Download", "Downloads", "DCIM"]:
+                    for name in [
+                        "Music", "Audio", "Movies", "Video",
+                        "Videos", "Download", "Downloads", "DCIM"
+                    ]:
                         try:
                             child = p / name
                             if child.exists() and child.is_dir():
@@ -435,7 +448,10 @@ class SettingsScreen(Screen):
 
             if exists and is_dir:
                 media_hits = []
-                for name in ["Music", "Audio", "Movies", "Video", "Download", "Downloads", "DCIM"]:
+                for name in [
+                    "Music", "Audio", "Movies", "Video",
+                    "Download", "Downloads", "DCIM"
+                ]:
                     try:
                         child = p / name
                         if child.exists() and child.is_dir():
@@ -464,14 +480,14 @@ class SettingsScreen(Screen):
             text="Detected Storage Paths",
             font_size=title_font(),
             bold=True,
-            color=(1, 1, 1, 1),
+            color=WHITE,
             size_hint=(1, 0.10)
         ))
 
         root.add_widget(Label(
             text="View only. Use this list to find the real Internal or SD card root.",
             font_size=status_font(),
-            color=(0.70, 0.85, 1, 1),
+            color=WHITE,
             size_hint=(1, 0.08),
             halign="center",
             valign="middle"
@@ -494,11 +510,21 @@ class SettingsScreen(Screen):
 
         root.add_widget(buttons)
 
-        scroll = ScrollView(size_hint=(1, 0.72), do_scroll_x=False, do_scroll_y=True)
-        path_list = GridLayout(cols=1, spacing=spacing_size(), size_hint_y=None)
+        scroll = ScrollView(
+            size_hint=(1, 0.72),
+            do_scroll_x=False,
+            do_scroll_y=True
+        )
+
+        path_list = GridLayout(
+            cols=1,
+            spacing=spacing_size(),
+            size_hint_y=None
+        )
         path_list.bind(minimum_height=path_list.setter("height"))
 
         for line in self.detect_storage_paths():
+            # Do not disable this button. Disabled buttons can show grey text on Android.
             btn = Button(
                 text=line,
                 font_size=text_font(),
@@ -508,9 +534,15 @@ class SettingsScreen(Screen):
                 valign="middle",
                 background_normal="",
                 background_color=DARK,
-                color=(1, 1, 1, 1)
+                color=WHITE
             )
-            btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1])))
+            btn.bind(
+                size=lambda inst, val: setattr(
+                    inst,
+                    "text_size",
+                    (val[0] - spacing_size(), val[1])
+                )
+            )
             path_list.add_widget(btn)
 
         scroll.add_widget(path_list)
@@ -533,14 +565,18 @@ class SettingsScreen(Screen):
     def build_log_view(self, instance=None):
         self.clear_screen()
 
-        root = BoxLayout(orientation="vertical", padding=padding_size(), spacing=spacing_size())
+        root = BoxLayout(
+            orientation="vertical",
+            padding=padding_size(),
+            spacing=spacing_size()
+        )
         self.add_bg(root)
 
         root.add_widget(Label(
             text="M12 OS Log",
             font_size=title_font(),
             bold=True,
-            color=(1, 1, 1, 1),
+            color=WHITE,
             size_hint=(1, 0.08)
         ))
 
@@ -552,10 +588,17 @@ class SettingsScreen(Screen):
             halign="left",
             valign="middle"
         )
-        self.log_status.bind(size=lambda inst, val: setattr(inst, "text_size", val))
+        self.log_status.bind(
+            size=lambda inst, val: setattr(inst, "text_size", val)
+        )
         root.add_widget(self.log_status)
 
-        buttons1 = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, None), height=button_height())
+        buttons1 = BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint=(1, None),
+            height=button_height()
+        )
 
         refresh_btn = self.make_small_button("Refresh", BLUE)
         refresh_btn.bind(on_press=self.refresh_log)
@@ -571,7 +614,12 @@ class SettingsScreen(Screen):
 
         root.add_widget(buttons1)
 
-        buttons2 = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, None), height=button_height())
+        buttons2 = BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint=(1, None),
+            height=button_height()
+        )
 
         clear_btn = self.make_small_button("Clear Log", RED)
         clear_btn.bind(on_press=self.clear_log_confirm)
@@ -587,9 +635,17 @@ class SettingsScreen(Screen):
 
         root.add_widget(buttons2)
 
-        self.log_scroll = ScrollView(size_hint=(1, 0.65), do_scroll_x=False, do_scroll_y=True)
+        self.log_scroll = ScrollView(
+            size_hint=(1, 0.65),
+            do_scroll_x=False,
+            do_scroll_y=True
+        )
 
-        self.log_list = GridLayout(cols=1, spacing=spacing_size(), size_hint_y=None)
+        self.log_list = GridLayout(
+            cols=1,
+            spacing=spacing_size(),
+            size_hint_y=None
+        )
         self.log_list.bind(minimum_height=self.log_list.setter("height"))
 
         self.log_scroll.add_widget(self.log_list)
@@ -667,10 +723,18 @@ class SettingsScreen(Screen):
             valign="middle",
             background_normal="",
             background_color=DARK,
-            color=(1, 1, 1, 1)
+            color=WHITE
         )
-        btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1])))
-        btn.bind(on_press=lambda instance, text=line: self.select_log_line(text))
+        btn.bind(
+            size=lambda inst, val: setattr(
+                inst,
+                "text_size",
+                (val[0] - spacing_size(), val[1])
+            )
+        )
+        btn.bind(
+            on_press=lambda instance, text=line: self.select_log_line(text)
+        )
         self.log_list.add_widget(btn)
 
     def select_log_line(self, line):

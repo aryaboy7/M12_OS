@@ -10,7 +10,7 @@ STORAGE_ROOTS_FILE = CONFIG_DIR / "storage_roots.json"
 
 DEFAULT_STORAGE_ROOTS = {
     "internal_root": "/storage/emulated/0",
-    "external_root": "/storage/M12SD",
+    "external_root": "/mnt/sdcard",
 }
 
 
@@ -19,9 +19,15 @@ def load_storage_roots():
 
     try:
         if STORAGE_ROOTS_FILE.exists():
-            saved = json.loads(STORAGE_ROOTS_FILE.read_text())
+            saved = json.loads(
+                STORAGE_ROOTS_FILE.read_text(
+                    encoding="utf-8"
+                )
+            )
+
             if isinstance(saved, dict):
                 data.update(saved)
+
     except Exception:
         pass
 
@@ -30,9 +36,19 @@ def load_storage_roots():
 
 def save_storage_roots(internal_root, external_root):
     data = {
-        "internal_root": internal_root.strip() or DEFAULT_STORAGE_ROOTS["internal_root"],
-        "external_root": external_root.strip() or DEFAULT_STORAGE_ROOTS["external_root"],
+        "internal_root": (
+            internal_root.strip()
+            or DEFAULT_STORAGE_ROOTS["internal_root"]
+        ),
+        "external_root": (
+            external_root.strip()
+            or DEFAULT_STORAGE_ROOTS["external_root"]
+        ),
     }
 
-    STORAGE_ROOTS_FILE.write_text(json.dumps(data, indent=2))
+    STORAGE_ROOTS_FILE.write_text(
+        json.dumps(data, indent=2),
+        encoding="utf-8"
+    )
+
     return data
