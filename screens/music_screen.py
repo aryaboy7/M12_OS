@@ -678,6 +678,9 @@ class MusicScreen(Screen):
 
             log.info(f"Music: scanning {folder}")
 
+            folder_supported_before = self.last_scan_supported
+            folder_total_before = self.last_scan_total_files
+
             for root, dirs, files in os.walk(folder, followlinks=True):
                 dirs[:] = [
                     d for d in dirs
@@ -695,6 +698,13 @@ class MusicScreen(Screen):
                         found.append(full_path)
                     else:
                         self.last_scan_unsupported += 1
+
+            folder_total = self.last_scan_total_files - folder_total_before
+            folder_supported = self.last_scan_supported - folder_supported_before
+            log.info(
+                f"Music: scan folder done {folder} "
+                f"total={folder_total} supported={folder_supported}"
+            )
 
         except Exception as e:
             self.last_scan_errors += 1
@@ -735,31 +745,47 @@ class MusicScreen(Screen):
         for p in unique[:25]:
             log.info(f"MEDIA FOUND: {p}")
 
+        roots = load_storage_roots() if platform == "android" else {}
+
         log.info(
             "Music scan result: "
+            f"storage={storage} "
+            f"internal_root={roots.get('internal_root', '')} "
+            f"external_root={roots.get('external_root', '')} "
             f"total={self.last_scan_total_files} "
             f"supported={self.last_scan_supported} "
             f"unique={len(unique)} "
             f"unsupported={self.last_scan_unsupported} "
             f"errors={self.last_scan_errors}"
         )
+
+        log.info(f"===== SELECTED STORAGE: {storage} =====")
+
         log.info("===== AUDIO FOLDERS =====")
-        for f in audio_folders():
+        audio_debug_folders = audio_folders(storage)
+        if not audio_debug_folders:
+            log.info("AUDIO: no folders found")
+        for f in audio_debug_folders:
             log.info(f"AUDIO: {f}")
 
         log.info("===== VIDEO FOLDERS =====")
-        for f in video_folders():
+        video_debug_folders = video_folders(storage)
+        if not video_debug_folders:
+            log.info("VIDEO: no folders found")
+        for f in video_debug_folders:
             log.info(f"VIDEO: {f}")
 
         log.info("===== DOWNLOAD FOLDERS =====")
-        for f in download_folders():
+        download_debug_folders = download_folders(storage)
+        if not download_debug_folders:
+            log.info("DOWNLOAD: no folders found")
+        for f in download_debug_folders:
             log.info(f"DOWNLOAD: {f}")
 
         log.info(f"MEDIA FOUND COUNT: {len(unique)}")
 
         for p in unique[:100]:
             log.info(f"FOUND: {p}")
-
 
         return unique
 
@@ -849,8 +875,13 @@ class MusicScreen(Screen):
                 halign="center",
                 valign="middle",
             ))
+            storage_text = (
+                f"{self.active_storage} | "
+                if platform == "android"
+                else ""
+            )
             self.status_label.text = (
-                f"Shown: 0 | Total: {len(self.media_files)} | "
+                f"{storage_text}Shown: 0 | Total: {len(self.media_files)} | "
                 f"Scanned: {self.last_scan_total_files} | "
                 f"Unsupported: {self.last_scan_unsupported}"
             )

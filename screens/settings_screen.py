@@ -195,16 +195,22 @@ class SettingsScreen(Screen):
         self.add_widget(root)
 
     def make_text_input(self, text):
+        # Dark input with white text is much more reliable on Android.
+        # Some Android/Kivy builds do not draw black TextInput text clearly
+        # until the field receives focus.
         return TextInput(
             text=text,
             font_size=text_font(),
             multiline=False,
             size_hint=(1, None),
-            height=max(42, int(button_height() * 0.85)),
-            background_color=(1, 1, 1, 1),
-            foreground_color=(0, 0, 0, 1),
-            cursor_color=(0, 0, 0, 1),
-            padding=(spacing_size(), spacing_size()),
+            height=max(48, int(button_height() * 0.95)),
+            background_normal="",
+            background_active="",
+            background_color=(0.10, 0.15, 0.25, 1),
+            foreground_color=(1, 1, 1, 1),
+            cursor_color=(1, 1, 1, 1),
+            hint_text_color=(0.75, 0.85, 1, 1),
+            padding=(spacing_size(), 0, spacing_size(), 0),
             use_bubble=False,
             use_handles=False,
         )
