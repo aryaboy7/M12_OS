@@ -19,6 +19,7 @@ from kivy.graphics import Color, Rectangle
 from config.version import version_text
 from utils.config_manager import ConfigManager
 from utils.logger import log
+from utils.text_editor_popup import open_text_editor
 from utils.storage_roots import (
     load_storage_roots,
     save_storage_roots,
@@ -216,10 +217,33 @@ class SettingsScreen(Screen):
             use_handles=False,
         )
 
+    def make_path_row(self, text):
+        row = Button(
+            text=str(text),
+            font_size=status_font(),
+            color=WHITE,
+            size_hint=(1, None),
+            height=max(48, int(button_height() * 0.72)),
+            background_normal="",
+            background_color=(0.06, 0.11, 0.20, 1),
+            halign="left",
+            valign="middle"
+        )
+        row.bind(
+            size=lambda inst, val: setattr(
+                inst,
+                "text_size",
+                (val[0] - spacing_size(), val[1])
+            )
+        )
+        return row
+
     def build_storage_view(self, instance=None):
         self.clear_screen()
 
         roots = load_storage_roots()
+        internal_root_text = roots.get("internal_root", "/storage/emulated/0")
+        external_root_text = roots.get("external_root", "/storage/0907-1477")
 
         root = BoxLayout(
             orientation="vertical",
@@ -236,77 +260,41 @@ class SettingsScreen(Screen):
             size_hint=(1, 0.08)
         ))
 
-        # Path inputs are intentionally near the top so Android keyboard does not cover them.
-        internal_root_text = roots.get("internal_root", "/storage/emulated/0")
-        external_root_text = roots.get("external_root", "/mnt/sdcard")
-
         root.add_widget(Label(
             text="Internal Storage Root",
             font_size=text_font(),
             bold=True,
             color=WHITE,
-            size_hint=(1, 0.045)
+            size_hint=(1, 0.05)
         ))
 
-        self.internal_path_view = Button(
-            text=internal_root_text,
-            font_size=status_font(),
-            color=WHITE,
-            size_hint=(1, None),
-            height=max(42, int(button_height() * 0.65)),
-            background_normal="",
-            background_color=(0.06, 0.11, 0.20, 1),
-            halign="left",
-            valign="middle"
-        )
-        self.internal_path_view.bind(
-            size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1]))
-        )
+        self.internal_path_view = self.make_path_row(internal_root_text)
         root.add_widget(self.internal_path_view)
 
-        self.internal_root_input = self.make_text_input(internal_root_text)
-        root.add_widget(self.internal_root_input)
+        change_internal_btn = self.make_button("Change Internal Root", BLUE)
+        change_internal_btn.bind(on_press=self.change_internal_root)
+        root.add_widget(change_internal_btn)
 
         root.add_widget(Label(
             text="External SD Root",
             font_size=text_font(),
             bold=True,
             color=WHITE,
-            size_hint=(1, 0.045)
+            size_hint=(1, 0.05)
         ))
 
-        self.external_path_view = Button(
-            text=external_root_text,
-            font_size=status_font(),
-            color=WHITE,
-            size_hint=(1, None),
-            height=max(42, int(button_height() * 0.65)),
-            background_normal="",
-            background_color=(0.06, 0.11, 0.20, 1),
-            halign="left",
-            valign="middle"
-        )
-        self.external_path_view.bind(
-            size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1]))
-        )
+        self.external_path_view = self.make_path_row(external_root_text)
         root.add_widget(self.external_path_view)
 
-        self.external_root_input = self.make_text_input(external_root_text)
-        root.add_widget(self.external_root_input)
-
-        save_btn = self.make_button("Save Storage Roots", GREEN)
-        save_btn.bind(on_press=self.save_storage_roots_clicked)
-        root.add_widget(save_btn)
+        change_external_btn = self.make_button("Change External Root", BLUE)
+        change_external_btn.bind(on_press=self.change_external_root)
+        root.add_widget(change_external_btn)
 
         self.storage_status = Label(
-            text=(
-                "Current roots:\n"
-                f"Internal: {roots.get('internal_root', '/storage/emulated/0')}\n"
-                f"External: {roots.get('external_root', '/mnt/sdcard')}"
-            ),
+            text="Music screen uses these roots for Internal / External storage.",
             font_size=status_font(),
             color=WHITE,
-            size_hint=(1, 0.16),
+            size_hint=(1, 0.12),
             halign="left",
             valign="middle"
         )
@@ -328,6 +316,68 @@ class SettingsScreen(Screen):
         root.add_widget(back_btn)
 
         self.add_widget(root)
+
+    def change_internal_root(self, instance):
+        roots = load_storage_roots()
+        current = roots.get("internal_root", "/storage/emulated/0")
+
+        open_text_editor(
+            title="Internal Storage Root",
+            text=current,
+            on_save=self.save_internal_root,
+            multiline=False
+        )
+
+    def change_external_root(self, instance):
+        roots = load_storage_roots()
+        current = roots.get("external_root", "/storage/0907-1477")
+
+        open_text_editor(
+            title="External SD Root",
+            text=current,
+            on_save=self.save_external_root,
+            multiline=False
+        )
+
+    def save_internal_root(self, text):
+        try:
+            roots = load_storage_roots()
+
+            internal_root = text.strip() or "/storage/emulated/0"
+            external_root = roots.get("external_root", "/storage/0907-1477")
+
+            saved = save_storage_roots(internal_root, external_root)
+
+            log.info("Settings: internal root saved " + str(saved))
+            self.build_storage_view()
+
+        except Exception as e:
+            log.error(f"Settings: internal root save failed: {e}")
+
+    def save_external_root(self, text):
+        try:
+            roots = load_storage_roots()
+
+            internal_root = roots.get("internal_root", "/storage/emulated/0")
+            external_root = text.strip() or "/storage/0907-1477"
+
+            saved = save_storage_roots(internal_root, external_root)
+
+            log.info("Settings: external root saved " + str(saved))
+            self.build_storage_view()
+
+        except Exception as e:
+            log.error(f"Settings: external root save failed: {e}")
+
+    def save_storage_roots_clicked(self, instance):
+        # Kept for compatibility with older builds.
+        roots = load_storage_roots()
+        saved = save_storage_roots(
+            roots.get("internal_root", "/storage/emulated/0"),
+            roots.get("external_root", "/storage/0907-1477")
+        )
+        log.info("Settings: storage roots saved " + str(saved))
+        self.build_storage_view()
 
     def save_storage_roots_clicked(self, instance):
         try:
@@ -354,26 +404,15 @@ class SettingsScreen(Screen):
 
     def reset_storage_roots_clicked(self, instance):
         try:
-            self.internal_root_input.text = "/storage/emulated/0"
-            self.external_root_input.text = "/mnt/sdcard"
-
             roots = save_storage_roots(
-                self.internal_root_input.text,
-                self.external_root_input.text
+                "/storage/emulated/0",
+                "/storage/0907-1477"
             )
 
-            self.internal_path_view.text = roots.get("internal_root", "")
-            self.external_path_view.text = roots.get("external_root", "")
-
-            self.storage_status.text = (
-                "Storage roots reset to defaults:\n"
-                f"Internal: {roots.get('internal_root', '')}\n"
-                f"External: {roots.get('external_root', '')}"
-            )
             log.info("Settings: storage roots reset " + str(roots))
+            self.build_storage_view()
 
         except Exception as e:
-            self.storage_status.text = f"Reset failed: {e}"
             log.error(f"Settings: storage roots reset failed: {e}")
 
     def detect_storage_paths(self):
