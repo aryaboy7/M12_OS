@@ -625,9 +625,28 @@ class MusicScreen(Screen):
 
         self.active_storage = name
         self.selected_file = None
+        self.media_files = []
+        self.visible_files = []
+
         self.update_storage_button_colors()
-        self.status_label.text = f"Storage: {self.active_storage}. Scanning..."
-        self.refresh_media(None)
+        self.file_list.clear_widgets()
+
+        self.file_list.add_widget(Label(
+            text=(
+                f"{self.active_storage} selected.\n\n"
+                "Press Rescan to load files."
+            ),
+            font_size=text_font(),
+            size_hint_y=None,
+            height=self.media_row_height() * 3,
+            halign="center",
+            valign="middle",
+        ))
+
+        self.status_label.text = (
+            f"Storage: {self.active_storage}. "
+            "Press Rescan."
+        )
 
     def update_storage_button_colors(self):
         for name, btn in self.storage_buttons.items():
@@ -693,7 +712,7 @@ class MusicScreen(Screen):
 
                     full_path = Path(root) / name
 
-                    if full_path.exists() and full_path.is_file() and self.is_supported_on_this_platform(full_path):
+                    if self.is_supported_on_this_platform(full_path):
                         self.last_scan_supported += 1
                         found.append(full_path)
                     else:
@@ -948,10 +967,7 @@ class MusicScreen(Screen):
                 return
 
             # ScrollView scroll_y: 1 = top, 0 = bottom.
-            self.song_scroll.scroll_y = max(
-                0,
-                min(1, 1 - (index / max(1, total - 1)))
-            )
+            self.song_scroll.scroll_y = 1 - (index / max(1, total - 1))
 
         except Exception as e:
             log.error(f"Music: scroll to selected failed {e}")
