@@ -35,7 +35,11 @@ class AlarmNotifier:
             return
 
         self.running = True
-        self.load_sound()
+
+        # Do not preload reminder.wav during application startup.
+        # On Linux, SoundLoader.load() can block the Kivy main thread.
+        # The sound is loaded only when an alarm actually fires.
+        self.sound = None
 
         Clock.unschedule(self.check)
         Clock.schedule_interval(self.check, self.interval_seconds)
@@ -57,7 +61,9 @@ class AlarmNotifier:
 
             if platform == "macosx":
                 self.sound = None
-                log.info(f"AlarmNotifier: macOS sound ready for afplay {SOUND_FILE}")
+                log.info(
+                    f"AlarmNotifier: macOS sound ready for afplay {SOUND_FILE}"
+                )
                 return
 
             self.sound = SoundLoader.load(str(SOUND_FILE))
@@ -65,7 +71,9 @@ class AlarmNotifier:
             if self.sound:
                 log.info(f"AlarmNotifier: SoundLoader loaded {SOUND_FILE}")
             else:
-                log.warning(f"AlarmNotifier: SoundLoader could not load {SOUND_FILE}")
+                log.warning(
+                    f"AlarmNotifier: SoundLoader could not load {SOUND_FILE}"
+                )
 
         except Exception as e:
             self.sound = None
@@ -85,7 +93,9 @@ class AlarmNotifier:
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL
                     )
-                    log.info(f"AlarmNotifier: sound played with afplay {SOUND_FILE}")
+                    log.info(
+                        f"AlarmNotifier: sound played with afplay {SOUND_FILE}"
+                    )
                     return
                 except Exception as e:
                     log.error(f"AlarmNotifier: afplay failed {e}")
@@ -98,7 +108,9 @@ class AlarmNotifier:
                     pass
 
                 self.sound.play()
-                log.info("AlarmNotifier: sound played with cached SoundLoader")
+                log.info(
+                    "AlarmNotifier: sound played with cached SoundLoader"
+                )
                 return
 
             sound = SoundLoader.load(str(SOUND_FILE))
@@ -110,7 +122,9 @@ class AlarmNotifier:
                 return
 
             print("\a", end="", flush=True)
-            log.warning(f"AlarmNotifier: no sound provider could play {SOUND_FILE}")
+            log.warning(
+                f"AlarmNotifier: no sound provider could play {SOUND_FILE}"
+            )
 
         except Exception as e:
             log.error(f"AlarmNotifier: sound failed {e}")
@@ -120,7 +134,9 @@ class AlarmNotifier:
             return []
 
         try:
-            data = json.loads(ALARMS_FILE.read_text(encoding="utf-8"))
+            data = json.loads(
+                ALARMS_FILE.read_text(encoding="utf-8")
+            )
             return data if isinstance(data, list) else []
         except Exception as e:
             log.error(f"AlarmNotifier: load failed {e}")
@@ -129,7 +145,10 @@ class AlarmNotifier:
     def save_alarms(self, alarms):
         try:
             ALARMS_FILE.parent.mkdir(parents=True, exist_ok=True)
-            ALARMS_FILE.write_text(json.dumps(alarms, indent=4), encoding="utf-8")
+            ALARMS_FILE.write_text(
+                json.dumps(alarms, indent=4),
+                encoding="utf-8"
+            )
         except Exception as e:
             log.error(f"AlarmNotifier: save failed {e}")
 
@@ -141,7 +160,11 @@ class AlarmNotifier:
 
         if until_date:
             try:
-                until = datetime.strptime(until_date, "%Y-%m-%d").date()
+                until = datetime.strptime(
+                    until_date,
+                    "%Y-%m-%d"
+                ).date()
+
                 if now.date() > until:
                     return False
             except Exception:
@@ -174,12 +197,18 @@ class AlarmNotifier:
             if not self.should_ring_today(alarm, now):
                 continue
 
-            alarm_hm = f"{int(alarm.get('hour', 0)):02d}:{int(alarm.get('minute', 0)):02d}"
+            alarm_hm = (
+                f"{int(alarm.get('hour', 0)):02d}:"
+                f"{int(alarm.get('minute', 0)):02d}"
+            )
 
             if alarm_hm != now_hm:
                 continue
 
-            if alarm.get("last_fired_date") == today and alarm.get("last_fired_time") == alarm_hm:
+            if (
+                alarm.get("last_fired_date") == today
+                and alarm.get("last_fired_time") == alarm_hm
+            ):
                 continue
 
             alarm["last_fired_date"] = today
@@ -224,7 +253,13 @@ class AlarmNotifier:
             halign="center",
             valign="middle"
         )
-        label.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - height(20), val[1])))
+        label.bind(
+            size=lambda inst, val: setattr(
+                inst,
+                "text_size",
+                (val[0] - height(20), val[1])
+            )
+        )
 
         box.add_widget(label)
 
@@ -251,4 +286,6 @@ class AlarmNotifier:
         box.add_widget(dismiss_btn)
 
         popup.open()
-        log.info(f"AlarmNotifier: popup shown {hour:02d}:{minute:02d}")
+        log.info(
+            f"AlarmNotifier: popup shown {hour:02d}:{minute:02d}"
+        )

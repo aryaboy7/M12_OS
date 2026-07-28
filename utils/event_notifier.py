@@ -54,7 +54,11 @@ class EventNotifier:
             return
 
         self.running = True
-        self.load_sound()
+
+        # Do not preload reminder.wav during application startup.
+        # On Linux, SoundLoader.load() can block the Kivy main thread.
+        # The sound will be loaded only when a reminder actually fires.
+        self.sound = None
 
         Clock.unschedule(self.check)
         Clock.schedule_interval(self.check, self.interval_seconds)

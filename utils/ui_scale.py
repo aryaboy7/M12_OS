@@ -1,4 +1,5 @@
 from kivy.core.window import Window
+from kivy.utils import platform
 
 
 def device_profile():
@@ -7,12 +8,19 @@ def device_profile():
 
     Known logical screen sizes:
     - Mac test:        900 x 650
+    - Linux laptop:    desktop/laptop window
     - M12 device:      640 x 1046
     - Android tablet:  800 x 1280
-    - Android phone:  1080 x 2123
+    - Android phone:   1080 x 2123
     """
     w = Window.width
     h = Window.height
+
+    # Linux needs a dedicated HiDPI-friendly desktop profile.
+    # Check the platform first so a large Linux window is not
+    # incorrectly detected as a tablet or phone.
+    if platform == "linux":
+        return "linux"
 
     if h >= 1800:
         return "phone"
@@ -42,6 +50,10 @@ def is_tablet():
     return device_profile() == "tablet"
 
 
+def is_linux():
+    return device_profile() == "linux"
+
+
 # ------------------------------------------------------------
 # Basic scale helpers
 # ------------------------------------------------------------
@@ -61,6 +73,8 @@ def font(base):
         scale = 1.45
     elif profile == "m12":
         scale = 1.45
+    elif profile == "linux":
+        scale = 2.00
     else:
         scale = 1.00
 
@@ -82,6 +96,8 @@ def height(base):
         scale = 1.35
     elif profile == "m12":
         scale = 1.35
+    elif profile == "linux":
+        scale = 1.80
     else:
         scale = 1.00
 
@@ -90,8 +106,6 @@ def height(base):
 
 # ------------------------------------------------------------
 # M12 OS standard fonts
-# These are based on the File Manager screen, which is the
-# current visual standard for Android phone readability.
 # ------------------------------------------------------------
 
 def title_font():
@@ -103,6 +117,8 @@ def title_font():
         return 40
     if profile == "m12":
         return 32
+    if profile == "linux":
+        return 52
 
     return font(26)
 
@@ -116,6 +132,8 @@ def button_font():
         return 40
     if profile == "m12":
         return 30
+    if profile == "linux":
+        return 34
 
     return font(16)
 
@@ -128,6 +146,8 @@ def list_font():
     if profile == "tablet":
         return 44
     if profile == "m12":
+        return 32
+    if profile == "linux":
         return 32
 
     return font(14)
@@ -142,6 +162,8 @@ def text_font():
         return 30
     if profile == "m12":
         return 22
+    if profile == "linux":
+        return 28
 
     return font(14)
 
@@ -155,6 +177,8 @@ def status_font():
         return 22
     if profile == "m12":
         return 20
+    if profile == "linux":
+        return 24
 
     return font(12)
 
@@ -168,6 +192,8 @@ def small_font():
         return 22
     if profile == "m12":
         return 18
+    if profile == "linux":
+        return 22
 
     return font(11)
 
@@ -181,6 +207,8 @@ def input_font():
         return 38
     if profile == "m12":
         return 30
+    if profile == "linux":
+        return 36
 
     return font(20)
 
@@ -194,6 +222,8 @@ def clock_time_font():
         return 72
     if profile == "m12":
         return 58
+    if profile == "linux":
+        return 96
 
     return font(52)
 
@@ -207,6 +237,8 @@ def clock_date_font():
         return 32
     if profile == "m12":
         return 24
+    if profile == "linux":
+        return 38
 
     return font(20)
 
@@ -224,6 +256,8 @@ def button_height():
         return 78
     if profile == "m12":
         return 66
+    if profile == "linux":
+        return 86
 
     return height(48)
 
@@ -237,6 +271,8 @@ def row_height():
         return 118
     if profile == "m12":
         return 96
+    if profile == "linux":
+        return 108
 
     return height(60)
 
@@ -250,6 +286,8 @@ def small_row_height():
         return 78
     if profile == "m12":
         return 66
+    if profile == "linux":
+        return 78
 
     return height(44)
 
@@ -263,6 +301,8 @@ def input_height():
         return 86
     if profile == "m12":
         return 72
+    if profile == "linux":
+        return 90
 
     return height(52)
 
@@ -276,6 +316,8 @@ def top_bar_height():
         return 54
     if profile == "m12":
         return 46
+    if profile == "linux":
+        return 62
 
     return height(34)
 
@@ -289,6 +331,8 @@ def padding_size():
         return 16
     if profile == "m12":
         return 10
+    if profile == "linux":
+        return 18
 
     return 10
 
@@ -302,5 +346,7 @@ def spacing_size():
         return 10
     if profile == "m12":
         return 8
+    if profile == "linux":
+        return 14
 
     return 8

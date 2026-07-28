@@ -165,7 +165,7 @@
         "last_reminder_date": "",
         "last_event_date": "",
         "reminder_notified": false,
-        "event_notified": false
+        "event_notified": true
     },
     {
         "title": "Flight to Italy",
@@ -179,6 +179,6 @@
         "last_reminder_date": "",
         "last_event_date": "",
         "reminder_notified": false,
-        "event_notified": false
+        "event_notified": true
     }
 ]

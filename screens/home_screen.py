@@ -75,6 +75,12 @@ class HomeScreen(Screen):
             weather_hint = 0.15
             grid_hint = 0.575
             version_hint = 0.04
+        elif profile == "linux":
+            status_hint = 0.07
+            clock_hint = 0.20
+            weather_hint = 0.17
+            grid_hint = 0.50
+            version_hint = 0.06
         elif profile in ("tablet", "m12"):
             status_hint = 0.055
             clock_hint = 0.16
@@ -495,6 +501,9 @@ class HomeScreen(Screen):
 
         if profile in ("phone", "m12", "tablet"):
             return 2
+
+        if profile == "linux":
+            return 4
 
         return 5
 
