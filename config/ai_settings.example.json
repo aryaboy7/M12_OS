@@ -1,0 +1,11 @@
+{
+    "provider": "OpenAI",
+    "model": "gpt-5-mini",
+    "transcription_model": "gpt-4o-mini-transcribe",
+    "speech_model": "gpt-4o-mini-tts",
+    "speech_voice": "marin",
+    "speech_instructions": "Speak clearly, naturally, and warmly. Use a calm personal-assistant style.",
+    "voice_answers_enabled": true,
+    "api_key": "",
+    "remember_api_key": true
+}

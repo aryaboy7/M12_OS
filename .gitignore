@@ -1,2 +1,9 @@
 __pycache__/
 *.pyc
+
+# Local AI credentials
+config/ai_settings.json
+
+# Python virtual environments
+.venv/
+venv/
