@@ -1,6 +1,3 @@
-import json
-from pathlib import Path
-
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -8,6 +5,7 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 
+from services.service_manager import ServiceManager
 from utils.logger import log
 from utils.ui_scale import (
     device_profile,
@@ -23,19 +21,15 @@ from utils.ui_scale import (
 )
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-NOTES_DIR = BASE_DIR / "data" / "notes"
-TYPES_FILE = BASE_DIR / "config" / "note_types.json"
-NOTES_DIR.mkdir(parents=True, exist_ok=True)
-
-
 def filter_button_font():
     profile = device_profile()
 
     if profile == "phone":
         return 48
+
     if profile == "tablet":
         return 34
+
     if profile == "m12":
         return 26
 
@@ -65,16 +59,19 @@ class NotesScreen(Screen):
             filter_hint = 0.19
             list_hint = 0.58
             bottom_hint = 0.155
+
         elif profile == "tablet":
             title_hint = 0.075
             filter_hint = 0.18
             list_hint = 0.59
             bottom_hint = 0.155
+
         elif profile == "m12":
             title_hint = 0.075
             filter_hint = 0.17
             list_hint = 0.60
             bottom_hint = 0.155
+
         else:
             title_hint = 0.10
             filter_hint = 0.18
@@ -113,7 +110,9 @@ class NotesScreen(Screen):
             spacing=spacing_size(),
             size_hint_y=None,
         )
-        self.notes_box.bind(minimum_height=self.notes_box.setter("height"))
+        self.notes_box.bind(
+            minimum_height=self.notes_box.setter("height")
+        )
 
         scroll.add_widget(self.notes_box)
         layout.add_widget(scroll)
@@ -143,58 +142,79 @@ class NotesScreen(Screen):
         layout.add_widget(bottom)
         self.add_widget(layout)
 
+    # -------------------------------------------------------------
+    # Service access
+    # -------------------------------------------------------------
+    def get_notes_service(self):
+        """
+        Return the shared NotesService instance.
+        """
+        service = ServiceManager.get_service(
+            "notes"
+        )
+
+        if service is None:
+            log.error(
+                "Notes: NotesService is not available"
+            )
+
+        return service
+
+    # -------------------------------------------------------------
+    # Layout helpers
+    # -------------------------------------------------------------
     def filter_cols(self):
         profile = device_profile()
 
         if profile == "phone":
             return 2
 
-        if profile in ("tablet", "m12"):
+        if profile in (
+            "tablet",
+            "m12",
+        ):
             return 3
 
         return 3
 
+    # -------------------------------------------------------------
+    # Screen lifecycle
+    # -------------------------------------------------------------
     def on_enter(self):
         self.refresh_filters()
         self.refresh_notes()
 
+    # -------------------------------------------------------------
+    # Note types
+    # -------------------------------------------------------------
     def load_types(self):
-        try:
-            if TYPES_FILE.exists():
-                data = json.loads(TYPES_FILE.read_text(encoding="utf-8"))
-                if isinstance(data, list):
-                    return data
-        except Exception as e:
-            log.error(f"Notes: failed to load types: {e}")
+        service = self.get_notes_service()
 
-        return ["Personal", "Work", "Project", "Shopping", "Idea"]
-
-    def read_note_data(self, path):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            return {
-                "title": data.get("title", path.stem),
-                "type": data.get("type", "Personal"),
-                "body": data.get("body", "")
-            }
-        except Exception:
+        if service is not None:
             try:
-                return {
-                    "title": path.stem,
-                    "type": "Personal",
-                    "body": path.read_text(encoding="utf-8")
-                }
-            except Exception:
-                return {
-                    "title": path.stem,
-                    "type": "Personal",
-                    "body": ""
-                }
+                return service.get_note_types()
+
+            except Exception as error:
+                log.error(
+                    "Notes: failed to get note types: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        return [
+            "Personal",
+            "Work",
+            "Project",
+            "Shopping",
+            "Idea",
+        ]
 
     def refresh_filters(self):
         self.filter_box.clear_widgets()
 
-        filters = ["All"] + self.load_types()
+        filters = [
+            "All"
+        ] + self.load_types()
+
         self.filter_box.cols = self.filter_cols()
 
         for name in filters:
@@ -210,59 +230,127 @@ class NotesScreen(Screen):
                 background_normal="",
                 background_color=color,
             )
-            btn.bind(on_press=lambda instance, f=name: self.set_filter(f))
+
+            btn.bind(
+                on_press=lambda instance, f=name: self.set_filter(f)
+            )
+
             self.filter_box.add_widget(btn)
 
-    def set_filter(self, note_type):
+    def set_filter(
+        self,
+        note_type,
+    ):
         self.current_filter = note_type
         self.selected_note = None
-        log.info(f"Notes: filter {note_type}")
+
+        log.info(
+            f"Notes: filter {note_type}"
+        )
+
         self.refresh_filters()
         self.refresh_notes()
 
+    # -------------------------------------------------------------
+    # Notes list
+    # -------------------------------------------------------------
     def refresh_notes(self):
         self.notes_box.clear_widgets()
 
-        files = sorted(
-            list(NOTES_DIR.glob("*.json")) + list(NOTES_DIR.glob("*.txt")),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
+        service = self.get_notes_service()
 
-        visible_files = []
-
-        for file in files:
-            data = self.read_note_data(file)
-            if self.current_filter == "All" or data["type"] == self.current_filter:
-                visible_files.append((file, data))
-
-        if not visible_files:
-            self.notes_box.add_widget(
-                Label(
-                    text="No notes found",
-                    font_size=text_font(),
-                    size_hint_y=None,
-                    height=small_row_height(),
-                )
+        if service is None:
+            self.show_no_notes(
+                "Notes service unavailable"
             )
             return
 
-        for file, data in visible_files:
-            title = str(data["title"]).strip() or file.stem
-            note_type = str(data["type"]).strip() or "Personal"
-            preview = data["body"].replace("\n", " ").strip()
+        try:
+            notes = service.get_all_notes(
+                note_type=self.current_filter
+            )
+
+        except Exception as error:
+            log.error(
+                "Notes: failed to load notes: "
+                f"{type(error).__name__}: {error}"
+            )
+
+            self.show_no_notes(
+                "Unable to load notes"
+            )
+            return
+
+        if not notes:
+            self.show_no_notes(
+                "No notes found"
+            )
+            return
+
+        visible_paths = {
+            note["path"]
+            for note in notes
+        }
+
+        if (
+            self.selected_note is not None
+            and self.selected_note not in visible_paths
+        ):
+            self.selected_note = None
+
+        for note in notes:
+            path = note["path"]
+
+            title = str(
+                note.get(
+                    "title",
+                    path.stem,
+                )
+            ).strip() or path.stem
+
+            note_type = str(
+                note.get(
+                    "type",
+                    "Personal",
+                )
+            ).strip() or "Personal"
+
+            preview = str(
+                note.get(
+                    "body",
+                    "",
+                )
+            ).replace(
+                "\n",
+                " ",
+            ).strip()
 
             if is_mobile():
                 if len(title) > 30:
-                    title = title[:27] + "..."
+                    title = (
+                        title[:27]
+                        + "..."
+                    )
 
-                text = f"{title}\n{note_type}"
+                text = (
+                    f"{title}\n"
+                    f"{note_type}"
+                )
+
                 fs = list_font()
+
             else:
                 if len(preview) > 60:
-                    preview = preview[:60] + "..."
+                    preview = (
+                        preview[:60]
+                        + "..."
+                    )
 
-                text = f"{title}\n{note_type} | {preview}"
+                text = (
+                    f"{title}\n"
+                    f"{note_type} | {preview}"
+                )
+
                 fs = list_font()
 
             btn = Button(
@@ -275,52 +363,160 @@ class NotesScreen(Screen):
                 halign="left",
                 valign="middle",
             )
-            btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1])))
 
-            if self.selected_note == file:
-                btn.background_color = (0.25, 0.45, 0.75, 1)
+            btn.bind(
+                size=lambda inst, val: setattr(
+                    inst,
+                    "text_size",
+                    (
+                        val[0] - spacing_size(),
+                        val[1],
+                    ),
+                )
+            )
 
-            btn.bind(on_press=lambda instance, p=file: self.select_note(p))
+            if self.selected_note == path:
+                btn.background_color = (
+                    0.25,
+                    0.45,
+                    0.75,
+                    1,
+                )
+
+            btn.bind(
+                on_press=lambda instance, p=path: self.select_note(p)
+            )
+
             self.notes_box.add_widget(btn)
 
-    def select_note(self, path):
+    def show_no_notes(
+        self,
+        message,
+    ):
+        self.notes_box.add_widget(
+            Label(
+                text=str(message),
+                font_size=text_font(),
+                size_hint_y=None,
+                height=small_row_height(),
+            )
+        )
+
+    def select_note(
+        self,
+        path,
+    ):
         self.selected_note = path
-        log.info(f"Notes: selected {path.name}")
+
+        log.info(
+            f"Notes: selected {path.name}"
+        )
+
         self.refresh_notes()
 
-    def new_note(self, instance):
-        log.info("Notes: New pressed")
-        editor = self.manager.get_screen("editor")
+    # -------------------------------------------------------------
+    # Note actions
+    # -------------------------------------------------------------
+    def new_note(
+        self,
+        instance,
+    ):
+        log.info(
+            "Notes: New pressed"
+        )
+
+        editor = self.manager.get_screen(
+            "editor"
+        )
+
         editor.new_note()
         self.manager.current = "editor"
 
-    def open_note(self, instance):
+    def open_note(
+        self,
+        instance,
+    ):
         if not self.selected_note:
-            log.warning("Notes: Open pressed with no selection")
+            log.warning(
+                "Notes: Open pressed with no selection"
+            )
             return
 
-        editor = self.manager.get_screen("editor")
-        editor.load_note(self.selected_note)
+        editor = self.manager.get_screen(
+            "editor"
+        )
 
-        log.info(f"Notes: opening {self.selected_note.name}")
+        editor.load_note(
+            self.selected_note
+        )
+
+        log.info(
+            "Notes: opening "
+            f"{self.selected_note.name}"
+        )
+
         self.manager.current = "editor"
 
-    def delete_note(self, instance):
+    def delete_note(
+        self,
+        instance,
+    ):
         if not self.selected_note:
-            log.warning("Notes: Delete pressed with no selection")
+            log.warning(
+                "Notes: Delete pressed with no selection"
+            )
             return
 
-        if self.selected_note.exists():
-            log.info(f"Notes: deleted {self.selected_note.name}")
-            self.selected_note.unlink()
+        service = self.get_notes_service()
+
+        if service is None:
+            return
+
+        selected_path = self.selected_note
+
+        try:
+            deleted = service.delete_note(
+                selected_path
+            )
+
+        except Exception as error:
+            log.error(
+                "Notes: delete failed: "
+                f"{type(error).__name__}: {error}"
+            )
+            return
+
+        if deleted:
+            log.info(
+                "Notes: deleted "
+                f"{selected_path.name}"
+            )
+
+        else:
+            log.warning(
+                "Notes: note was not deleted: "
+                f"{selected_path.name}"
+            )
 
         self.selected_note = None
         self.refresh_notes()
 
-    def open_types(self, instance):
-        log.info("Notes: Types pressed")
+    def open_types(
+        self,
+        instance,
+    ):
+        log.info(
+            "Notes: Types pressed"
+        )
+
         self.manager.current = "note_types"
 
-    def go_back(self, instance):
-        log.info("Notes: Back pressed")
+    def go_back(
+        self,
+        instance,
+    ):
+        log.info(
+            "Notes: Back pressed"
+        )
+
         self.manager.current = "home"
