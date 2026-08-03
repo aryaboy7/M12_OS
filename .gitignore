@@ -25,3 +25,15 @@ data/notes/*.json
 # Python virtual environments
 .venv/
 venv/
+
+# macOS
+.DS_Store
+
+# Local application settings
+config/settings.json
+
+# Personal notes and AI runtime data
+data/notes/
+data/ai/
+data/ai_history
+data/ai_history/
