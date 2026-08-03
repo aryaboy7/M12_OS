@@ -4,6 +4,24 @@ __pycache__/
 # Local AI credentials
 config/ai_settings.json
 
+# Logs
+logs/
+*.log
+
+# Local AI configuration
+config/ai_settings.json
+
+# Runtime AI data
+data/ai/
+data/ai_history/
+
+# Runtime state
+data/events/events.json
+data/music/player_status.json
+
+# User notes (keep examples if desired)
+data/notes/*.json
+
 # Python virtual environments
 .venv/
 venv/
