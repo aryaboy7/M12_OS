@@ -61,6 +61,13 @@ class VoiceService:
             settings.get("voice_answers_enabled", True)
         )
 
+        self.transcription_language = self.normalize_language(
+            settings.get(
+                "voice_language",
+                "en",
+            )
+        )
+
         self.sample_rate = 16000
         self.channels = 1
         self.record_seconds = 6
@@ -82,6 +89,7 @@ class VoiceService:
                 "Use a calm personal-assistant style."
             ),
             "voice_answers_enabled": True,
+            "voice_language": "en",
             "api_key": "",
         }
 
@@ -102,6 +110,144 @@ class VoiceService:
             )
 
         return default_settings
+
+    @staticmethod
+    def normalize_language(
+        language,
+    ):
+        """
+        Return a supported transcription language code.
+        """
+        value = str(
+            language
+        ).strip().lower()
+
+        aliases = {
+            "english": "en",
+            "en-us": "en",
+            "en_us": "en",
+            "russian": "ru",
+            "ru-ru": "ru",
+            "ru_ru": "ru",
+            "automatic": "auto",
+            "detect": "auto",
+        }
+
+        value = aliases.get(
+            value,
+            value,
+        )
+
+        if value not in {
+            "en",
+            "ru",
+            "auto",
+        }:
+            return "auto"
+
+        return value
+
+    def set_transcription_language(
+        self,
+        language,
+        save=True,
+    ):
+        """
+        Change speech-recognition language immediately.
+
+        Supported values:
+            en   - English
+            ru   - Russian
+            auto - automatic detection
+        """
+        normalized = self.normalize_language(
+            language
+        )
+
+        self.transcription_language = (
+            normalized
+        )
+
+        if save:
+            self.save_voice_language(
+                normalized
+            )
+
+        return normalized
+
+    @staticmethod
+    def save_voice_language(
+        language,
+    ):
+        """
+        Save only the language preference without overwriting
+        existing AI settings or the API key.
+        """
+        settings = {}
+
+        if SETTINGS_FILE.exists():
+            try:
+                with SETTINGS_FILE.open(
+                    "r",
+                    encoding="utf-8",
+                ) as file:
+                    loaded = json.load(file)
+
+                if isinstance(
+                    loaded,
+                    dict,
+                ):
+                    settings = loaded
+
+            except (
+                OSError,
+                json.JSONDecodeError,
+            ) as error:
+                print(
+                    "Voice language settings read error: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        settings["voice_language"] = (
+            VoiceService.normalize_language(
+                language
+            )
+        )
+
+        try:
+            SETTINGS_FILE.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            temporary_file = (
+                SETTINGS_FILE.with_suffix(
+                    ".json.tmp"
+                )
+            )
+
+            with temporary_file.open(
+                "w",
+                encoding="utf-8",
+            ) as file:
+                json.dump(
+                    settings,
+                    file,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                file.write("\n")
+
+            os.replace(
+                temporary_file,
+                SETTINGS_FILE,
+            )
+
+        except OSError as error:
+            print(
+                "Voice language settings save error: "
+                f"{type(error).__name__}: {error}"
+            )
 
     def record_and_transcribe(self, duration=None):
         record_duration = duration if duration is not None else self.record_seconds
@@ -171,9 +317,33 @@ class VoiceService:
     def transcribe_file(self, audio_path):
         try:
             with audio_path.open("rb") as audio_file:
-                transcript = self.client.audio.transcriptions.create(
-                    model=self.transcription_model,
-                    file=audio_file,
+                request = {
+                    "model": self.transcription_model,
+                    "file": audio_file,
+                }
+
+                if self.transcription_language != "auto":
+                    request["language"] = (
+                        self.transcription_language
+                    )
+
+                    language_name = {
+                        "en": "English",
+                        "ru": "Russian",
+                    }.get(
+                        self.transcription_language,
+                        self.transcription_language,
+                    )
+
+                    request["prompt"] = (
+                        f"The speaker is speaking {language_name}. "
+                        f"Transcribe accurately in {language_name}."
+                    )
+
+                transcript = (
+                    self.client.audio.transcriptions.create(
+                        **request
+                    )
                 )
         except Exception as error:
             raise RuntimeError(

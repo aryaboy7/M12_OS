@@ -1,6 +1,8 @@
+import json
 import queue
 import re
 import threading
+from pathlib import Path
 
 from kivy.clock import Clock
 from kivy.utils import escape_markup
@@ -15,8 +17,20 @@ from kivy.uix.textinput import TextInput
 
 from services.ai_actions import AIActions
 from services.ai_router import AIRouter
+from services.ai_session_memory import get_ai_session_memory
+from services.realtime_voice_service import RealtimeVoiceService
 from services.voice_service import VoiceService
 from utils.ui_scale import font, height
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+AI_SETTINGS_FILE = BASE_DIR / "config" / "ai_settings.json"
+
+VOICE_LANGUAGES = (
+    ("en", "English"),
+    ("ru", "Russian"),
+    ("auto", "Auto"),
+)
+
 
 
 class AIScreen(Screen):
@@ -30,6 +44,12 @@ class AIScreen(Screen):
 
         # Voice service is created only when it is first needed.
         self.voice_service = None
+        self.realtime_voice_service = None
+        self.realtime_voice_active = False
+        self.realtime_answer_active = False
+        self.realtime_answer_text = ""
+        self.session_memory = get_ai_session_memory()
+
         self.voice_is_busy = False
         self.ai_is_busy = False
         self.continuous_voice = False
@@ -45,6 +65,10 @@ class AIScreen(Screen):
         # Control Mode is used only for M12 application commands.
         self.control_mode = False
         self.navigation_history = []
+
+        self.voice_language = (
+            self.load_voice_language()
+        )
 
         self.chat_text = (
             "[b]M12 AI:[/b]\n"
@@ -132,18 +156,47 @@ class AIScreen(Screen):
         root.add_widget(self.chat_scroll)
 
         # ---------------------------------------------------------
-        # AI / Control mode switch
+        # AI / Control mode and voice-language switches
         # ---------------------------------------------------------
+        mode_language_row = BoxLayout(
+            orientation="horizontal",
+            spacing=height(8),
+            size_hint=(1, 0.07),
+        )
+
         self.mode_btn = Button(
             text="Mode: AI",
             font_size=font(22),
-            size_hint=(1, 0.07),
             background_normal="",
         )
         self.mode_btn.bind(
             on_press=self.toggle_mode
         )
-        root.add_widget(self.mode_btn)
+        mode_language_row.add_widget(
+            self.mode_btn
+        )
+
+        self.language_btn = Button(
+            text="Language: English",
+            font_size=font(22),
+            background_normal="",
+            background_color=(
+                0.25,
+                0.38,
+                0.55,
+                1,
+            ),
+        )
+        self.language_btn.bind(
+            on_press=self.cycle_voice_language
+        )
+        mode_language_row.add_widget(
+            self.language_btn
+        )
+
+        root.add_widget(
+            mode_language_row
+        )
 
         # ---------------------------------------------------------
         # Message input
@@ -168,6 +221,7 @@ class AIScreen(Screen):
         # Initialize mode colors and the input hint only after
         # message_input exists.
         self.update_mode_button()
+        self.update_language_button()
 
         # ---------------------------------------------------------
         # Voice, Clear, and Send
@@ -320,10 +374,17 @@ class AIScreen(Screen):
         control_mode,
         announce=True,
     ):
-        """Set the active mode and keep the button synchronized."""
-        self.control_mode = bool(
+        """
+        Set the active mode and synchronize both voice engines.
+        """
+        target_control = bool(
             control_mode
         )
+
+        if target_control and self.realtime_voice_active:
+            self.stop_realtime_voice()
+
+        self.control_mode = target_control
         self.continuous_voice = False
 
         if self.voice_service is not None:
@@ -440,6 +501,156 @@ class AIScreen(Screen):
 
         return None
 
+    @staticmethod
+    def load_voice_language():
+        """
+        Load the voice-recognition language saved by the AI screen.
+        """
+        if not AI_SETTINGS_FILE.exists():
+            return "en"
+
+        try:
+            with AI_SETTINGS_FILE.open(
+                "r",
+                encoding="utf-8",
+            ) as file:
+                settings = json.load(file)
+
+            if not isinstance(
+                settings,
+                dict,
+            ):
+                return "en"
+
+            return VoiceService.normalize_language(
+                settings.get(
+                    "voice_language",
+                    "en",
+                )
+            )
+
+        except (
+            OSError,
+            json.JSONDecodeError,
+        ) as error:
+            print(
+                "AI screen language load error: "
+                f"{type(error).__name__}: {error}"
+            )
+            return "en"
+
+    def cycle_voice_language(
+        self,
+        instance=None,
+    ):
+        """
+        Cycle English -> Russian -> Auto.
+        """
+        codes = [
+            code
+            for code, _ in VOICE_LANGUAGES
+        ]
+
+        try:
+            current_index = codes.index(
+                self.voice_language
+            )
+        except ValueError:
+            current_index = 0
+
+        next_index = (
+            current_index + 1
+        ) % len(codes)
+
+        self.set_voice_language(
+            codes[next_index]
+        )
+
+    def set_voice_language(
+        self,
+        language,
+    ):
+        """
+        Apply and persist the selected recognition language.
+        """
+        normalized = (
+            VoiceService.normalize_language(
+                language
+            )
+        )
+
+        self.voice_language = normalized
+
+        if self.voice_service is None:
+            VoiceService.save_voice_language(
+                normalized
+            )
+        else:
+            self.voice_service.set_transcription_language(
+                normalized,
+                save=True,
+            )
+
+        if self.realtime_voice_service is not None:
+            self.realtime_voice_service.set_language(
+                normalized
+            )
+
+        self.update_language_button()
+
+        language_name = dict(
+            VOICE_LANGUAGES
+        ).get(
+            normalized,
+            "Auto",
+        )
+
+        self.voice_status.text = (
+            f"Voice language: {language_name}"
+        )
+
+    def update_language_button(
+        self,
+    ):
+        language_name = dict(
+            VOICE_LANGUAGES
+        ).get(
+            self.voice_language,
+            "Auto",
+        )
+
+        self.language_btn.text = (
+            f"Language: {language_name}"
+        )
+
+        colors = {
+            "en": (
+                0.18,
+                0.42,
+                0.65,
+                1,
+            ),
+            "ru": (
+                0.48,
+                0.28,
+                0.62,
+                1,
+            ),
+            "auto": (
+                0.32,
+                0.42,
+                0.42,
+                1,
+            ),
+        }
+
+        self.language_btn.background_color = (
+            colors.get(
+                self.voice_language,
+                colors["auto"],
+            )
+        )
+
     def update_mode_button(
         self,
     ):
@@ -484,7 +695,12 @@ class AIScreen(Screen):
         self.control_mode = False
         self.update_mode_button()
 
-        if not self.continuous_voice:
+        if self.realtime_voice_active:
+            self.voice_btn.text = "Stop Voice"
+            self.voice_status.text = (
+                "Realtime connected — listening"
+            )
+        elif not self.continuous_voice:
             self.voice_btn.text = "Voice"
             self.voice_status.text = "AI Mode"
 
@@ -492,6 +708,346 @@ class AIScreen(Screen):
     # Voice recognition
     # -------------------------------------------------------------
     def start_voice_input(
+        self,
+        instance=None,
+    ):
+        """
+        AI Mode uses Realtime speech-to-speech.
+        Control Mode uses the existing command recorder.
+        """
+        if self.control_mode:
+            self.start_control_voice_input(
+                instance
+            )
+            return
+
+        if self.realtime_voice_active:
+            self.stop_realtime_voice()
+            return
+
+        self.start_realtime_voice()
+
+    def start_realtime_voice(
+        self,
+    ):
+        if self.realtime_voice_active:
+            return
+
+        self.voice_btn.text = "Connecting..."
+        self.voice_status.text = (
+            "Connecting Realtime voice..."
+        )
+        self.set_controls_enabled(False)
+        self.mode_btn.disabled = False
+        self.language_btn.disabled = False
+        self.voice_btn.disabled = False
+
+        threading.Thread(
+            target=self._start_realtime_worker,
+            daemon=True,
+        ).start()
+
+    def _start_realtime_worker(
+        self,
+    ):
+        try:
+            if self.realtime_voice_service is None:
+                self.realtime_voice_service = (
+                    RealtimeVoiceService(
+                        on_status=(
+                            self.on_realtime_status
+                        ),
+                        on_user_transcript=(
+                            self.on_realtime_user_transcript
+                        ),
+                        on_text_delta=(
+                            self.on_realtime_text_delta
+                        ),
+                        on_text_done=(
+                            self.on_realtime_text_done
+                        ),
+                        on_speech_started=(
+                            self.on_realtime_speech_started
+                        ),
+                        on_speech_stopped=(
+                            self.on_realtime_speech_stopped
+                        ),
+                        on_error=(
+                            self.on_realtime_error
+                        ),
+                    )
+                )
+
+            self.realtime_voice_service.language = (
+                self.voice_language
+            )
+
+            self.realtime_voice_service.start_conversation(
+                timeout=20.0
+            )
+
+            Clock.schedule_once(
+                self._finish_realtime_started,
+                0,
+            )
+
+        except Exception as error:
+            Clock.schedule_once(
+                lambda dt: self._finish_realtime_error(
+                    (
+                        f"{type(error).__name__}: "
+                        f"{error}"
+                    )
+                ),
+                0,
+            )
+
+    def _finish_realtime_started(
+        self,
+        dt=0,
+    ):
+        self.realtime_voice_active = True
+        self.continuous_voice = False
+        self.voice_btn.text = "Stop Voice"
+        self.voice_status.text = (
+            "Realtime connected — listening"
+        )
+        self.set_controls_enabled(True)
+        self.voice_btn.text = "Stop Voice"
+
+    def stop_realtime_voice(
+        self,
+    ):
+        service = self.realtime_voice_service
+
+        self.realtime_voice_active = False
+        self.realtime_answer_active = False
+        self.realtime_answer_text = ""
+
+        if service is not None:
+            try:
+                service.stop_conversation()
+            except Exception as error:
+                print(
+                    "Realtime stop error: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        self.voice_btn.text = "Voice"
+        self.voice_status.text = "Realtime voice stopped"
+        self.set_controls_enabled(True)
+
+    def _finish_realtime_error(
+        self,
+        error_message,
+    ):
+        self.realtime_voice_active = False
+        self.voice_btn.text = "Voice"
+        self.voice_status.text = (
+            f"Realtime error: {error_message}"
+        )
+        self.set_controls_enabled(True)
+
+    def on_realtime_status(
+        self,
+        message,
+    ):
+        Clock.schedule_once(
+            lambda dt: self._apply_realtime_status(
+                message
+            ),
+            0,
+        )
+
+    def _apply_realtime_status(
+        self,
+        message,
+    ):
+        if self.realtime_voice_active:
+            self.voice_status.text = str(
+                message
+            )
+
+    def on_realtime_user_transcript(
+        self,
+        transcript,
+    ):
+        Clock.schedule_once(
+            lambda dt: self._apply_realtime_user_transcript(
+                transcript
+            ),
+            0,
+        )
+
+    def _apply_realtime_user_transcript(
+        self,
+        transcript,
+    ):
+        text = str(
+            transcript
+        ).strip()
+
+        if not text:
+            return
+
+        mode_command = self.get_mode_command(
+            text
+        )
+
+        if mode_command == "control":
+            service = self.realtime_voice_service
+
+            if service is not None:
+                service.cancel_response()
+
+            self.append_message(
+                speaker="You",
+                message=text,
+            )
+
+            self.stop_realtime_voice()
+
+            answer = self.set_mode(
+                control_mode=True,
+                announce=True,
+            )
+
+            self.append_message(
+                speaker="M12 AI",
+                message=answer,
+            )
+
+            self.voice_status.text = answer
+
+            # Continue hands-free in Control Mode.
+            self.continuous_voice = True
+            Clock.schedule_once(
+                self.begin_voice_cycle,
+                0.7,
+            )
+            return
+
+        self.append_message(
+            speaker="You",
+            message=text,
+        )
+
+        self.session_memory.add_user(
+            text,
+            route="normal",
+        )
+
+    def on_realtime_text_delta(
+        self,
+        delta,
+    ):
+        Clock.schedule_once(
+            lambda dt: self._apply_realtime_text_delta(
+                delta
+            ),
+            0,
+        )
+
+    def _apply_realtime_text_delta(
+        self,
+        delta,
+    ):
+        if not self.realtime_answer_active:
+            self.realtime_answer_active = True
+            self.realtime_answer_text = ""
+            self.append_message(
+                speaker="M12 AI",
+                message="",
+            )
+
+        self.realtime_answer_text += str(
+            delta
+        )
+
+        self.replace_last_ai_message(
+            self.realtime_answer_text
+        )
+
+    def on_realtime_text_done(
+        self,
+        text,
+    ):
+        Clock.schedule_once(
+            lambda dt: self._apply_realtime_text_done(
+                text
+            ),
+            0,
+        )
+
+    def _apply_realtime_text_done(
+        self,
+        text,
+    ):
+        answer = str(
+            text
+        ).strip()
+
+        if answer:
+            if not self.realtime_answer_active:
+                self.append_message(
+                    speaker="M12 AI",
+                    message=answer,
+                )
+            elif answer != self.realtime_answer_text.strip():
+                self.realtime_answer_text = answer
+                self.replace_last_ai_message(
+                    answer
+                )
+
+            self.session_memory.add_assistant(
+                answer,
+                route="normal",
+            )
+
+        self.realtime_answer_active = False
+        self.realtime_answer_text = ""
+
+        if self.realtime_voice_active:
+            self.voice_status.text = (
+                "Realtime connected — listening"
+            )
+
+    def on_realtime_speech_started(
+        self,
+    ):
+        Clock.schedule_once(
+            lambda dt: setattr(
+                self.voice_status,
+                "text",
+                "Listening...",
+            ),
+            0,
+        )
+
+    def on_realtime_speech_stopped(
+        self,
+    ):
+        Clock.schedule_once(
+            lambda dt: setattr(
+                self.voice_status,
+                "text",
+                "Thinking...",
+            ),
+            0,
+        )
+
+    def on_realtime_error(
+        self,
+        message,
+    ):
+        Clock.schedule_once(
+            lambda dt: self._finish_realtime_error(
+                str(message)
+            ),
+            0,
+        )
+
+    def start_control_voice_input(
         self,
         instance=None,
     ):
@@ -551,6 +1107,10 @@ class AIScreen(Screen):
         try:
             if self.voice_service is None:
                 self.voice_service = VoiceService()
+                self.voice_service.set_transcription_language(
+                    self.voice_language,
+                    save=False,
+                )
 
             recognized_text = (
                 self.voice_service
@@ -620,9 +1180,7 @@ class AIScreen(Screen):
         source="typed",
     ):
         """
-        Handle AI/Control mode commands before any busy checks.
-
-        Returns True when a mode command was recognized.
+        Handle mode commands before AI, plugins, or busy checks.
         """
         mode_command = self.get_mode_command(
             message
@@ -631,53 +1189,52 @@ class AIScreen(Screen):
         if mode_command is None:
             return False
 
-        # Preserve continuous voice across mode switches.
-        # If voice conversation was active before the switch,
-        # automatically resume listening afterward.
-        resume_voice = bool(
-            self.continuous_voice
-            or source == "voice"
-        )
-
-        if self.voice_service is not None:
-            self.voice_service.stop_speaking()
-
-        self.speech_is_busy = False
-        self.voice_is_busy = False
-        self.ai_is_busy = False
-        self.set_controls_enabled(True)
-
         self.append_message(
             speaker="You",
             message=str(message).strip(),
         )
 
-        answer = self.set_mode(
-            control_mode=(
-                mode_command == "control"
-            ),
-            announce=True,
-        )
+        if mode_command == "control":
+            if self.realtime_voice_active:
+                self.stop_realtime_voice()
 
-        self.append_message(
-            speaker="M12 AI",
-            message=answer,
-        )
-
-        if resume_voice:
-            self.continuous_voice = True
-            self.voice_btn.text = "Stop Voice"
-            self.voice_status.text = answer
-
-            Clock.schedule_once(
-                self.begin_voice_cycle,
-                0.8,
+            answer = self.set_mode(
+                control_mode=True,
+                announce=True,
             )
+
+            self.append_message(
+                speaker="M12 AI",
+                message=answer,
+            )
+
+            if source == "voice":
+                self.continuous_voice = True
+                Clock.schedule_once(
+                    self.begin_voice_cycle,
+                    0.7,
+                )
+
         else:
             self.continuous_voice = False
-            self.voice_btn.text = "Voice"
-            self.voice_status.text = answer
 
+            answer = self.set_mode(
+                control_mode=False,
+                announce=True,
+            )
+
+            self.append_message(
+                speaker="M12 AI",
+                message=answer,
+            )
+
+            if source == "voice":
+                Clock.schedule_once(
+                    lambda dt: self.start_realtime_voice(),
+                    0.7,
+                )
+
+        self.voice_status.text = answer
         return True
 
     def send_voice_message(
@@ -1318,6 +1875,10 @@ class AIScreen(Screen):
         try:
             if self.voice_service is None:
                 self.voice_service = VoiceService()
+                self.voice_service.set_transcription_language(
+                    self.voice_language,
+                    save=False,
+                )
 
             while True:
                 item = self.speech_queue.get()
@@ -1394,6 +1955,7 @@ class AIScreen(Screen):
         self.clear_btn.disabled = disabled
         self.back_btn.disabled = disabled
         self.mode_btn.disabled = False
+        self.language_btn.disabled = False
 
     # -------------------------------------------------------------
     # Append message

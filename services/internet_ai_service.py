@@ -5,6 +5,9 @@ from pathlib import Path
 
 from openai import OpenAI
 
+from services.ai_session_memory import (
+    get_ai_session_memory,
+)
 from utils.clean_ai_answer import clean_ai_answer
 
 
@@ -33,19 +36,26 @@ temperature, humidity, and wind unless more is requested.
 
 When the user asks for details, explanation, a forecast,
 comparison, or a list, provide only that requested information.
+
+Use the supplied conversation history to understand follow-up questions
+and remembered information.
 """.strip()
 
 
 class InternetAIService:
     """
-    Fast current-information answers using OpenAI web search.
+    Current-information answers using web search and the same persistent
+    session memory used by normal AI.
     """
 
     def __init__(self):
         settings = self.load_settings()
 
         saved_key = str(
-            settings.get("api_key", "")
+            settings.get(
+                "api_key",
+                "",
+            )
         ).strip()
 
         environment_key = os.getenv(
@@ -53,7 +63,10 @@ class InternetAIService:
             "",
         ).strip()
 
-        api_key = saved_key or environment_key
+        api_key = (
+            saved_key
+            or environment_key
+        )
 
         if not api_key:
             raise RuntimeError(
@@ -84,12 +97,24 @@ class InternetAIService:
         ):
             self.search_context_size = "low"
 
+        self.history_limit = max(
+            4,
+            int(
+                settings.get(
+                    "ai_history_messages",
+                    24,
+                )
+            ),
+        )
+
         self.client = OpenAI(
             api_key=api_key,
             timeout=60.0,
         )
 
-        self.previous_response_id = None
+        self.memory = (
+            get_ai_session_memory()
+        )
 
     @staticmethod
     def load_settings():
@@ -99,6 +124,7 @@ class InternetAIService:
             "web_search_model": "gpt-5-mini",
             "web_search_context_size": "low",
             "internet_search_enabled": True,
+            "ai_history_messages": 24,
             "api_key": "",
         }
 
@@ -110,10 +136,17 @@ class InternetAIService:
                 "r",
                 encoding="utf-8",
             ) as file:
-                loaded = json.load(file)
+                loaded = json.load(
+                    file
+                )
 
-            if isinstance(loaded, dict):
-                defaults.update(loaded)
+            if isinstance(
+                loaded,
+                dict,
+            ):
+                defaults.update(
+                    loaded
+                )
 
         except (
             OSError,
@@ -126,6 +159,58 @@ class InternetAIService:
 
         return defaults
 
+    def _build_input(
+        self,
+        message,
+    ):
+        """
+        Return shared history followed by the current user message.
+        """
+        conversation = (
+            self.memory.get_openai_messages(
+                limit=self.history_limit,
+                include_system=False,
+            )
+        )
+
+        conversation.append(
+            {
+                "role": "user",
+                "content": message,
+            }
+        )
+
+        return conversation
+
+    def _instructions(
+        self,
+    ):
+        today = datetime.now().strftime(
+            "%B %d, %Y"
+        )
+
+        return (
+            "You are Ace, the M12 AI assistant "
+            "with live Internet access. "
+            f"Today is {today}. "
+            f"{INTERNET_RULES}"
+        )
+
+    def _save_exchange(
+        self,
+        user_message,
+        assistant_answer,
+    ):
+        self.memory.add_user(
+            user_message,
+            route="internet",
+        )
+
+        self.memory.add_assistant(
+            assistant_answer,
+            route="internet",
+        )
+
     def stream(
         self,
         message,
@@ -133,28 +218,22 @@ class InternetAIService:
     ):
         """
         Stream a live web-search answer as text becomes available.
-
-        Returns the complete cleaned answer.
         """
-        user_message = str(message).strip()
+        user_message = str(
+            message
+        ).strip()
 
         if not user_message:
             return "Please enter a question."
 
-        today = datetime.now().strftime(
-            "%B %d, %Y"
-        )
-
-        instructions = (
-            "You are M12 AI with live Internet access. "
-            f"Today is {today}. "
-            f"{INTERNET_RULES}"
-        )
-
         request = {
             "model": self.model,
-            "instructions": instructions,
-            "input": user_message,
+            "instructions": (
+                self._instructions()
+            ),
+            "input": self._build_input(
+                user_message
+            ),
             "reasoning": {
                 "effort": "minimal",
             },
@@ -172,17 +251,13 @@ class InternetAIService:
             "stream": True,
         }
 
-        if self.previous_response_id:
-            request["previous_response_id"] = (
-                self.previous_response_id
-            )
-
         complete_text = ""
-        response_id = None
 
         try:
-            event_stream = self._create_response(
-                request
+            event_stream = (
+                self._create_response(
+                    request
+                )
             )
 
             for event in event_stream:
@@ -209,21 +284,6 @@ class InternetAIService:
                         complete_text += delta
                         on_delta(delta)
 
-                elif event_type == (
-                    "response.completed"
-                ):
-                    response = getattr(
-                        event,
-                        "response",
-                        None,
-                    )
-
-                    response_id = getattr(
-                        response,
-                        "id",
-                        None,
-                    )
-
             cleaned = clean_ai_answer(
                 complete_text
             )
@@ -233,38 +293,45 @@ class InternetAIService:
                     user_message
                 )
 
-            if response_id:
-                self.previous_response_id = (
-                    response_id
-                )
+            self._save_exchange(
+                user_message=user_message,
+                assistant_answer=cleaned,
+            )
 
             return cleaned
 
-        except Exception:
+        except Exception as error:
+            print(
+                "Internet AI streaming error: "
+                f"{type(error).__name__}: {error}"
+            )
+
             return self.ask(
                 user_message
             )
 
-    def ask(self, message):
-        user_message = str(message).strip()
+    def ask(
+        self,
+        message,
+    ):
+        """
+        Send one non-streaming live-information request.
+        """
+        user_message = str(
+            message
+        ).strip()
 
         if not user_message:
             return "Please enter a question."
 
-        today = datetime.now().strftime(
-            "%B %d, %Y"
-        )
-
-        instructions = (
-            "You are M12 AI with live Internet access. "
-            f"Today is {today}. "
-            f"{INTERNET_RULES}"
-        )
-
         request = {
             "model": self.model,
-            "instructions": instructions,
-            "input": user_message,
+            "instructions": (
+                self._instructions()
+            ),
+            "input": self._build_input(
+                user_message
+            ),
             "reasoning": {
                 "effort": "minimal",
             },
@@ -281,14 +348,11 @@ class InternetAIService:
             ],
         }
 
-        if self.previous_response_id:
-            request["previous_response_id"] = (
-                self.previous_response_id
-            )
-
         try:
-            response = self._create_response(
-                request
+            response = (
+                self._create_response(
+                    request
+                )
             )
 
             answer = str(
@@ -300,14 +364,32 @@ class InternetAIService:
             ).strip()
 
             if not answer:
-                retry = dict(request)
+                retry = dict(
+                    request
+                )
+
                 retry["input"] = (
-                    f"{user_message}\n\n"
-                    "Return a visible text answer."
+                    self._build_input(
+                        user_message
+                    )
+                    + [
+                        {
+                            "role": "user",
+                            "content": (
+                                "Return a visible text "
+                                "answer to my previous "
+                                "request."
+                            ),
+                        }
+                    ]
                 )
-                response = self._create_response(
-                    retry
+
+                response = (
+                    self._create_response(
+                        retry
+                    )
                 )
+
                 answer = str(
                     getattr(
                         response,
@@ -322,13 +404,22 @@ class InternetAIService:
                     "Please try again."
                 )
 
-            self.previous_response_id = getattr(
-                response,
-                "id",
-                None,
+            cleaned = clean_ai_answer(
+                answer
             )
 
-            return clean_ai_answer(answer)
+            if not cleaned:
+                return (
+                    "Internet AI could not produce a response. "
+                    "Please try again."
+                )
+
+            self._save_exchange(
+                user_message=user_message,
+                assistant_answer=cleaned,
+            )
+
+            return cleaned
 
         except Exception as error:
             return (
@@ -336,14 +427,24 @@ class InternetAIService:
                 f"{type(error).__name__}: {error}"
             )
 
-    def _create_response(self, request):
+    def _create_response(
+        self,
+        request,
+    ):
+        """
+        Use fast GPT settings, with a compatibility fallback.
+        """
         try:
-            return self.client.responses.create(
-                **request
+            return (
+                self.client.responses.create(
+                    **request
+                )
             )
 
         except Exception as error:
-            error_text = str(error).lower()
+            error_text = str(
+                error
+            ).lower()
 
             unsupported_fast_option = any(
                 phrase in error_text
@@ -358,13 +459,30 @@ class InternetAIService:
             if not unsupported_fast_option:
                 raise
 
-            fallback = dict(request)
-            fallback.pop("reasoning", None)
-            fallback.pop("text", None)
-
-            return self.client.responses.create(
-                **fallback
+            fallback = dict(
+                request
             )
 
-    def clear_memory(self):
-        self.previous_response_id = None
+            fallback.pop(
+                "reasoning",
+                None,
+            )
+
+            fallback.pop(
+                "text",
+                None,
+            )
+
+            return (
+                self.client.responses.create(
+                    **fallback
+                )
+            )
+
+    def clear_memory(
+        self,
+    ):
+        """
+        Clear the one shared persistent AI session.
+        """
+        self.memory.clear()

@@ -4,6 +4,9 @@ from pathlib import Path
 
 from openai import OpenAI
 
+from services.ai_session_memory import (
+    get_ai_session_memory,
+)
 from utils.clean_ai_answer import clean_ai_answer
 
 
@@ -12,7 +15,7 @@ SETTINGS_FILE = BASE_DIR / "config" / "ai_settings.json"
 
 
 BRIEF_INSTRUCTIONS = """
-You are M12 AI, the assistant built into M12OS.
+You are Ace, the M12 AI assistant built into M12OS.
 
 Answer only the exact question asked.
 Give the direct answer first.
@@ -23,20 +26,29 @@ follow-up questions, or offers to help unless requested.
 If the user asks for details, explanation, examples, instructions,
 comparison, a list, code, or a full file, provide the requested detail.
 
+Use the supplied conversation history to understand follow-up questions
+and remembered information.
+
 Do not claim an M12OS action was completed unless M12OS confirms it.
 """.strip()
 
 
 class AIService:
     """
-    Fast normal AI conversation with retained context.
+    Fast normal AI conversation using shared persistent session memory.
+
+    Normal AI and Internet AI both read and write the same bounded
+    conversation history through AISessionMemory.
     """
 
     def __init__(self):
         settings = self.load_settings()
 
         saved_key = str(
-            settings.get("api_key", "")
+            settings.get(
+                "api_key",
+                "",
+            )
         ).strip()
 
         environment_key = os.getenv(
@@ -44,7 +56,10 @@ class AIService:
             "",
         ).strip()
 
-        api_key = saved_key or environment_key
+        api_key = (
+            saved_key
+            or environment_key
+        )
 
         if not api_key:
             raise RuntimeError(
@@ -58,18 +73,31 @@ class AIService:
             )
         ).strip() or "gpt-5-mini"
 
+        self.history_limit = max(
+            4,
+            int(
+                settings.get(
+                    "ai_history_messages",
+                    24,
+                )
+            ),
+        )
+
         self.client = OpenAI(
             api_key=api_key,
             timeout=45.0,
         )
 
-        self.previous_response_id = None
+        self.memory = (
+            get_ai_session_memory()
+        )
 
     @staticmethod
     def load_settings():
         defaults = {
             "provider": "OpenAI",
             "model": "gpt-5-mini",
+            "ai_history_messages": 24,
             "api_key": "",
         }
 
@@ -81,10 +109,17 @@ class AIService:
                 "r",
                 encoding="utf-8",
             ) as file:
-                loaded = json.load(file)
+                loaded = json.load(
+                    file
+                )
 
-            if isinstance(loaded, dict):
-                defaults.update(loaded)
+            if isinstance(
+                loaded,
+                dict,
+            ):
+                defaults.update(
+                    loaded
+                )
 
         except (
             OSError,
@@ -97,6 +132,47 @@ class AIService:
 
         return defaults
 
+    def _build_input(
+        self,
+        message,
+    ):
+        """
+        Return shared history followed by the current user message.
+        """
+        conversation = (
+            self.memory.get_openai_messages(
+                limit=self.history_limit,
+                include_system=False,
+            )
+        )
+
+        conversation.append(
+            {
+                "role": "user",
+                "content": message,
+            }
+        )
+
+        return conversation
+
+    def _save_exchange(
+        self,
+        user_message,
+        assistant_answer,
+    ):
+        """
+        Persist only a completed successful exchange.
+        """
+        self.memory.add_user(
+            user_message,
+            route="normal",
+        )
+
+        self.memory.add_assistant(
+            assistant_answer,
+            route="normal",
+        )
+
     def stream(
         self,
         user_message,
@@ -107,15 +183,21 @@ class AIService:
 
         Returns the complete cleaned answer.
         """
-        message = str(user_message).strip()
+        message = str(
+            user_message
+        ).strip()
 
         if not message:
             return "Please enter a message."
 
         request = {
             "model": self.model,
-            "instructions": BRIEF_INSTRUCTIONS,
-            "input": message,
+            "instructions": (
+                BRIEF_INSTRUCTIONS
+            ),
+            "input": self._build_input(
+                message
+            ),
             "reasoning": {
                 "effort": "minimal",
             },
@@ -125,17 +207,13 @@ class AIService:
             "stream": True,
         }
 
-        if self.previous_response_id:
-            request["previous_response_id"] = (
-                self.previous_response_id
-            )
-
         complete_text = ""
-        response_id = None
 
         try:
-            event_stream = self._create_response(
-                request
+            event_stream = (
+                self._create_response(
+                    request
+                )
             )
 
             for event in event_stream:
@@ -162,49 +240,54 @@ class AIService:
                         complete_text += delta
                         on_delta(delta)
 
-                elif event_type == (
-                    "response.completed"
-                ):
-                    response = getattr(
-                        event,
-                        "response",
-                        None,
-                    )
-
-                    response_id = getattr(
-                        response,
-                        "id",
-                        None,
-                    )
-
             cleaned = clean_ai_answer(
                 complete_text
             )
 
             if not cleaned:
-                return self.ask(message)
-
-            if response_id:
-                self.previous_response_id = (
-                    response_id
+                return self.ask(
+                    message
                 )
+
+            self._save_exchange(
+                user_message=message,
+                assistant_answer=cleaned,
+            )
 
             return cleaned
 
-        except Exception:
-            # Reliable fallback to the normal non-streaming request.
-            return self.ask(message)
+        except Exception as error:
+            print(
+                "AI streaming error: "
+                f"{type(error).__name__}: {error}"
+            )
 
-    def ask(self, user_message):
-        message = str(user_message).strip()
+            return self.ask(
+                message
+            )
+
+    def ask(
+        self,
+        user_message,
+    ):
+        """
+        Send one non-streaming request using shared persistent history.
+        """
+        message = str(
+            user_message
+        ).strip()
 
         if not message:
             return "Please enter a message."
 
         request = {
             "model": self.model,
-            "instructions": BRIEF_INSTRUCTIONS,
-            "input": message,
+            "instructions": (
+                BRIEF_INSTRUCTIONS
+            ),
+            "input": self._build_input(
+                message
+            ),
             "reasoning": {
                 "effort": "minimal",
             },
@@ -213,14 +296,11 @@ class AIService:
             },
         }
 
-        if self.previous_response_id:
-            request["previous_response_id"] = (
-                self.previous_response_id
-            )
-
         try:
-            response = self._create_response(
-                request
+            response = (
+                self._create_response(
+                    request
+                )
             )
 
             answer = str(
@@ -232,14 +312,32 @@ class AIService:
             ).strip()
 
             if not answer:
-                retry = dict(request)
+                retry = dict(
+                    request
+                )
+
                 retry["input"] = (
-                    f"{message}\n\n"
-                    "Return a visible text answer."
+                    self._build_input(
+                        message
+                    )
+                    + [
+                        {
+                            "role": "user",
+                            "content": (
+                                "Return a visible text "
+                                "answer to my previous "
+                                "request."
+                            ),
+                        }
+                    ]
                 )
-                response = self._create_response(
-                    retry
+
+                response = (
+                    self._create_response(
+                        retry
+                    )
                 )
+
                 answer = str(
                     getattr(
                         response,
@@ -254,13 +352,22 @@ class AIService:
                     "Please try again."
                 )
 
-            self.previous_response_id = getattr(
-                response,
-                "id",
-                None,
+            cleaned = clean_ai_answer(
+                answer
             )
 
-            return clean_ai_answer(answer)
+            if not cleaned:
+                return (
+                    "The AI could not produce a response. "
+                    "Please try again."
+                )
+
+            self._save_exchange(
+                user_message=message,
+                assistant_answer=cleaned,
+            )
+
+            return cleaned
 
         except Exception as error:
             return (
@@ -268,18 +375,24 @@ class AIService:
                 f"{type(error).__name__}: {error}"
             )
 
-    def _create_response(self, request):
+    def _create_response(
+        self,
+        request,
+    ):
         """
-        Use fast GPT settings. Fall back if the selected model
-        does not support them.
+        Use fast GPT settings, with a compatibility fallback.
         """
         try:
-            return self.client.responses.create(
-                **request
+            return (
+                self.client.responses.create(
+                    **request
+                )
             )
 
         except Exception as error:
-            error_text = str(error).lower()
+            error_text = str(
+                error
+            ).lower()
 
             unsupported_fast_option = any(
                 phrase in error_text
@@ -294,13 +407,30 @@ class AIService:
             if not unsupported_fast_option:
                 raise
 
-            fallback = dict(request)
-            fallback.pop("reasoning", None)
-            fallback.pop("text", None)
-
-            return self.client.responses.create(
-                **fallback
+            fallback = dict(
+                request
             )
 
-    def clear_memory(self):
-        self.previous_response_id = None
+            fallback.pop(
+                "reasoning",
+                None,
+            )
+
+            fallback.pop(
+                "text",
+                None,
+            )
+
+            return (
+                self.client.responses.create(
+                    **fallback
+                )
+            )
+
+    def clear_memory(
+        self,
+    ):
+        """
+        Clear the one shared persistent AI session.
+        """
+        self.memory.clear()

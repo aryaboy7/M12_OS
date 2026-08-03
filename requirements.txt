@@ -4,3 +4,4 @@ pillow
 requests
 python-dateutil
 openai
+openai[realtime]
