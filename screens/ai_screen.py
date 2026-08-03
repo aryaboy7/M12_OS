@@ -2,9 +2,12 @@ import json
 import queue
 import re
 import threading
+import subprocess
+import sys
 from pathlib import Path
 
 from kivy.clock import Clock
+from kivy.core.clipboard import Clipboard
 from kivy.utils import escape_markup
 
 from kivy.uix.boxlayout import BoxLayout
@@ -61,6 +64,12 @@ class AIScreen(Screen):
         self.streaming_spoken_length = 0
         self.speech_queue = None
 
+        # Throttle chat redraws so the selectable TextInput does not flicker
+        # while streaming many small AI deltas.
+        self._chat_refresh_event = None
+        self._chat_refresh_pending = False
+        self._chat_auto_follow = True
+
         # AI Mode is the default. In AI Mode every message goes to AI.
         # Control Mode is used only for M12 application commands.
         self.control_mode = False
@@ -71,7 +80,7 @@ class AIScreen(Screen):
         )
 
         self.chat_text = (
-            "[b]M12 AI:[/b]\n"
+            "M12 AI:\n"
             "Hello, Anatoliy. How can I help?"
         )
 
@@ -128,32 +137,54 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         # Conversation area
         # ---------------------------------------------------------
-        self.chat_scroll = ScrollView(
-            size_hint=(1, 0.49),
-            do_scroll_x=False,
-            bar_width=height(8),
-        )
-
-        self.chat_label = Label(
+        self.chat_view = TextInput(
             text=self.chat_text,
-            markup=True,
+            readonly=True,
+            multiline=True,
             font_size=font(26),
-            size_hint_y=None,
-            halign="left",
-            valign="top",
+            size_hint=(1, 0.49),
             padding=(
                 height(12),
                 height(12),
             ),
+            background_color=(
+                0.06,
+                0.07,
+                0.10,
+                1,
+            ),
+            foreground_color=(
+                0.95,
+                0.95,
+                0.95,
+                1,
+            ),
+            cursor_color=(
+                0.80,
+                0.88,
+                1.00,
+                1,
+            ),
+            selection_color=(
+                0.20,
+                0.45,
+                0.75,
+                0.65,
+            ),
+            use_bubble=True,
+            use_handles=True,
+            scroll_from_swipe=True,
+            scroll_distance=height(12),
+            scroll_timeout=150,
         )
 
-        self.chat_label.bind(
-            width=self.update_chat_text_size,
-            texture_size=self.update_chat_height,
+        self.chat_view.bind(
+            on_touch_down=self.on_chat_touch_down
         )
 
-        self.chat_scroll.add_widget(self.chat_label)
-        root.add_widget(self.chat_scroll)
+        root.add_widget(
+            self.chat_view
+        )
 
         # ---------------------------------------------------------
         # AI / Control mode and voice-language switches
@@ -267,6 +298,26 @@ class AIScreen(Screen):
         )
 
         action_row.add_widget(self.clear_btn)
+
+        self.copy_btn = Button(
+            text="Copy",
+            font_size=font(23),
+            background_normal="",
+            background_color=(
+                0.25,
+                0.28,
+                0.38,
+                1,
+            ),
+        )
+
+        self.copy_btn.bind(
+            on_press=self.copy_chat_text
+        )
+
+        action_row.add_widget(
+            self.copy_btn
+        )
 
         self.send_btn = Button(
             text="Send",
@@ -937,6 +988,16 @@ class AIScreen(Screen):
             route="normal",
         )
 
+        try:
+            self.ai_router.capture_automatic_fact(
+                text
+            )
+        except Exception as error:
+            print(
+                "Permanent-memory capture error: "
+                f"{type(error).__name__}: {error}"
+            )
+
     def on_realtime_text_delta(
         self,
         delta,
@@ -1316,23 +1377,14 @@ class AIScreen(Screen):
         instance,
         width,
     ):
-        instance.text_size = (
-            max(
-                width - height(24),
-                1,
-            ),
-            None,
-        )
+        return None
 
     def update_chat_height(
         self,
         instance,
         texture_size,
     ):
-        instance.height = max(
-            texture_size[1] + height(24),
-            self.chat_scroll.height,
-        )
+        return None
 
     # -------------------------------------------------------------
     # Typing mode
@@ -1756,7 +1808,7 @@ class AIScreen(Screen):
         self,
         answer,
     ):
-        marker = "\n\n[b]M12 AI:[/b]\n"
+        marker = "\n\nM12 AI:\n"
         position = self.chat_text.rfind(
             marker
         )
@@ -1768,22 +1820,92 @@ class AIScreen(Screen):
             )
             return
 
-        safe_answer = escape_markup(
-            str(answer)
-        )
-
         self.chat_text = (
             self.chat_text[:position]
             + marker
-            + safe_answer
+            + str(answer)
         )
 
-        self.chat_label.text = self.chat_text
+        self._chat_auto_follow = True
+        self.schedule_chat_refresh()
 
-        Clock.schedule_once(
-            self.scroll_to_bottom,
-            0.02,
+    def schedule_chat_refresh(
+        self,
+        delay=0.06,
+    ):
+        """
+        Refresh the visible conversation at most about 16 times per second.
+
+        Replacing TextInput.text for every tiny streaming token causes visible
+        flashing and selection loss, especially with the pygame window backend.
+        """
+        self._chat_refresh_pending = True
+
+        if self._chat_refresh_event is not None:
+            return
+
+        self._chat_refresh_event = Clock.schedule_once(
+            self.flush_chat_refresh,
+            delay,
         )
+
+    def flush_chat_refresh(
+        self,
+        dt=0,
+    ):
+        self._chat_refresh_event = None
+
+        if not self._chat_refresh_pending:
+            return
+
+        self._chat_refresh_pending = False
+
+        old_scroll_y = getattr(
+            self.chat_view,
+            "scroll_y",
+            0,
+        )
+
+        try:
+            selection_from = (
+                self.chat_view.selection_from
+            )
+            selection_to = (
+                self.chat_view.selection_to
+            )
+        except Exception:
+            selection_from = None
+            selection_to = None
+
+        self.chat_view.text = self.chat_text
+
+        if self._chat_auto_follow:
+            # TextInput calculates line geometry on the next Clock cycle.
+            # Scroll after that calculation, and repeat once for long answers.
+            Clock.schedule_once(
+                self.scroll_to_bottom,
+                0,
+            )
+            Clock.schedule_once(
+                self.scroll_to_bottom,
+                0.04,
+            )
+            return
+
+        try:
+            self.chat_view.scroll_y = old_scroll_y
+
+            if (
+                selection_from is not None
+                and selection_to is not None
+                and selection_from != selection_to
+            ):
+                self.chat_view.select_text(
+                    selection_from,
+                    selection_to,
+                )
+        except Exception:
+            pass
 
     def finish_streaming_response(
         self,
@@ -1801,6 +1923,9 @@ class AIScreen(Screen):
             self.replace_last_ai_message(
                 final_answer
             )
+
+        self._chat_refresh_pending = True
+        self.flush_chat_refresh()
 
         self.enqueue_completed_sentences(
             flush=True
@@ -1953,6 +2078,7 @@ class AIScreen(Screen):
         self.voice_btn.disabled = disabled
         self.send_btn.disabled = disabled
         self.clear_btn.disabled = disabled
+        self.copy_btn.disabled = disabled
         self.back_btn.disabled = disabled
         self.mode_btn.disabled = False
         self.language_btn.disabled = False
@@ -1960,59 +2086,169 @@ class AIScreen(Screen):
     # -------------------------------------------------------------
     # Append message
     # -------------------------------------------------------------
+    def on_chat_touch_down(
+        self,
+        instance,
+        touch,
+    ):
+        """
+        Let the user scroll up without the view immediately snapping back.
+
+        New messages re-enable automatic scrolling to the bottom.
+        """
+        if not self.chat_view.collide_point(
+            *touch.pos
+        ):
+            return False
+
+        if (
+            getattr(
+                touch,
+                "button",
+                "",
+            )
+            in {
+                "scrollup",
+                "scrolldown",
+            }
+            or getattr(
+                touch,
+                "is_mouse_scrolling",
+                False,
+            )
+        ):
+            self._chat_auto_follow = False
+
+        return False
+
     def append_message(
         self,
         speaker,
         message,
     ):
-        # ScrollView uses 0 for the bottom and 1 for the top.
-        # Auto-scroll only when the user was already reading near
-        # the bottom. If they scrolled up, preserve that position.
-        was_near_bottom = self.chat_scroll.scroll_y <= 0.08
-        previous_scroll_y = self.chat_scroll.scroll_y
-
-        safe_speaker = escape_markup(
-            str(speaker)
-        )
-
-        safe_message = escape_markup(
-            str(message)
-        )
+        self._chat_auto_follow = True
 
         self.chat_text += (
-            f"\n\n[b]{safe_speaker}:[/b]\n"
-            f"{safe_message}"
+            f"\n\n{str(speaker)}:\n"
+            f"{str(message)}"
         )
 
-        self.chat_label.text = self.chat_text
+        self._chat_refresh_pending = True
+        self.flush_chat_refresh()
 
-        if was_near_bottom:
-            Clock.schedule_once(
-                self.scroll_to_bottom,
-                0.05,
+        Clock.schedule_once(
+            self.scroll_to_bottom,
+            0,
+        )
+        Clock.schedule_once(
+            self.scroll_to_bottom,
+            0.05,
+        )
+
+    def copy_chat_text(
+        self,
+        instance=None,
+    ):
+        """
+        Copy selected text, or the full conversation when nothing is selected.
+
+        macOS uses pbcopy directly because Kivy's pygame clipboard provider
+        can crash the application.
+        """
+        try:
+            selected = str(
+                self.chat_view.selection_text
+            ).strip()
+        except Exception:
+            selected = ""
+
+        text_to_copy = (
+            selected
+            if selected
+            else self.chat_text
+        )
+
+        try:
+            if sys.platform == "darwin":
+                subprocess.run(
+                    ["pbcopy"],
+                    input=text_to_copy,
+                    text=True,
+                    check=True,
+                )
+            else:
+                Clipboard.copy(
+                    text_to_copy
+                )
+
+            self.voice_status.text = (
+                "Selected text copied"
+                if selected
+                else "Conversation copied"
             )
-        else:
-            Clock.schedule_once(
-                lambda dt: self.restore_chat_scroll(
-                    previous_scroll_y
-                ),
-                0.05,
+
+        except Exception as error:
+            self.voice_status.text = (
+                "Copy failed: "
+                f"{type(error).__name__}: {error}"
             )
 
     def restore_chat_scroll(
         self,
         scroll_y,
     ):
-        self.chat_scroll.scroll_y = max(
-            0.0,
-            min(1.0, float(scroll_y)),
-        )
+        return None
 
     def scroll_to_bottom(
         self,
-        dt,
+        dt=0,
     ):
-        self.chat_scroll.scroll_y = 0
+        """
+        Keep the newest conversation text visible automatically.
+
+        TextInput.cursor expects a (column, row) pair, not a character index.
+        """
+        if not self._chat_auto_follow:
+            return
+
+        try:
+            end_index = len(
+                self.chat_view.text
+            )
+
+            cursor = (
+                self.chat_view.get_cursor_from_index(
+                    end_index
+                )
+            )
+
+            self.chat_view.cursor = cursor
+
+            # Force Kivy to bring the cursor line into the viewport.
+            ensure_visible = getattr(
+                self.chat_view,
+                "_ensure_cursor_visible",
+                None,
+            )
+
+            if callable(ensure_visible):
+                ensure_visible()
+
+            # Fallback for providers where cursor visibility alone is delayed.
+            self.chat_view.scroll_y = max(
+                0,
+                getattr(
+                    self.chat_view,
+                    "scroll_y",
+                    0,
+                ),
+            )
+
+        except Exception as error:
+            print(
+                "AI chat auto-scroll error: "
+                f"{type(error).__name__}: {error}"
+            )
 
     # -------------------------------------------------------------
     # Clear conversation
@@ -2030,12 +2266,17 @@ class AIScreen(Screen):
         self.ai_router.clear_memory()
 
         self.chat_text = (
-            "[b]M12 AI:[/b]\n"
-            "Conversation and memory cleared. "
+            "M12 AI:\n"
+            "Conversation and session memory cleared. "
             "How can I help?"
         )
 
-        self.chat_label.text = self.chat_text
+        if self._chat_refresh_event is not None:
+            self._chat_refresh_event.cancel()
+            self._chat_refresh_event = None
+
+        self._chat_refresh_pending = False
+        self.chat_view.text = self.chat_text
         self.message_input.text = ""
         self.voice_status.text = (
             "Control Mode"

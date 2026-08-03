@@ -7,6 +7,7 @@ from openai import OpenAI
 from services.ai_session_memory import (
     get_ai_session_memory,
 )
+from services.memory_manager import get_memory_manager
 from utils.clean_ai_answer import clean_ai_answer
 
 
@@ -92,6 +93,10 @@ class AIService:
             get_ai_session_memory()
         )
 
+        self.permanent_memory = (
+            get_memory_manager()
+        )
+
     @staticmethod
     def load_settings():
         defaults = {
@@ -131,6 +136,88 @@ class AIService:
             )
 
         return defaults
+
+    def get_response_language(
+        self,
+    ):
+        """
+        Return the response language selected on the AI screen.
+        """
+        settings = self.load_settings()
+
+        language = str(
+            settings.get(
+                "voice_language",
+                "en",
+            )
+        ).strip().lower()
+
+        aliases = {
+            "english": "en",
+            "russian": "ru",
+            "automatic": "auto",
+        }
+
+        language = aliases.get(
+            language,
+            language,
+        )
+
+        if language not in {
+            "en",
+            "ru",
+            "auto",
+        }:
+            language = "en"
+
+        return language
+
+    def language_instruction(
+        self,
+    ):
+        language = self.get_response_language()
+
+        if language == "ru":
+            return (
+                "Answer in Russian. "
+                "Do not switch to English unless the user asks."
+            )
+
+        if language == "auto":
+            return (
+                "Answer in the same language as the user's "
+                "most recent message."
+            )
+
+        return (
+            "Answer in English. "
+            "Do not switch to Russian unless the user asks."
+        )
+
+    def combined_instructions(
+        self,
+    ):
+        permanent_context = (
+            self.permanent_memory.get_prompt_context(
+                limit=50
+            )
+        )
+
+        parts = [
+            self.language_instruction(),
+            BRIEF_INSTRUCTIONS,
+        ]
+
+        if permanent_context:
+            parts.append(
+                permanent_context
+            )
+            parts.append(
+                "Use permanent memory when relevant. "
+                "Do not mention the memory system unless asked."
+            )
+
+        return "\n\n".join(parts)
 
     def _build_input(
         self,
@@ -193,7 +280,7 @@ class AIService:
         request = {
             "model": self.model,
             "instructions": (
-                BRIEF_INSTRUCTIONS
+                self.combined_instructions()
             ),
             "input": self._build_input(
                 message
@@ -283,7 +370,7 @@ class AIService:
         request = {
             "model": self.model,
             "instructions": (
-                BRIEF_INSTRUCTIONS
+                self.combined_instructions()
             ),
             "input": self._build_input(
                 message

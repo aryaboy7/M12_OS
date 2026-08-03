@@ -10,6 +10,8 @@ from pathlib import Path
 import sounddevice as sd
 from openai import AsyncOpenAI
 
+from services.memory_manager import get_memory_manager
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SETTINGS_FILE = BASE_DIR / "config" / "ai_settings.json"
@@ -121,6 +123,10 @@ class RealtimeVoiceService:
             api_key=api_key,
             timeout=45.0,
             max_retries=0,
+        )
+
+        self.permanent_memory = (
+            get_memory_manager()
         )
 
         self.on_status = on_status
@@ -386,6 +392,59 @@ class RealtimeVoiceService:
         )
 
         return True
+
+    def pause_listening(
+        self,
+    ):
+        """
+        Temporarily pause microphone input while keeping Realtime connected.
+        """
+        self._conversation_active.clear()
+        self._stop_microphone()
+        self._drain_queue(
+            self._microphone_queue
+        )
+        self._user_transcript = ""
+
+        self._emit_status(
+            "Realtime paused."
+        )
+
+    def resume_listening(
+        self,
+    ):
+        """
+        Resume the original continuous speech-to-speech conversation.
+        """
+        if not self.is_connected:
+            if not self.start(
+                wait_until_ready=True,
+                timeout=20.0,
+            ):
+                raise RuntimeError(
+                    "Realtime connection is not ready. "
+                    f"{self._last_error}"
+                )
+
+        self._drain_queue(
+            self._microphone_queue
+        )
+        self._user_transcript = ""
+        self._conversation_active.set()
+
+        try:
+            self._start_speaker()
+            self._start_microphone()
+
+        except Exception:
+            self._conversation_active.clear()
+            self._stop_microphone()
+            self._stop_speaker()
+            raise
+
+        self._emit_status(
+            "Realtime voice is listening."
+        )
 
     def stop_conversation(
         self,
@@ -695,6 +754,39 @@ class RealtimeVoiceService:
                 if exception is not None:
                     raise exception
 
+    def _current_instructions(
+        self,
+    ):
+        """
+        Build Realtime instructions with the latest permanent memory.
+        """
+        try:
+            self.permanent_memory.load()
+
+            memory_context = (
+                self.permanent_memory.get_prompt_context(
+                    limit=50
+                )
+            )
+        except Exception as error:
+            print(
+                "Realtime permanent-memory error: "
+                f"{type(error).__name__}: {error}"
+            )
+            memory_context = ""
+
+        instructions = self.instructions
+
+        if memory_context:
+            instructions += (
+                "\n\n"
+                + memory_context
+                + "\n\nUse these facts when relevant. "
+                "Do not say that you are reading memory."
+            )
+
+        return instructions
+
     def _session_configuration(
         self,
     ):
@@ -748,7 +840,7 @@ class RealtimeVoiceService:
             "output_modalities": [
                 "audio",
             ],
-            "instructions": self.instructions,
+            "instructions": self._current_instructions(),
             "audio": {
                 "input": input_configuration,
                 "output": {
