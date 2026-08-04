@@ -1,0 +1,9 @@
+{
+  "weather": true,
+  "calendar": true,
+  "reminders": true,
+  "memory": true,
+  "m12_control": true,
+  "stocks": false,
+  "home_assistant": false
+}

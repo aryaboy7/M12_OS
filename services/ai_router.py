@@ -7,6 +7,8 @@ from services.ai_service import AIService
 from services.internet_ai_service import InternetAIService
 from services.m12_context import M12Context
 from services.memory_manager import get_memory_manager
+from services.skills.loader import load_all_skills
+from services.skills.registry import get_skill_registry
 
 
 class AIRouter:
@@ -20,6 +22,11 @@ class AIRouter:
         self.last_ai_route = None
         self.plugin_manager = AIPluginManager()
         self.memory_manager = get_memory_manager()
+
+        self.skill_registry = get_skill_registry()
+        self.skill_load_report = load_all_skills(
+            self.skill_registry
+        )
 
     def process(
         self,
@@ -1017,6 +1024,14 @@ class AIRouter:
             ai_screen=ai_screen,
             router=self,
         )
+
+        skill_result = self.skill_registry.dispatch(
+            message=message,
+            context=context,
+        )
+
+        if skill_result.handled:
+            return True, skill_result.answer
 
         return self.plugin_manager.process(
             message=message,

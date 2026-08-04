@@ -60,6 +60,8 @@ class RealtimeVoiceService:
         on_text_done=None,
         on_speech_started=None,
         on_speech_stopped=None,
+        on_local_request=None,
+        on_local_answer=None,
         on_error=None,
     ):
         settings = self.load_settings()
@@ -141,6 +143,8 @@ class RealtimeVoiceService:
         self.on_speech_stopped = (
             on_speech_stopped
         )
+        self.on_local_request = on_local_request
+        self.on_local_answer = on_local_answer
         self.on_error = on_error
 
         self._thread = None
@@ -175,6 +179,13 @@ class RealtimeVoiceService:
         self._running = False
         self._response_transcript = ""
         self._user_transcript = ""
+
+        # One-response-per-turn protection. Realtime may occasionally
+        # deliver a completed transcription event more than once.
+        self._response_in_progress = False
+        self._processed_transcript_ids = set()
+        self._last_transcript_text = ""
+        self._last_transcript_time = 0.0
 
         self.reconnect_delay = 2.0
         self.max_reconnect_delay = 15.0
@@ -614,6 +625,28 @@ class RealtimeVoiceService:
         except Exception:
             return False
 
+    def pause_microphone_for_local_answer(self):
+        """Pause microphone capture while a local answer is spoken."""
+        self._assistant_speaking.set()
+        self._stop_microphone()
+        self._drain_queue(
+            self._microphone_queue
+        )
+
+    def resume_microphone_after_local_answer(self):
+        """Resume microphone capture after a local answer finishes."""
+        self._assistant_speaking.clear()
+
+        if (
+            self.is_connected
+            and self.is_conversation_active
+            and not self._stop_event.is_set()
+        ):
+            self._start_microphone()
+            self._emit_status(
+                "Realtime voice is listening."
+            )
+
     def _thread_main(
         self,
     ):
@@ -803,7 +836,7 @@ class RealtimeVoiceService:
                 "threshold": 0.5,
                 "prefix_padding_ms": 300,
                 "silence_duration_ms": 650,
-                "create_response": True,
+                "create_response": False,
                 "interrupt_response": True,
             },
         }
@@ -900,7 +933,72 @@ class RealtimeVoiceService:
             }
         )
 
-        await connection.response.create()
+        await self._create_response_once(
+            connection
+        )
+
+    async def _create_response_once(
+        self,
+        connection,
+    ):
+        """Start at most one assistant response for the current turn."""
+        if self._response_in_progress:
+            print(
+                "[Realtime] Response already in progress; "
+                "duplicate response request ignored."
+            )
+            return False
+
+        self._response_in_progress = True
+
+        try:
+            await connection.response.create()
+            return True
+        except Exception:
+            self._response_in_progress = False
+            raise
+
+    def _is_duplicate_transcript(
+        self,
+        event,
+        transcript,
+    ):
+        """Return True when a completed transcript event was already handled."""
+        item_id = str(
+            getattr(
+                event,
+                "item_id",
+                "",
+            )
+        ).strip()
+
+        if item_id:
+            if item_id in self._processed_transcript_ids:
+                return True
+
+            self._processed_transcript_ids.add(item_id)
+
+            # Prevent an unbounded set during very long sessions.
+            if len(self._processed_transcript_ids) > 500:
+                self._processed_transcript_ids.clear()
+                self._processed_transcript_ids.add(item_id)
+
+            return False
+
+        normalized = " ".join(
+            str(transcript).strip().lower().split()
+        )
+        now = time.monotonic()
+
+        duplicate = (
+            normalized
+            and normalized == self._last_transcript_text
+            and now - self._last_transcript_time < 2.0
+        )
+
+        self._last_transcript_text = normalized
+        self._last_transcript_time = now
+        return duplicate
 
     async def _send_microphone_audio(
         self,
@@ -949,6 +1047,9 @@ class RealtimeVoiceService:
             if event_type == (
                 "input_audio_buffer.speech_started"
             ):
+                # A new user turn interrupts the previous response.
+                self._response_in_progress = False
+                self._response_transcript = ""
                 self._emit_speech_started()
 
             elif event_type == (
@@ -989,9 +1090,37 @@ class RealtimeVoiceService:
                 self._user_transcript = ""
 
                 if transcript:
+                    if self._is_duplicate_transcript(
+                        event,
+                        transcript,
+                    ):
+                        print(
+                            "[Realtime] Duplicate completed "
+                            "transcript ignored."
+                        )
+                        continue
+
                     self._emit_user_transcript(
                         transcript
                     )
+
+                    handled, answer = (
+                        self._route_local_request(
+                            transcript
+                        )
+                    )
+
+                    if handled:
+                        self._emit_local_answer(
+                            answer
+                        )
+                    else:
+                        self._emit_status(
+                            "Realtime answering..."
+                        )
+                        await self._create_response_once(
+                            connection
+                        )
 
             elif event_type == (
                 "response.output_audio.delta"
@@ -1064,12 +1193,14 @@ class RealtimeVoiceService:
             elif event_type == (
                 "response.done"
             ):
+                self._response_in_progress = False
                 self._assistant_speaking.clear()
                 self._emit_status(
                     "Realtime ready."
                 )
 
             elif event_type == "error":
+                self._response_in_progress = False
                 error_object = getattr(
                     event,
                     "error",
@@ -1340,6 +1471,59 @@ class RealtimeVoiceService:
                 target_queue.get_nowait()
             except queue.Empty:
                 break
+
+    def _route_local_request(
+        self,
+        transcript,
+    ):
+        """Return (handled, answer) from the M12 local router callback."""
+        if self.on_local_request is None:
+            return False, ""
+
+        try:
+            result = self.on_local_request(
+                str(transcript)
+            )
+
+            if (
+                isinstance(result, tuple)
+                and len(result) >= 2
+            ):
+                handled = bool(result[0])
+                answer = str(result[1] or "").strip()
+                return handled, answer
+
+            return False, ""
+
+        except Exception as error:
+            print(
+                "Realtime local-router callback error: "
+                f"{type(error).__name__}: {error}"
+            )
+            return False, ""
+
+    def _emit_local_answer(
+        self,
+        answer,
+    ):
+        text = str(answer or "").strip()
+
+        if not text:
+            return
+
+        if self.on_local_answer is not None:
+            try:
+                self.on_local_answer(text)
+                return
+            except Exception as error:
+                print(
+                    "Realtime local-answer callback error: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        print(
+            f"\n[M12 LOCAL] {text}"
+        )
 
     def _emit_status(
         self,

@@ -248,6 +248,8 @@ class MusicScreen(Screen):
         self.active_folder = "Audio" if platform == "android" else "All"
         self.search_text = ""
         self.is_playing = False
+        self.is_paused = False
+        self.paused_position = 0.0
         self.shuffle_on = False
         self.repeat_mode = REPEAT_OFF
 
@@ -1192,6 +1194,8 @@ class MusicScreen(Screen):
 
         if not next_file:
             self.is_playing = False
+            self.is_paused = False
+            self.paused_position = 0.0
             self.write_player_status(False)
 
             self.play_btn.text = "Play"
@@ -1308,6 +1312,8 @@ class MusicScreen(Screen):
             self.android_player.start()
 
             self.is_playing = True
+            self.is_paused = False
+            self.paused_position = 0.0
             self.write_player_status(True)
 
             self.play_btn.text = "Play"
@@ -1338,6 +1344,10 @@ class MusicScreen(Screen):
         self.sound = None
 
     def play_selected(self, instance):
+        if self.is_paused:
+            self.resume_media()
+            return
+
         if self.is_starting:
             self.status_label.text = "Starting already..."
             return
@@ -1418,6 +1428,8 @@ class MusicScreen(Screen):
                 self.now_label.text = f"Opened Video:\n{self.selected_file.name}"
                 self.write_player_status(False)
                 self.is_playing = False
+                self.is_paused = False
+                self.paused_position = 0.0
                 self.play_btn.text = "Play"
                 self.rebuild_file_list()
                 self.update_status_count()
@@ -1440,6 +1452,8 @@ class MusicScreen(Screen):
             register_external_player(self.player_process)
 
             self.is_playing = True
+            self.is_paused = False
+            self.paused_position = 0.0
             self.write_player_status(True)
 
             self.play_btn.text = "Play"
@@ -1466,6 +1480,8 @@ class MusicScreen(Screen):
             self.sound.play()
 
             self.is_playing = True
+            self.is_paused = False
+            self.paused_position = 0.0
             self.write_player_status(True)
 
             self.play_btn.text = "Play"
@@ -1480,6 +1496,9 @@ class MusicScreen(Screen):
             log.error(f"Music: play failed {e}")
 
     def check_playback_finished(self, dt):
+        if self.is_paused:
+            return
+
         if not self.is_playing:
             return
 
@@ -1505,12 +1524,310 @@ class MusicScreen(Screen):
             except Exception:
                 pass
 
-    def stop_media(self, instance):
+    def pause_media(self, instance=None):
+        """
+        Pause the current audio without losing its position.
+
+        macOS:
+            Suspend the afplay process with SIGSTOP.
+
+        Android:
+            Pause MediaPlayer.
+
+        Kivy:
+            Remember the current position and stop the Sound.
+            resume_media() restarts and seeks back to that position.
+        """
+        if self.is_paused:
+            self.status_label.text = "Already paused"
+            return True
+
+        if not self.is_playing:
+            self.status_label.text = "Nothing is playing"
+            return False
+
+        try:
+            if platform == "macosx":
+                if (
+                    self.player_process
+                    and self.player_process.poll() is None
+                    and hasattr(signal, "SIGSTOP")
+                ):
+                    os.kill(
+                        self.player_process.pid,
+                        signal.SIGSTOP,
+                    )
+                else:
+                    self.status_label.text = "Pause is not available"
+                    return False
+
+            elif platform == "android":
+                if not self.android_player:
+                    self.status_label.text = "Nothing is playing"
+                    return False
+
+                try:
+                    if self.android_player.isPlaying():
+                        self.android_player.pause()
+                except Exception:
+                    self.android_player.pause()
+
+            else:
+                if not self.sound:
+                    self.status_label.text = "Nothing is playing"
+                    return False
+
+                try:
+                    position = self.sound.get_pos()
+                    if position is not None and position >= 0:
+                        self.paused_position = float(position)
+                except Exception:
+                    self.paused_position = 0.0
+
+                self.sound.stop()
+
+            self.is_playing = False
+            self.is_paused = True
+            self.play_btn.text = "Resume"
+            self.status_label.text = "Paused"
+            self.write_player_status(
+                False,
+                self.selected_file.name
+                if self.selected_file
+                else "",
+            )
+
+            log.info("Music: paused")
+            return True
+
+        except Exception as e:
+            self.status_label.text = f"Pause failed:\n{e}"
+            log.error(f"Music: pause failed {e}")
+            return False
+
+    def resume_media(self, instance=None):
+        """
+        Resume audio previously paused by pause_media().
+        """
+        if self.is_playing:
+            self.status_label.text = "Already playing"
+            return True
+
+        if not self.is_paused:
+            self.status_label.text = "Music is not paused"
+            return False
+
+        if not self.selected_file:
+            self.status_label.text = "No selected file"
+            return False
+
+        try:
+            if platform == "macosx":
+                if (
+                    self.player_process
+                    and self.player_process.poll() is None
+                    and hasattr(signal, "SIGCONT")
+                ):
+                    os.kill(
+                        self.player_process.pid,
+                        signal.SIGCONT,
+                    )
+                else:
+                    self.status_label.text = "Resume is not available"
+                    return False
+
+            elif platform == "android":
+                if not self.android_player:
+                    self.status_label.text = "Resume is not available"
+                    return False
+
+                self.android_player.start()
+
+            else:
+                if not self.sound:
+                    self.sound = SoundLoader.load(
+                        str(self.selected_file)
+                    )
+
+                if not self.sound:
+                    self.status_label.text = "Could not reload audio"
+                    return False
+
+                self.sound.volume = self.volume_slider.value
+                self.sound.play()
+
+                if self.paused_position > 0:
+                    try:
+                        self.sound.seek(
+                            self.paused_position
+                        )
+                    except Exception:
+                        pass
+
+            self.is_playing = True
+            self.is_paused = False
+            self.play_btn.text = "Play"
+            self.status_label.text = "Playing"
+            self.write_player_status(True)
+
+            if self.selected_file:
+                self.now_label.text = (
+                    f"Playing:\n{self.selected_file.name}"
+                )
+
+            self.update_status_count()
+            self.scroll_to_selected_later()
+
+            log.info("Music: resumed")
+            return True
+
+        except Exception as e:
+            self.status_label.text = f"Resume failed:\n{e}"
+            log.error(f"Music: resume failed {e}")
+            return False
+
+    def is_paused_state(self):
+        """
+        Stable API for MusicSkill.
+        """
+        return bool(self.is_paused)
+
+    def current_song_name(self):
+        """
+        Return the selected/current media filename.
+        """
+        if self.selected_file:
+            return self.selected_file.name
+
+        return ""
+
+    def set_volume(self, percent):
+        """
+        Set volume using either 0..100 or 0.0..1.0.
+
+        Returns the resulting percentage.
+        """
+        try:
+            value = float(percent)
+
+            if value > 1:
+                value = value / 100.0
+
+            value = max(
+                0.0,
+                min(1.0, value),
+            )
+
+            self.volume_slider.value = value
+            self.change_volume(
+                self.volume_slider,
+                value,
+            )
+
+            result = int(round(value * 100))
+            self.status_label.text = (
+                f"Volume {result}%"
+            )
+
+            log.info(
+                f"Music: volume set to {result}%"
+            )
+            return result
+
+        except Exception as e:
+            log.error(
+                f"Music: set volume failed {e}"
+            )
+            return None
+
+
+    def play_by_name(self, name):
+        """
+        Find the first media file containing the supplied name and play it.
+        """
+        if not name:
+            return False
+
+        query = str(name).strip().lower()
+        if not query:
+            return False
+
+        if not self.media_files:
+            try:
+                self.scan_media()
+            except Exception:
+                pass
+
+        for index, path in enumerate(self.media_files):
+            try:
+                filename = path.name.lower()
+            except Exception:
+                filename = str(path).lower()
+
+            if query in filename:
+                self.selected_index = index
+                self.selected_file = path
+
+                try:
+                    self.scroll_to_selected_later()
+                except Exception:
+                    pass
+
+                self.play_selected(None)
+                self.status_label.text = f"Playing: {path.name}"
+                return True
+
+        self.status_label.text = f'No song found: "{name}"'
+        return False
+
+    def play_first(self):
+        if not self.media_files:
+            return False
+
+        self.selected_index = 0
+        self.selected_file = self.media_files[0]
+        self.play_selected(None)
+        return True
+
+    def play_random(self):
+        import random
+
+        if not self.media_files:
+            return False
+
+        self.selected_index = random.randrange(len(self.media_files))
+        self.selected_file = self.media_files[self.selected_index]
+        self.play_selected(None)
+        return True
+
+    def play_favorites(self):
+        favorites = [
+            p for p in self.media_files
+            if self.normalized_path(p) in self.favorite_paths
+        ]
+
+        if not favorites:
+            return False
+
+        self.selected_file = favorites[0]
+
+        try:
+            self.selected_index = self.media_files.index(self.selected_file)
+        except ValueError:
+            pass
+
+        self.play_selected(None)
+        return True
+
+    def stop_media(self, instance=None):
         self.is_playing = False
+        self.is_paused = False
+        self.paused_position = 0.0
         self.play_btn.text = "Play"
         self.unload_current_sound()
         self.write_player_status(False)
         self.status_label.text = "Stopped"
+        log.info("Music: stopped")
 
     def change_volume(self, instance, value):
         if platform == "macosx":

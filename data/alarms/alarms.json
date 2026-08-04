@@ -18,5 +18,31 @@
         "until_date": "",
         "last_fired_date": "2026-07-11",
         "last_fired_time": "10:30"
+    },
+    {
+        "hour": 7,
+        "minute": 0,
+        "enabled": true,
+        "repeat_mode": "once",
+        "days": [],
+        "until_date": "",
+        "last_fired_date": "",
+        "last_fired_time": ""
+    },
+    {
+        "hour": 8,
+        "minute": 0,
+        "enabled": true,
+        "repeat_mode": "days",
+        "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+        ],
+        "until_date": "",
+        "last_fired_date": "",
+        "last_fired_time": ""
     }
 ]

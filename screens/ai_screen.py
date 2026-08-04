@@ -51,6 +51,7 @@ class AIScreen(Screen):
         self.realtime_voice_active = False
         self.realtime_answer_active = False
         self.realtime_answer_text = ""
+        self.realtime_local_speech_active = False
         self.session_memory = get_ai_session_memory()
 
         self.voice_is_busy = False
@@ -823,6 +824,12 @@ class AIScreen(Screen):
                         on_speech_stopped=(
                             self.on_realtime_speech_stopped
                         ),
+                        on_local_request=(
+                            self.on_realtime_local_request
+                        ),
+                        on_local_answer=(
+                            self.on_realtime_local_answer
+                        ),
                         on_error=(
                             self.on_realtime_error
                         ),
@@ -941,6 +948,14 @@ class AIScreen(Screen):
         if not text:
             return
 
+        # While a local skill answer is being spoken, the always-on
+        # Realtime microphone may hear M12's own speaker output. Ignore
+        # those echo transcripts, but still allow a real Stop/Стоп command.
+        if self.realtime_local_speech_active:
+            if self.is_local_speech_stop_command(text):
+                self.stop_realtime_local_speech()
+            return
+
         mode_command = self.get_mode_command(
             text
         )
@@ -996,6 +1011,253 @@ class AIScreen(Screen):
             print(
                 "Permanent-memory capture error: "
                 f"{type(error).__name__}: {error}"
+            )
+
+    @staticmethod
+    def is_local_speech_stop_command(
+        message,
+    ):
+        """Return True for a command that interrupts local-skill speech."""
+        text = str(message).strip().lower().replace("’", "'")
+        text = re.sub(r"[^a-z0-9а-яё'\s]+", " ", text)
+        text = " ".join(text.split())
+
+        stop_commands = {
+            "stop",
+            "stop please",
+            "please stop",
+            "pause",
+            "quiet",
+            "be quiet",
+            "stop talking",
+            "stop speaking",
+            "стоп",
+            "остановись",
+            "останови",
+            "хватит",
+            "замолчи",
+            "перестань",
+            "перестань говорить",
+        }
+
+        return text in stop_commands
+
+    def stop_realtime_local_speech(
+        self,
+        dt=0,
+    ):
+        """Immediately stop a local-skill spoken answer and keep listening."""
+        self.realtime_local_speech_active = False
+
+        if self.voice_service is not None:
+            try:
+                self.voice_service.stop_speaking()
+            except Exception as error:
+                print(
+                    "Local-speech stop error: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        service = self.realtime_voice_service
+
+        if service is not None:
+            try:
+                service.resume_microphone_after_local_answer()
+            except Exception as error:
+                print(
+                    "Realtime microphone resume error: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        if self.realtime_voice_active:
+            self.voice_status.text = (
+                "Realtime connected — listening"
+            )
+
+    def on_realtime_local_request(
+        self,
+        transcript,
+    ):
+        """Run local skills on Kivy's main thread and return their result."""
+        text = str(transcript).strip()
+
+        if not text:
+            return False, ""
+
+        if self.realtime_local_speech_active:
+            if self.is_local_speech_stop_command(text):
+                Clock.schedule_once(
+                    self.stop_realtime_local_speech,
+                    0,
+                )
+
+            # Swallow everything heard while local TTS is active. Most of
+            # it is the device hearing its own speaker. Returning handled
+            # prevents OpenAI Realtime from creating a second response.
+            return True, ""
+
+        completed = threading.Event()
+        result_holder = {
+            "handled": False,
+            "answer": "",
+        }
+
+        def run_local_router(dt):
+            try:
+                handled, answer = (
+                    self.ai_router.process_local(
+                        message=text,
+                        ai_screen=self,
+                    )
+                )
+
+                result_holder["handled"] = bool(
+                    handled
+                )
+                result_holder["answer"] = str(
+                    answer or ""
+                ).strip()
+
+            except Exception as error:
+                print(
+                    "Realtime local routing error: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+            finally:
+                completed.set()
+
+        Clock.schedule_once(
+            run_local_router,
+            0,
+        )
+
+        if not completed.wait(timeout=5.0):
+            print(
+                "Realtime local routing timed out."
+            )
+            return False, ""
+
+        return (
+            result_holder["handled"],
+            result_holder["answer"],
+        )
+
+    def on_realtime_local_answer(
+        self,
+        answer,
+    ):
+        Clock.schedule_once(
+            lambda dt: self._apply_realtime_local_answer(
+                answer
+            ),
+            0,
+        )
+
+    def _apply_realtime_local_answer(
+        self,
+        answer,
+    ):
+        text = str(answer or "").strip()
+
+        if not text:
+            return
+
+        # Cancel any Realtime assistant response that may have started for
+        # this turn. A handled local skill must be the only speaking path.
+        service = self.realtime_voice_service
+
+        if service is not None:
+            try:
+                service.cancel_response()
+            except Exception as error:
+                print(
+                    "Realtime cancel before local answer error: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        # Keep the Realtime microphone active while a local answer is
+        # spoken so Stop/Стоп can interrupt it. Echo transcripts are
+        # suppressed by the guards above.
+        self.realtime_local_speech_active = True
+
+        self.append_message(
+            speaker="M12 AI",
+            message=text,
+        )
+
+        self.session_memory.add_assistant(
+            text,
+            route="local",
+        )
+
+        self.voice_status.text = (
+            "Answering with local skill..."
+        )
+
+        threading.Thread(
+            target=self._speak_realtime_local_answer,
+            args=(text,),
+            daemon=True,
+        ).start()
+
+    def _speak_realtime_local_answer(
+        self,
+        answer,
+    ):
+        error_message = ""
+
+        try:
+            if self.voice_service is None:
+                self.voice_service = VoiceService()
+                self.voice_service.set_transcription_language(
+                    self.voice_language,
+                    save=False,
+                )
+
+            self.voice_service.speak_text(
+                answer
+            )
+
+        except Exception as error:
+            error_message = (
+                f"{type(error).__name__}: {error}"
+            )
+            print(
+                "Realtime local-answer speech error: "
+                f"{error_message}"
+            )
+
+        Clock.schedule_once(
+            lambda dt: self._finish_realtime_local_answer(
+                error_message
+            ),
+            0,
+        )
+
+    def _finish_realtime_local_answer(
+        self,
+        error_message="",
+    ):
+        self.realtime_local_speech_active = False
+        service = self.realtime_voice_service
+
+        if service is not None:
+            try:
+                service.resume_microphone_after_local_answer()
+            except Exception as error:
+                print(
+                    "Realtime microphone resume error: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        if error_message:
+            self.voice_status.text = (
+                "Local answer speech failed"
+            )
+        elif self.realtime_voice_active:
+            self.voice_status.text = (
+                "Realtime connected — listening"
             )
 
     def on_realtime_text_delta(

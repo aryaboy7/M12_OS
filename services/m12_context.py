@@ -8,35 +8,7 @@ class M12Context:
     Plugins should use this context instead of accessing
     Kivy objects or importing application services directly.
     """
-    def open_notes_filter(
-        self,
-        note_type,
-    ):
-        """
-        Open Notes and apply a note-type filter.
-        """
-        if not self.open_screen("notes"):
-            return False
 
-        notes_screen = self.get_screen(
-            "notes"
-        )
-
-        if notes_screen is None:
-            return False
-
-        try:
-            notes_screen.set_filter(
-                str(note_type).strip()
-            )
-            return True
-
-        except Exception as error:
-            print(
-                "M12Context Notes filter error: "
-                f"{type(error).__name__}: {error}"
-            )
-            return False
     def __init__(
         self,
         ai_screen,
@@ -54,6 +26,7 @@ class M12Context:
         self.services = (
             ServiceManager.get_registry()
         )
+
     def get(
         self,
         name,
@@ -73,6 +46,7 @@ class M12Context:
             name,
             default,
         )
+
     #
     # Screens
     #
@@ -149,6 +123,36 @@ class M12Context:
 
         except Exception:
             return None
+
+    def open_notes_filter(
+        self,
+        note_type,
+    ):
+        """
+        Open Notes and apply a note-type filter.
+        """
+        if not self.open_screen("notes"):
+            return False
+
+        notes_screen = self.get_screen(
+            "notes"
+        )
+
+        if notes_screen is None:
+            return False
+
+        try:
+            notes_screen.set_filter(
+                str(note_type).strip()
+            )
+            return True
+
+        except Exception as error:
+            print(
+                "M12Context Notes filter error: "
+                f"{type(error).__name__}: {error}"
+            )
+            return False
 
     #
     # Services
