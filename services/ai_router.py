@@ -1,3 +1,4 @@
+import hashlib
 import re
 import unicodedata
 
@@ -6,9 +7,6 @@ from services.ai_service import AIService
 from services.internet_ai_service import InternetAIService
 from services.m12_context import M12Context
 from services.memory_manager import get_memory_manager
-
-# Important architecture rule:
-# AIRouter may import AIService, but AIService must never import AIRouter.
 
 
 class AIRouter:
@@ -262,8 +260,10 @@ class AIRouter:
 
         remember_match = re.match(
             (
-                r"^(?:please\s+)?remember(?:\s+that)?\s+(.+)$"
-                r"|^запомни(?:\s+что)?\s+(.+)$"
+                r"^(?:please\s+)?remember"
+                r"(?:\s+that)?[\s,:;.!?-]+(.+)$"
+                r"|^запомни"
+                r"(?:\s+что)?[\s,:;.!?-]+(.+)$"
             ),
             original,
             flags=re.IGNORECASE,
@@ -280,18 +280,22 @@ class AIRouter:
                 statement
             )
 
-            self.memory_manager.save_fact(
+            result = self.memory_manager.save_fact(
                 fact["category"],
                 fact["key"],
                 fact["value"],
             )
 
+            saved_value = result[
+                "fact"
+            ]["value"]
+
             return (
                 True,
                 (
-                    f"Я запомнил: {fact['value']}"
+                    f"Я запомнил: {saved_value}"
                     if russian
-                    else f"I remembered: {fact['value']}"
+                    else f"I remembered: {saved_value}"
                 ),
             )
 
@@ -324,17 +328,34 @@ class AIRouter:
             " .!?"
         )
 
+        # Realtime may pass explicit memory requests as a full sentence.
+        # Remove the command prefix before parsing the actual fact.
+        statement = re.sub(
+            (
+                r"^(?:please\s+)?remember"
+                r"(?:\s+that)?[\s,:;.!?-]+"
+                r"|^запомни"
+                r"(?:\s+что)?[\s,:;.!?-]+"
+            ),
+            "",
+            statement,
+            flags=re.IGNORECASE,
+        ).strip(" .!?,:;-")
+
         patterns = (
             r"^i like .+$",
             r"^i love .+$",
             r"^my favorite .+ is .+$",
             r"^my name is .+$",
+            r"^my .+?(?:'s name)? is .+$",
             r"^i live in .+$",
             r"^мне нравится .+$",
             r"^я люблю .+$",
             r"^мой любимый .+ .+$",
             r"^моя любимая .+ .+$",
             r"^меня зовут .+$",
+            r"^(?:мою|моего|моя|мой) .+ зовут .+$",
+            r"^(?:моя|мой) .+ .+$",
             r"^я живу в .+$",
         )
 
@@ -394,6 +415,146 @@ class AIRouter:
                 "key": "name",
                 "value": match.group(1).strip(),
             }
+
+        generic_personal_match = re.match(
+            r"^my\s+(.+?)(?:'s name)?\s+is\s+(.+)$",
+            value,
+            flags=re.IGNORECASE,
+        )
+
+        if generic_personal_match:
+            subject_text = (
+                generic_personal_match
+                .group(1)
+                .strip()
+            )
+            fact_value = (
+                generic_personal_match
+                .group(2)
+                .strip()
+            )
+
+            family_subjects = {
+                "wife",
+                "husband",
+                "daughter",
+                "son",
+                "mother",
+                "father",
+                "sister",
+                "brother",
+                "granddaughter",
+                "grandson",
+                "grandmother",
+                "grandfather",
+                "aunt",
+                "uncle",
+                "niece",
+                "nephew",
+                "partner",
+            }
+
+            normalized_subject = (
+                self.memory_manager
+                .normalize_name(
+                    subject_text
+                )
+            )
+
+            if (
+                normalized_subject
+                and fact_value
+                and normalized_subject
+                not in family_subjects
+            ):
+                return {
+                    "category": "personal",
+                    "key": normalized_subject,
+                    "value": fact_value,
+                }
+
+        english_family = {
+            "wife",
+            "husband",
+            "daughter",
+            "son",
+            "mother",
+            "father",
+            "sister",
+            "brother",
+            "granddaughter",
+            "grandson",
+            "grandmother",
+            "grandfather",
+            "aunt",
+            "uncle",
+            "niece",
+            "nephew",
+            "partner",
+        }
+
+        match = re.match(
+            r"^my (.+?)(?:'s name)? is (.+)$",
+            value,
+            flags=re.IGNORECASE,
+        )
+
+        if match:
+            relationship = (
+                self.memory_manager.normalize_name(
+                    match.group(1)
+                )
+            )
+            person_name = match.group(2).strip()
+
+            if relationship in english_family:
+                return {
+                    "category": "family",
+                    "key": relationship + "_name",
+                    "value": person_name,
+                }
+
+        russian_family = {
+            "жена": "wife",
+            "жену": "wife",
+            "муж": "husband",
+            "мужа": "husband",
+            "дочь": "daughter",
+            "дочку": "daughter",
+            "сын": "son",
+            "сына": "son",
+            "мама": "mother",
+            "маму": "mother",
+            "отец": "father",
+            "папа": "father",
+            "сестра": "sister",
+            "сестру": "sister",
+            "брат": "brother",
+            "брата": "brother",
+            "внучка": "granddaughter",
+            "внук": "grandson",
+        }
+
+        match = re.match(
+            (
+                r"^(?:мою|моего|моя|мой)\s+"
+                r"([^\s]+)\s+(?:зовут|это)\s+(.+)$"
+            ),
+            value,
+            flags=re.IGNORECASE,
+        )
+
+        if match:
+            relationship = russian_family.get(
+                match.group(1).lower()
+            )
+
+            if relationship:
+                return {
+                    "category": "family",
+                    "key": relationship + "_name",
+                    "value": match.group(2).strip(),
+                }
 
         match = re.match(
             r"^i live in (.+)$",
@@ -463,17 +624,105 @@ class AIRouter:
                 "value": preference,
             }
 
-        key = self.memory_manager.normalize_name(
-            " ".join(
-                self.normalize_text(
-                    value
-                ).split()[:8]
+        # Generic personal fact:
+        #   My daughter's husband is Alexey.
+        #   My son-in-law is Aleksey.
+        #
+        # The key identifies the subject only. The name/value is never part
+        # of the key, so future corrections update one unique record.
+        generic_match = re.match(
+            r"^my\s+(.+?)(?:'s name)?\s+is\s+(.+)$",
+            value,
+            flags=re.IGNORECASE,
+        )
+
+        if generic_match:
+            subject_text = generic_match.group(1).strip()
+            fact_value = generic_match.group(2).strip()
+
+            aliases = {
+                "daughter's husband": "son_in_law",
+                "daughter husband": "son_in_law",
+                "son-in-law": "son_in_law",
+                "son in law": "son_in_law",
+                "wife's husband": "husband",
+                "husband's wife": "wife",
+            }
+
+            normalized_subject = self.normalize_text(
+                subject_text
             )
-        ) or "fact"
+
+            subject = aliases.get(
+                normalized_subject,
+                self.memory_manager.normalize_name(
+                    subject_text
+                ),
+            )
+
+            if subject and fact_value:
+                return {
+                    "category": "profile",
+                    "key": subject,
+                    "value": fact_value,
+                }
+
+        russian_match = re.match(
+            (
+                r"^(?:мой|моя|моё|мои)\s+"
+                r"(.+?)\s*(?:это|—|-|–|:)\s*(.+)$"
+            ),
+            value,
+            flags=re.IGNORECASE,
+        )
+
+        if russian_match:
+            subject_text = russian_match.group(1).strip()
+            fact_value = russian_match.group(2).strip()
+
+            russian_aliases = {
+                "зять": "son_in_law",
+                "муж дочери": "son_in_law",
+                "муж моей дочери": "son_in_law",
+            }
+
+            normalized_subject = self.normalize_text(
+                subject_text
+            )
+
+            subject = russian_aliases.get(
+                normalized_subject,
+                self.memory_manager.normalize_name(
+                    subject_text
+                ),
+            )
+
+            if subject and fact_value:
+                return {
+                    "category": "profile",
+                    "key": subject,
+                    "value": fact_value,
+                }
+
+        # Universal fallback:
+        # Every explicit Remember command must be saved even when no
+        # specialized parser understands the subject.
+        #
+        # The short hash gives the same statement a stable key, so saying
+        # it again updates the existing record instead of creating duplicates.
+        normalized_value = self.normalize_text(
+            value
+        )
+
+        digest = hashlib.sha1(
+            normalized_value.encode(
+                "utf-8"
+            )
+        ).hexdigest()[:12]
 
         return {
-            "category": "general",
-            "key": key,
+            "category": "personal",
+            "key": "fact_" + digest,
             "value": value,
         }
 
@@ -502,6 +751,85 @@ class AIRouter:
                     if russian
                     else f"Your name is {value}."
                 )
+
+        family_questions = {
+            "wife": {
+                "what is my wife name",
+                "whats my wife name",
+                "who is my wife",
+            },
+            "daughter": {
+                "what is my daughter name",
+                "whats my daughter name",
+                "who is my daughter",
+            },
+            "son": {
+                "what is my son name",
+                "whats my son name",
+                "who is my son",
+            },
+            "husband": {
+                "what is my husband name",
+                "whats my husband name",
+                "who is my husband",
+            },
+        }
+
+        russian_family_questions = {
+            "wife": {
+                "как зовут мою жену",
+                "кто моя жена",
+            },
+            "daughter": {
+                "как зовут мою дочь",
+                "кто моя дочь",
+            },
+            "son": {
+                "как зовут моего сына",
+                "кто мой сын",
+            },
+            "husband": {
+                "как зовут моего мужа",
+                "кто мой муж",
+            },
+        }
+
+        family_labels = {
+            "wife": ("wife", "жену"),
+            "daughter": ("daughter", "дочь"),
+            "son": ("son", "сына"),
+            "husband": ("husband", "мужа"),
+        }
+
+        for relationship, questions in family_questions.items():
+            if text in questions:
+                value = self.memory_manager.get_fact(
+                    "family",
+                    relationship + "_name",
+                )
+
+                if value:
+                    label = family_labels[
+                        relationship
+                    ][0]
+                    return (
+                        f"Your {label}'s name is {value}."
+                    )
+
+        for relationship, questions in russian_family_questions.items():
+            if text in questions:
+                value = self.memory_manager.get_fact(
+                    "family",
+                    relationship + "_name",
+                )
+
+                if value:
+                    label = family_labels[
+                        relationship
+                    ][1]
+                    return (
+                        f"Вашу {label} зовут {value}."
+                    )
 
         favorite_match = re.match(
             r"^what is my favorite (.+)$",
@@ -571,6 +899,112 @@ class AIRouter:
                     if russian
                     else "Yes, you like tennis."
                 )
+
+        # Generic unique-key profile lookup.
+        generic_questions = {
+            "who is my son in law": "son_in_law",
+            "who is my son-in-law": "son_in_law",
+            "what is my son in law name": "son_in_law",
+            "what is my son-in-law name": "son_in_law",
+            "who is my daughters husband": "son_in_law",
+            "what is my daughters husband name": "son_in_law",
+            "как зовут моего зятя": "son_in_law",
+            "кто мой зять": "son_in_law",
+            "как зовут мужа моей дочери": "son_in_law",
+        }
+
+        profile_key = generic_questions.get(
+            text
+        )
+
+        if profile_key:
+            value = self.memory_manager.get_fact(
+                "profile",
+                profile_key,
+            )
+
+            if value:
+                return value
+
+        generic_personal_question = re.match(
+            (
+                r"^(?:who|what)\s+is\s+my\s+(.+?)(?:\s+name)?$"
+            ),
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        if generic_personal_question:
+            subject = (
+                self.memory_manager
+                .normalize_name(
+                    generic_personal_question
+                    .group(1)
+                )
+            )
+
+            value = self.memory_manager.get_fact(
+                "personal",
+                subject,
+            )
+
+            if value:
+                return (
+                    f"Your "
+                    f"{generic_personal_question.group(1)} "
+                    f"is {value}."
+                )
+
+        # Universal personal-memory lookup.
+        # Search all stored facts using meaningful words from the question.
+        stop_words = {
+            "what",
+            "who",
+            "is",
+            "are",
+            "my",
+            "the",
+            "name",
+            "do",
+            "you",
+            "know",
+            "about",
+            "как",
+            "кто",
+            "что",
+            "мой",
+            "моя",
+            "моего",
+            "мою",
+            "зовут",
+        }
+
+        query_words = [
+            word
+            for word in text.split()
+            if (
+                len(word) >= 3
+                and word not in stop_words
+            )
+        ]
+
+        if query_words:
+            facts = self.memory_manager.list_facts()
+
+            for fact in reversed(facts):
+                searchable = self.normalize_text(
+                    (
+                        f"{fact['category']} "
+                        f"{fact['key']} "
+                        f"{fact['value']}"
+                    )
+                )
+
+                if all(
+                    word in searchable
+                    for word in query_words
+                ):
+                    return fact["value"]
 
         return None
 

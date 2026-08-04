@@ -1,34 +1,75 @@
 {
-  "version": 1,
-  "updated_at": "2026-08-03T23:07:06+00:00",
-  "facts": [
-    {
-      "category": "profile",
-      "key": "name",
-      "value": "Anatoliy",
+  "version": 2,
+  "updated_at": "2026-08-04T03:24:36+00:00",
+  "profile": {
+    "name": "Anatoliy",
+    "favorite_language": "Python",
+    "son_in_law": "Alexey"
+  },
+  "family": {
+    "wife": "Galina",
+    "daughter": "Anastasia"
+  },
+  "likes": [
+    "tennis",
+    "travel",
+    "programming",
+    "fishing"
+  ],
+  "personal": {
+    "fact_cdc329128eac": "Мой дантист из Алекс",
+    "cardiologist": "Chernov",
+    "fact_dcba4d724374": "Мой физишн is доктор Билык"
+  },
+  "other": {},
+  "_meta": {
+    "profile.name": {
       "created_at": "2026-08-03T21:09:28+00:00",
       "updated_at": "2026-08-03T21:09:28+00:00"
     },
-    {
-      "category": "preferences",
-      "key": "favorite_language",
-      "value": "Python",
+    "preferences.favorite_language": {
       "created_at": "2026-08-03T21:09:28+00:00",
       "updated_at": "2026-08-03T21:09:28+00:00"
     },
-    {
-      "category": "likes",
-      "key": "tennis",
-      "value": "tennis",
+    "likes.tennis": {
       "created_at": "2026-08-03T22:12:22+00:00",
       "updated_at": "2026-08-03T22:12:40+00:00"
     },
-    {
-      "category": "likes",
-      "key": "travel_too",
-      "value": "travel too",
+    "likes.travel_too": {
       "created_at": "2026-08-03T23:07:06+00:00",
       "updated_at": "2026-08-03T23:07:06+00:00"
+    },
+    "family.wife_name": {
+      "created_at": "2026-08-04T00:40:58+00:00",
+      "updated_at": "2026-08-04T00:40:58+00:00"
+    },
+    "family.daughter_name": {
+      "created_at": "2026-08-04T01:21:49+00:00",
+      "updated_at": "2026-08-04T01:21:49+00:00"
+    },
+    "likes.to_do_a_programming": {
+      "created_at": "2026-08-04T01:25:36+00:00",
+      "updated_at": "2026-08-04T01:25:36+00:00"
+    },
+    "profile.son_in_law": {
+      "created_at": "2026-08-04T01:50:26+00:00",
+      "updated_at": "2026-08-04T01:59:33+00:00"
+    },
+    "likes.fishing": {
+      "created_at": "2026-08-04T03:15:15+00:00",
+      "updated_at": "2026-08-04T03:15:15+00:00"
+    },
+    "personal.fact_cdc329128eac": {
+      "created_at": "2026-08-04T03:22:33+00:00",
+      "updated_at": "2026-08-04T03:22:33+00:00"
+    },
+    "personal.cardiologist": {
+      "created_at": "2026-08-04T03:23:41+00:00",
+      "updated_at": "2026-08-04T03:23:41+00:00"
+    },
+    "personal.fact_dcba4d724374": {
+      "created_at": "2026-08-04T03:24:36+00:00",
+      "updated_at": "2026-08-04T03:24:36+00:00"
     }
-  ]
+  }
 }

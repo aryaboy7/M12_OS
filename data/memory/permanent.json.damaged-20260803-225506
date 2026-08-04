@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "updated_at": "2026-08-04T01:59:33+00:00",
+  "profile": {
+    "name": "Anatoliy",
+    "favorite_language": "Python",
+    "son_in_law": "Alexey"
+  },
+  "family": {
+    "wife": "Galina",
+    "daughter": "Anastasia"
+  },
+  "likes": [
+    "tennis",
+    "travel",
+  ],
+  "personal": {},
+  "other": {},
+}
