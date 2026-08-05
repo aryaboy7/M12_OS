@@ -4,6 +4,7 @@ import re
 import threading
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from kivy.clock import Clock
@@ -76,6 +77,12 @@ class AIScreen(Screen):
         self.control_mode = False
         self.navigation_history = []
 
+        # Full-screen System Log state. Existing status assignments are
+        # captured automatically through the voice_status text binding.
+        self.system_log_lines = []
+        self._last_system_status = ""
+        self._system_log_limit = 100
+
         self.voice_language = (
             self.load_voice_language()
         )
@@ -96,9 +103,9 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         title = Label(
             text="AI Assistant",
-            font_size=font(42),
+            font_size=font(36),
             bold=True,
-            size_hint=(1, 0.11),
+            size_hint=(1, 0.07),
             halign="center",
             valign="middle",
         )
@@ -116,34 +123,112 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         # Voice status
         # ---------------------------------------------------------
-        self.voice_status = Label(
+        self.voice_status = TextInput(
             text="Voice ready",
-            font_size=font(18),
+            readonly=True,
+            multiline=False,
+            cursor_blink=False,
+            font_size=font(17),
             size_hint=(1, 0.05),
-            color=(0.70, 0.85, 1, 1),
-            halign="center",
-            valign="middle",
+            padding=(
+                height(10),
+                height(8),
+            ),
+            background_color=(
+                0.08,
+                0.10,
+                0.16,
+                1,
+            ),
+            foreground_color=(
+                0.72,
+                0.88,
+                1.00,
+                1,
+            ),
+            selection_color=(
+                0.20,
+                0.45,
+                0.75,
+                0.65,
+            ),
         )
 
         self.voice_status.bind(
+            text=self.on_voice_status_changed
+        )
+
+        root.add_widget(self.voice_status)
+
+        # ---------------------------------------------------------
+        # AI / Control mode and voice-language switches
+        # ---------------------------------------------------------
+        mode_language_row = BoxLayout(
+            orientation="horizontal",
+            spacing=height(8),
+            size_hint=(1, 0.06),
+        )
+
+        self.mode_btn = Button(
+            text="Mode: AI",
+            font_size=font(22),
+            background_normal="",
+        )
+        self.mode_btn.bind(
+            on_press=self.toggle_mode
+        )
+        mode_language_row.add_widget(
+            self.mode_btn
+        )
+
+        self.language_btn = Button(
+            text="Language: English",
+            font_size=font(22),
+            background_normal="",
+            background_color=(
+                0.25,
+                0.38,
+                0.55,
+                1,
+            ),
+        )
+        self.language_btn.bind(
+            on_press=self.cycle_voice_language
+        )
+        mode_language_row.add_widget(
+            self.language_btn
+        )
+
+        root.add_widget(
+            mode_language_row
+        )
+
+        # ---------------------------------------------------------
+        # Conversation
+        # ---------------------------------------------------------
+        conversation_title = Label(
+            text="Conversation",
+            font_size=font(20),
+            bold=True,
+            size_hint=(1, 0.035),
+            halign="left",
+            valign="middle",
+        )
+        conversation_title.bind(
             size=lambda instance, value: setattr(
                 instance,
                 "text_size",
                 value,
             )
         )
+        root.add_widget(conversation_title)
 
-        root.add_widget(self.voice_status)
-
-        # ---------------------------------------------------------
-        # Conversation area
-        # ---------------------------------------------------------
         self.chat_view = TextInput(
             text=self.chat_text,
             readonly=True,
             multiline=True,
             font_size=font(26),
-            size_hint=(1, 0.49),
+            size_hint=(1, 0.30),
             padding=(
                 height(12),
                 height(12),
@@ -188,56 +273,13 @@ class AIScreen(Screen):
         )
 
         # ---------------------------------------------------------
-        # AI / Control mode and voice-language switches
-        # ---------------------------------------------------------
-        mode_language_row = BoxLayout(
-            orientation="horizontal",
-            spacing=height(8),
-            size_hint=(1, 0.07),
-        )
-
-        self.mode_btn = Button(
-            text="Mode: AI",
-            font_size=font(22),
-            background_normal="",
-        )
-        self.mode_btn.bind(
-            on_press=self.toggle_mode
-        )
-        mode_language_row.add_widget(
-            self.mode_btn
-        )
-
-        self.language_btn = Button(
-            text="Language: English",
-            font_size=font(22),
-            background_normal="",
-            background_color=(
-                0.25,
-                0.38,
-                0.55,
-                1,
-            ),
-        )
-        self.language_btn.bind(
-            on_press=self.cycle_voice_language
-        )
-        mode_language_row.add_widget(
-            self.language_btn
-        )
-
-        root.add_widget(
-            mode_language_row
-        )
-
-        # ---------------------------------------------------------
         # Message input
         # ---------------------------------------------------------
         self.message_input = TextInput(
             hint_text="Type a message or press Voice...",
             font_size=font(26),
             multiline=True,
-            size_hint=(1, 0.13),
+            size_hint=(1, 0.10),
             padding=(
                 height(12),
                 height(12),
@@ -256,12 +298,12 @@ class AIScreen(Screen):
         self.update_language_button()
 
         # ---------------------------------------------------------
-        # Voice, Clear, and Send
+        # Message controls
         # ---------------------------------------------------------
-        action_row = BoxLayout(
+        message_buttons = BoxLayout(
             orientation="horizontal",
             spacing=height(8),
-            size_hint=(1, 0.09),
+            size_hint=(1, 0.075),
         )
 
         self.voice_btn = Button(
@@ -275,16 +317,16 @@ class AIScreen(Screen):
                 1,
             ),
         )
-
         self.voice_btn.bind(
             on_press=self.start_voice_input
         )
-
-        action_row.add_widget(self.voice_btn)
+        message_buttons.add_widget(
+            self.voice_btn
+        )
 
         self.clear_btn = Button(
-            text="Clear",
-            font_size=font(23),
+            text="Clear Messages",
+            font_size=font(20),
             background_normal="",
             background_color=(
                 0.35,
@@ -293,16 +335,16 @@ class AIScreen(Screen):
                 1,
             ),
         )
-
         self.clear_btn.bind(
             on_press=self.clear_chat
         )
-
-        action_row.add_widget(self.clear_btn)
+        message_buttons.add_widget(
+            self.clear_btn
+        )
 
         self.copy_btn = Button(
-            text="Copy",
-            font_size=font(23),
+            text="Copy Messages",
+            font_size=font(20),
             background_normal="",
             background_color=(
                 0.25,
@@ -311,12 +353,10 @@ class AIScreen(Screen):
                 1,
             ),
         )
-
         self.copy_btn.bind(
             on_press=self.copy_chat_text
         )
-
-        action_row.add_widget(
+        message_buttons.add_widget(
             self.copy_btn
         )
 
@@ -331,13 +371,134 @@ class AIScreen(Screen):
                 1,
             ),
         )
-
         self.send_btn.bind(
             on_press=self.send_message
         )
+        message_buttons.add_widget(
+            self.send_btn
+        )
 
-        action_row.add_widget(self.send_btn)
-        root.add_widget(action_row)
+        root.add_widget(message_buttons)
+
+        # ---------------------------------------------------------
+        # System Log
+        # ---------------------------------------------------------
+        system_log_title = Label(
+            text="System Log",
+            font_size=font(20),
+            bold=True,
+            size_hint=(1, 0.035),
+            halign="left",
+            valign="middle",
+        )
+        system_log_title.bind(
+            size=lambda instance, value: setattr(
+                instance,
+                "text_size",
+                value,
+            )
+        )
+        root.add_widget(system_log_title)
+
+        self.system_log_view = TextInput(
+            text="",
+            readonly=True,
+            multiline=True,
+            cursor_blink=False,
+            font_size=font(15),
+            size_hint=(1, 0.16),
+            padding=(
+                height(10),
+                height(8),
+            ),
+            background_color=(
+                0.025,
+                0.03,
+                0.05,
+                1,
+            ),
+            foreground_color=(
+                0.82,
+                0.88,
+                0.92,
+                1,
+            ),
+            selection_color=(
+                0.20,
+                0.45,
+                0.75,
+                0.65,
+            ),
+            use_bubble=True,
+            use_handles=True,
+            scroll_from_swipe=True,
+        )
+        root.add_widget(self.system_log_view)
+
+        # ---------------------------------------------------------
+        # System Log controls
+        # ---------------------------------------------------------
+        system_log_buttons = BoxLayout(
+            orientation="horizontal",
+            spacing=height(8),
+            size_hint=(1, 0.055),
+        )
+
+        self.copy_log_btn = Button(
+            text="Copy Log",
+            font_size=font(18),
+            background_normal="",
+            background_color=(
+                0.22,
+                0.30,
+                0.44,
+                1,
+            ),
+        )
+        self.copy_log_btn.bind(
+            on_press=self.copy_system_log
+        )
+        system_log_buttons.add_widget(
+            self.copy_log_btn
+        )
+
+        self.save_log_btn = Button(
+            text="Save Log",
+            font_size=font(18),
+            background_normal="",
+            background_color=(
+                0.20,
+                0.38,
+                0.30,
+                1,
+            ),
+        )
+        self.save_log_btn.bind(
+            on_press=self.save_system_log
+        )
+        system_log_buttons.add_widget(
+            self.save_log_btn
+        )
+
+        self.clear_log_btn = Button(
+            text="Clear Log",
+            font_size=font(18),
+            background_normal="",
+            background_color=(
+                0.42,
+                0.22,
+                0.22,
+                1,
+            ),
+        )
+        self.clear_log_btn.bind(
+            on_press=self.clear_system_log
+        )
+        system_log_buttons.add_widget(
+            self.clear_log_btn
+        )
+
+        root.add_widget(system_log_buttons)
 
         # ---------------------------------------------------------
         # Back
@@ -345,7 +506,7 @@ class AIScreen(Screen):
         self.back_btn = Button(
             text="< Back",
             font_size=font(27),
-            size_hint=(1, 0.06),
+            size_hint=(1, 0.05),
             background_normal="",
             background_color=(
                 0.10,
@@ -361,6 +522,237 @@ class AIScreen(Screen):
 
         root.add_widget(self.back_btn)
         self.add_widget(root)
+
+        self.log_system(
+            "INFO",
+            "AI screen initialized",
+        )
+        self.log_system(
+            "STATUS",
+            self.voice_status.text,
+        )
+
+    # -------------------------------------------------------------
+    # System Log
+    # -------------------------------------------------------------
+    def on_voice_status_changed(
+        self,
+        instance,
+        value,
+    ):
+        text = str(value or "").strip()
+
+        if not text or text == self._last_system_status:
+            return
+
+        self._last_system_status = text
+        lower = text.lower()
+
+        if any(
+            word in lower
+            for word in (
+                "error",
+                "failed",
+                "exception",
+                "certificate",
+                "unable",
+            )
+        ):
+            category = "ERROR"
+        elif any(
+            word in lower
+            for word in (
+                "listening",
+                "voice",
+                "speaking",
+                "heard",
+            )
+        ):
+            category = "VOICE"
+        elif "connect" in lower or "realtime" in lower:
+            category = "OPENAI"
+        else:
+            category = "STATUS"
+
+        self.log_system(
+            category,
+            text,
+        )
+
+    def log_system(
+        self,
+        category,
+        message,
+    ):
+        text = str(message or "").strip()
+
+        if not text:
+            return
+
+        timestamp = datetime.now().strftime(
+            "%H:%M:%S"
+        )
+        category_text = str(category or "INFO").upper()
+
+        line = (
+            f"{timestamp}  "
+            f"{category_text:<7} "
+            f"{text}"
+        )
+
+        self.system_log_lines.append(line)
+
+        if len(self.system_log_lines) > self._system_log_limit:
+            self.system_log_lines = self.system_log_lines[
+                -self._system_log_limit:
+            ]
+
+        if not hasattr(self, "system_log_view"):
+            return
+
+        self.system_log_view.text = "\n".join(
+            self.system_log_lines
+        )
+
+        Clock.schedule_once(
+            self.scroll_system_log_to_bottom,
+            0,
+        )
+
+    def scroll_system_log_to_bottom(
+        self,
+        dt=0,
+    ):
+        if not hasattr(self, "system_log_view"):
+            return
+
+        try:
+            end_index = len(
+                self.system_log_view.text
+            )
+            self.system_log_view.cursor = (
+                self.system_log_view.get_cursor_from_index(
+                    end_index
+                )
+            )
+
+            ensure_visible = getattr(
+                self.system_log_view,
+                "_ensure_cursor_visible",
+                None,
+            )
+
+            if callable(ensure_visible):
+                ensure_visible()
+
+        except Exception as error:
+            print(
+                "System Log auto-scroll error: "
+                f"{type(error).__name__}: {error}"
+            )
+
+    def copy_system_log(
+        self,
+        instance=None,
+    ):
+        try:
+            selected = str(
+                self.system_log_view.selection_text
+            ).strip()
+        except Exception:
+            selected = ""
+
+        text_to_copy = selected or "\n".join(
+            self.system_log_lines
+        )
+
+        if not text_to_copy:
+            self.voice_status.text = (
+                "System Log is empty"
+            )
+            return
+
+        try:
+            if sys.platform == "darwin":
+                subprocess.run(
+                    ["pbcopy"],
+                    input=text_to_copy,
+                    text=True,
+                    check=True,
+                )
+            else:
+                Clipboard.copy(text_to_copy)
+
+            self.voice_status.text = (
+                "Selected System Log text copied"
+                if selected
+                else "System Log copied"
+            )
+
+        except Exception as error:
+            self.voice_status.text = (
+                "System Log copy failed: "
+                f"{type(error).__name__}: {error}"
+            )
+
+    def save_system_log(
+        self,
+        instance=None,
+    ):
+        log_text = "\n".join(
+            self.system_log_lines
+        ).strip()
+
+        if not log_text:
+            self.voice_status.text = (
+                "System Log is empty"
+            )
+            return
+
+        try:
+            logs_dir = BASE_DIR / "logs"
+            logs_dir.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            filename = (
+                "system_log_"
+                + datetime.now().strftime(
+                    "%Y-%m-%d_%H-%M-%S"
+                )
+                + ".txt"
+            )
+            destination = logs_dir / filename
+            destination.write_text(
+                log_text + "\n",
+                encoding="utf-8",
+            )
+
+            self.voice_status.text = (
+                f"System Log saved: {filename}"
+            )
+
+        except Exception as error:
+            self.voice_status.text = (
+                "System Log save failed: "
+                f"{type(error).__name__}: {error}"
+            )
+
+    def clear_system_log(
+        self,
+        instance=None,
+    ):
+        self.system_log_lines = []
+        self._last_system_status = ""
+
+        if hasattr(self, "system_log_view"):
+            self.system_log_view.text = ""
+
+        self.log_system(
+            "INFO",
+            "System Log cleared",
+        )
 
     # -------------------------------------------------------------
     # Screen lifecycle
@@ -2395,6 +2787,20 @@ class AIScreen(Screen):
         speaker,
         message,
     ):
+        speaker_text = str(speaker)
+        message_text = str(message)
+
+        if speaker_text == "You":
+            self.log_system(
+                "USER",
+                message_text,
+            )
+        elif message_text.strip():
+            self.log_system(
+                "AI",
+                message_text,
+            )
+
         self._chat_auto_follow = True
 
         self.chat_text += (
