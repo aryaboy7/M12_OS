@@ -1,7 +1,9 @@
 kivy==2.3.1
-pygame==2.6.1
+pygame-ce==2.5.7; python_version >= "3.14"
 pillow
 requests
 python-dateutil
 openai
 openai[realtime]
+sounddevice==0.5.5
+numpy==2.5.1
