@@ -850,11 +850,18 @@ class AIScreen(Screen):
             )
 
         except Exception as error:
+            # Python clears the exception variable after leaving an
+            # except block. Save the message before scheduling the
+            # Kivy callback so the delayed lambda cannot raise NameError.
+            error_message = (
+                f"{type(error).__name__}: "
+                f"{error}"
+            )
+
             Clock.schedule_once(
-                lambda dt: self._finish_realtime_error(
-                    (
-                        f"{type(error).__name__}: "
-                        f"{error}"
+                lambda dt, message=error_message: (
+                    self._finish_realtime_error(
+                        message
                     )
                 ),
                 0,
