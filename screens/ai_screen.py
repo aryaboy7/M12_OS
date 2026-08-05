@@ -121,44 +121,25 @@ class AIScreen(Screen):
         root.add_widget(title)
 
         # ---------------------------------------------------------
-        # Voice status
+        # Hidden status state
         # ---------------------------------------------------------
+        # Keep voice_status for all existing AI and voice logic, but do
+        # not show the old one-line status control. Every status change
+        # is written to the selectable System Log below.
         self.voice_status = TextInput(
             text="Voice ready",
             readonly=True,
             multiline=False,
             cursor_blink=False,
-            font_size=font(17),
-            size_hint=(1, 0.05),
-            padding=(
-                height(10),
-                height(8),
-            ),
-            background_color=(
-                0.08,
-                0.10,
-                0.16,
-                1,
-            ),
-            foreground_color=(
-                0.72,
-                0.88,
-                1.00,
-                1,
-            ),
-            selection_color=(
-                0.20,
-                0.45,
-                0.75,
-                0.65,
-            ),
+            size_hint=(None, None),
+            size=(0, 0),
+            opacity=0,
+            disabled=True,
         )
 
         self.voice_status.bind(
             text=self.on_voice_status_changed
         )
-
-        root.add_widget(self.voice_status)
 
         # ---------------------------------------------------------
         # AI / Control mode and voice-language switches
@@ -672,27 +653,46 @@ class AIScreen(Screen):
             )
             return
 
+        copied = False
+        copy_errors = []
+
+        # First use Kivy's clipboard so Android, Linux, and macOS
+        # applications can paste the text normally.
         try:
-            if sys.platform == "darwin":
-                subprocess.run(
-                    ["pbcopy"],
-                    input=text_to_copy,
-                    text=True,
+            Clipboard.copy(text_to_copy)
+            copied = True
+        except Exception as error:
+            copy_errors.append(
+                "Kivy clipboard: "
+                f"{type(error).__name__}: {error}"
+            )
+
+        # On macOS also use pbcopy. This works even when Kivy is using
+        # the deprecated pygame clipboard provider.
+        if sys.platform == "darwin":
+            try:
+                process = subprocess.run(
+                    ["/usr/bin/pbcopy"],
+                    input=text_to_copy.encode("utf-8"),
                     check=True,
                 )
-            else:
-                Clipboard.copy(text_to_copy)
+                copied = copied or process.returncode == 0
+            except Exception as error:
+                copy_errors.append(
+                    "pbcopy: "
+                    f"{type(error).__name__}: {error}"
+                )
 
+        if copied:
             self.voice_status.text = (
                 "Selected System Log text copied"
                 if selected
                 else "System Log copied"
             )
-
-        except Exception as error:
+        else:
             self.voice_status.text = (
                 "System Log copy failed: "
-                f"{type(error).__name__}: {error}"
+                + " | ".join(copy_errors)
             )
 
     def save_system_log(
