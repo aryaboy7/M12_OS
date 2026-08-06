@@ -565,20 +565,176 @@ class WeatherScreen(Screen):
             self.show_loading(f"Weather error:\n{e}")
 
     def geocode_city(self, city):
-        city_only = city.split(",")[0].strip()
-        query = urllib.parse.quote(city_only)
-        url = f"https://geocoding-api.open-meteo.com/v1/search?name={query}&count=1&language=en&format=json"
-        with urllib.request.urlopen(url, timeout=10) as response:
-            data = json.loads(response.read().decode("utf-8"))
+        """
+        Find the best matching city without discarding state/country text.
+
+        Examples:
+            Newport, RI
+            Brooklyn, NY
+            Moscow, Russia
+        """
+        original_city = str(city).strip()
+
+        if not original_city:
+            return None
+
+        city_parts = [
+            part.strip()
+            for part in original_city.split(",")
+            if part.strip()
+        ]
+
+        city_name = city_parts[0]
+        region_hint = (
+            city_parts[1].upper()
+            if len(city_parts) >= 2
+            else ""
+        )
+
+        query = urllib.parse.quote(city_name)
+
+        url = (
+            "https://geocoding-api.open-meteo.com/v1/search"
+            f"?name={query}"
+            "&count=20"
+            "&language=en"
+            "&format=json"
+        )
+
+        with urllib.request.urlopen(
+            url,
+            timeout=10,
+        ) as response:
+            data = json.loads(
+                response.read().decode("utf-8")
+            )
+
         results = data.get("results", [])
+
         if not results:
             return None
-        item = results[0]
-        name = item.get("name", city_only)
-        admin1 = item.get("admin1", "")
+
+        state_names = {
+            "AL": "ALABAMA",
+            "AK": "ALASKA",
+            "AZ": "ARIZONA",
+            "AR": "ARKANSAS",
+            "CA": "CALIFORNIA",
+            "CO": "COLORADO",
+            "CT": "CONNECTICUT",
+            "DE": "DELAWARE",
+            "FL": "FLORIDA",
+            "GA": "GEORGIA",
+            "HI": "HAWAII",
+            "ID": "IDAHO",
+            "IL": "ILLINOIS",
+            "IN": "INDIANA",
+            "IA": "IOWA",
+            "KS": "KANSAS",
+            "KY": "KENTUCKY",
+            "LA": "LOUISIANA",
+            "ME": "MAINE",
+            "MD": "MARYLAND",
+            "MA": "MASSACHUSETTS",
+            "MI": "MICHIGAN",
+            "MN": "MINNESOTA",
+            "MS": "MISSISSIPPI",
+            "MO": "MISSOURI",
+            "MT": "MONTANA",
+            "NE": "NEBRASKA",
+            "NV": "NEVADA",
+            "NH": "NEW HAMPSHIRE",
+            "NJ": "NEW JERSEY",
+            "NM": "NEW MEXICO",
+            "NY": "NEW YORK",
+            "NC": "NORTH CAROLINA",
+            "ND": "NORTH DAKOTA",
+            "OH": "OHIO",
+            "OK": "OKLAHOMA",
+            "OR": "OREGON",
+            "PA": "PENNSYLVANIA",
+            "RI": "RHODE ISLAND",
+            "SC": "SOUTH CAROLINA",
+            "SD": "SOUTH DAKOTA",
+            "TN": "TENNESSEE",
+            "TX": "TEXAS",
+            "UT": "UTAH",
+            "VT": "VERMONT",
+            "VA": "VIRGINIA",
+            "WA": "WASHINGTON",
+            "WV": "WEST VIRGINIA",
+            "WI": "WISCONSIN",
+            "WY": "WYOMING",
+        }
+
+        selected = None
+
+        if region_hint:
+            expected_state = state_names.get(
+                region_hint,
+                region_hint,
+            )
+
+            for item in results:
+                country_code = str(
+                    item.get("country_code", "")
+                ).upper()
+
+                admin1 = str(
+                    item.get("admin1", "")
+                ).upper()
+
+                country = str(
+                    item.get("country", "")
+                ).upper()
+
+                if (
+                    region_hint in state_names
+                    and country_code == "US"
+                    and admin1 == expected_state
+                ):
+                    selected = item
+                    break
+
+                if (
+                    admin1 == expected_state
+                    or country_code == region_hint
+                    or country == expected_state
+                ):
+                    selected = item
+                    break
+
+        if selected is None:
+            selected = results[0]
+
+        name = selected.get(
+            "name",
+            city_name,
+        )
+
+        admin1 = selected.get(
+            "admin1",
+            "",
+        )
+
+        country_code = selected.get(
+            "country_code",
+            "",
+        )
+
+        display_parts = [name]
+
         if admin1:
-            name = f"{name}, {admin1}"
-        return {"name": name, "latitude": item["latitude"], "longitude": item["longitude"]}
+            display_parts.append(admin1)
+
+        if country_code and country_code != "US":
+            display_parts.append(country_code)
+
+        return {
+            "name": ", ".join(display_parts),
+            "latitude": selected["latitude"],
+            "longitude": selected["longitude"],
+        }
 
     def get_weather_data(self, latitude, longitude, unit):
         temp_unit = "fahrenheit" if unit == "F" else "celsius"
