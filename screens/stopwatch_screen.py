@@ -5,6 +5,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 
 from utils.logger import log
+from utils.system_header import create_system_header
 from utils.ui_scale import (
     device_profile,
     button_font,
@@ -43,6 +44,14 @@ class StopwatchScreen(Screen):
             padding=padding_size(),
         )
 
+        self.system_header = create_system_header(
+            title="Stopwatch",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
+        )
+        root.add_widget(self.system_header)
+
         self.time_label = Label(
             text="00:00.00",
             font_size=stopwatch_time_font(),
@@ -74,17 +83,8 @@ class StopwatchScreen(Screen):
         )
         reset_btn.bind(on_press=self.reset)
 
-        back_btn = Button(
-            text="< Back",
-            font_size=button_font(),
-            background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1),
-        )
-        back_btn.bind(on_press=self.go_back)
-
         controls.add_widget(self.start_btn)
         controls.add_widget(reset_btn)
-        controls.add_widget(back_btn)
 
         root.add_widget(controls)
 
@@ -98,6 +98,23 @@ class StopwatchScreen(Screen):
         root.add_widget(self.info_label)
 
         self.add_widget(root)
+
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
 
     def on_enter(self):
         log.info("Stopwatch: opened")
@@ -130,5 +147,5 @@ class StopwatchScreen(Screen):
         self.update(0)
         log.info("Stopwatch: reset")
 
-    def go_back(self, instance):
+    def go_back(self, instance=None):
         self.manager.current = "clock"

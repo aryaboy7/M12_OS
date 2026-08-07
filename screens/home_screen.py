@@ -12,12 +12,14 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
+from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 from kivy.graphics import Color, Rectangle
 
 from config.version import VERSION
 from utils.config_manager import ConfigManager
 from utils.logger import log
+from utils.system_header import create_system_header
 from utils.ui_scale import (
     device_profile,
     title_font,
@@ -73,25 +75,25 @@ class HomeScreen(Screen):
             status_hint = 0.055
             clock_hint = 0.17
             weather_hint = 0.15
-            grid_hint = 0.575
+            grid_hint = 0.435
             version_hint = 0.04
         elif profile == "linux":
             status_hint = 0.07
             clock_hint = 0.20
             weather_hint = 0.17
-            grid_hint = 0.50
+            grid_hint = 0.43
             version_hint = 0.06
         elif profile in ("tablet", "m12"):
             status_hint = 0.055
             clock_hint = 0.16
             weather_hint = 0.14
-            grid_hint = 0.60
+            grid_hint = 0.53
             version_hint = 0.04
         else:
             status_hint = 0.06
             clock_hint = 0.16
             weather_hint = 0.14
-            grid_hint = 0.58
+            grid_hint = 0.51
             version_hint = 0.04
 
         self.app_size = button_font()
@@ -104,54 +106,13 @@ class HomeScreen(Screen):
 
         root.bind(pos=self.update_bg, size=self.update_bg)
 
-        status_bar = BoxLayout(
-            orientation="horizontal",
-            size_hint=(1, status_hint),
-            spacing=spacing_size(),
-            padding=(spacing_size(), 2)
+        self.system_header = create_system_header(
+            title="Home",
+            back_callback=self.confirm_exit,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
         )
-
-        with status_bar.canvas.before:
-            Color(*STATUS_BG)
-            self.status_rect = Rectangle(pos=status_bar.pos, size=status_bar.size)
-
-        status_bar.bind(pos=self.update_status_bg, size=self.update_status_bg)
-
-        self.status_left = Label(
-            text=f"M12 OS {VERSION}",
-            font_size=status_font(),
-            color=(0.75, 0.85, 1, 1),
-            halign="left",
-            valign="middle",
-            size_hint=(0.20, 1)
-        )
-
-        self.status_center = Label(
-            text="WiFi",
-            font_size=status_font(),
-            color=(0.75, 1, 0.80, 1),
-            halign="center",
-            valign="middle",
-            size_hint=(0.60, 1)
-        )
-
-        self.status_time = Label(
-            text="--:--:--",
-            font_size=status_font(),
-            color=(1, 1, 1, 1),
-            halign="right",
-            valign="middle",
-            size_hint=(0.20, 1)
-        )
-
-        self.status_left.bind(size=lambda inst, val: setattr(inst, "text_size", val))
-        self.status_center.bind(size=lambda inst, val: setattr(inst, "text_size", val))
-        self.status_time.bind(size=lambda inst, val: setattr(inst, "text_size", val))
-
-        status_bar.add_widget(self.status_left)
-        status_bar.add_widget(self.status_center)
-        status_bar.add_widget(self.status_time)
-        root.add_widget(status_bar)
+        root.add_widget(self.system_header)
 
         clock_card = BoxLayout(
             orientation="vertical",
@@ -435,7 +396,7 @@ class HomeScreen(Screen):
         except Exception:
             return False
 
-    def refresh_status_bar(self):
+    def get_system_status_text(self):
         parts = ["WiFi"]
 
         bt_text = self.bluetooth_status_text()
@@ -448,15 +409,15 @@ class HomeScreen(Screen):
         if self.is_alarm_active():
             parts.append("AL")
 
-        self.status_center.text = " | ".join(parts)
+        return " | ".join(parts)
+
+    def refresh_status_bar(self):
+        if hasattr(self, "system_header"):
+            self.system_header.refresh(0)
 
     def update_bg(self, instance, value):
         self.bg_rect.pos = instance.pos
         self.bg_rect.size = instance.size
-
-    def update_status_bg(self, instance, value):
-        self.status_rect.pos = instance.pos
-        self.status_rect.size = instance.size
 
     def update_clock_bg(self, instance, value):
         self.clock_rect.pos = instance.pos
@@ -494,7 +455,6 @@ class HomeScreen(Screen):
         self.clock_label.text = now.strftime("%I:%M %p")
         self.date_label.text = now.strftime("%A, %B %d")
         self.refresh_status_bar()
-        self.status_time.text = now.strftime("%H:%M:%S")
 
     def get_columns(self):
         profile = device_profile()
@@ -506,6 +466,69 @@ class HomeScreen(Screen):
             return 4
 
         return 5
+
+    def confirm_exit(self, instance=None):
+        content = BoxLayout(
+            orientation="vertical",
+            padding=spacing_size(),
+            spacing=spacing_size(),
+        )
+
+        content.add_widget(
+            Label(
+                text="Exit M12 OS?",
+                font_size=title_font(),
+                bold=True,
+            )
+        )
+
+        buttons = BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint=(1, 0.42),
+        )
+
+        no_btn = Button(
+            text="No",
+            font_size=button_font(),
+            background_normal="",
+            background_color=(0.18, 0.28, 0.42, 1),
+        )
+
+        yes_btn = Button(
+            text="Yes",
+            font_size=button_font(),
+            background_normal="",
+            background_color=(0.55, 0.16, 0.16, 1),
+        )
+
+        buttons.add_widget(no_btn)
+        buttons.add_widget(yes_btn)
+        content.add_widget(buttons)
+
+        popup = Popup(
+            title="",
+            content=content,
+            size_hint=(0.62, 0.36),
+            auto_dismiss=False,
+        )
+
+        no_btn.bind(on_release=popup.dismiss)
+        yes_btn.bind(
+            on_release=lambda *_: self.exit_app(popup)
+        )
+
+        popup.open()
+
+    def exit_app(self, popup=None):
+        if popup is not None:
+            popup.dismiss()
+
+        log.info("Home: exiting M12 OS")
+
+        app = App.get_running_app()
+        if app:
+            app.stop()
 
     def restart_app(self):
         log.info("Home: restarting app")

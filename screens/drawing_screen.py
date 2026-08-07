@@ -12,6 +12,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
+from utils.system_header import create_system_header
 
 from utils.ui_scale import (
     button_font,
@@ -129,10 +130,21 @@ class DrawingScreen(Screen):
 
         root = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
 
-        top = BoxLayout(size_hint=(1, None), height=button_height(), spacing=spacing_size())
+        self.system_header = create_system_header(
+            title="Drawing",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
+        )
+        root.add_widget(self.system_header)
+
+        top = BoxLayout(
+            size_hint=(1, None),
+            height=button_height(),
+            spacing=spacing_size(),
+        )
 
         for txt, cb in [
-            ("Back", self.go_back),
             ("Open", self.open_dialog),
             ("Save", self.save_dialog),
             ("Undo", self.undo),
@@ -173,6 +185,23 @@ class DrawingScreen(Screen):
         root.add_widget(self.canvas_widget)
 
         self.add_widget(root)
+
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
 
     def set_color(self, color):
         self.canvas_widget.current_color = color

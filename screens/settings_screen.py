@@ -16,8 +16,8 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.uix.textinput import TextInput
 from kivy.graphics import Color, Rectangle
 
-from config.version import version_text
 from utils.config_manager import ConfigManager
+from utils.system_header import create_system_header
 from utils.logger import log
 from utils.text_editor_popup import open_text_editor
 from utils.storage_roots import (
@@ -45,6 +45,7 @@ COPY_FILE = BASE_DIR / "logs" / "copied_log_text.txt"
 
 BG = (0.04, 0.07, 0.12, 1)
 CARD = (0.08, 0.14, 0.24, 1)
+CARD_ALT = (0.10, 0.18, 0.30, 1)
 BLUE = (0.13, 0.28, 0.48, 1)
 GREEN = (0.10, 0.45, 0.20, 1)
 ORANGE = (0.45, 0.30, 0.10, 1)
@@ -76,6 +77,38 @@ class SettingsScreen(Screen):
             pos=lambda inst, val: setattr(rect, "pos", inst.pos),
             size=lambda inst, val: setattr(rect, "size", inst.size)
         )
+
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
+
+    def add_system_header(
+        self,
+        root,
+        title,
+        back_callback,
+    ):
+        header = create_system_header(
+            title=title,
+            back_callback=back_callback,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
+        )
+        root.add_widget(header)
+        self.system_header = header
 
     def make_title(self, text):
         return Label(
@@ -137,6 +170,102 @@ class SettingsScreen(Screen):
             color=WHITE
         )
 
+    def make_dashboard_card(
+        self,
+        title,
+        subtitle,
+        color=CARD,
+    ):
+        card = BoxLayout(
+            orientation="vertical",
+            spacing=spacing_size(),
+            padding=spacing_size(),
+            size_hint_y=None,
+            height=max(
+                int(button_height() * 2.35),
+                150,
+            ),
+        )
+
+        with card.canvas.before:
+            Color(*color)
+            rect = Rectangle(
+                pos=card.pos,
+                size=card.size,
+            )
+
+        card.bind(
+            pos=lambda instance, value: setattr(
+                rect,
+                "pos",
+                instance.pos,
+            ),
+            size=lambda instance, value: setattr(
+                rect,
+                "size",
+                instance.size,
+            ),
+        )
+
+        title_label = Label(
+            text=str(title),
+            font_size=button_font(),
+            bold=True,
+            color=WHITE,
+            size_hint=(1, 0.42),
+            halign="center",
+            valign="middle",
+        )
+        title_label.bind(
+            size=lambda instance, value: setattr(
+                instance,
+                "text_size",
+                value,
+            )
+        )
+        card.add_widget(title_label)
+
+        subtitle_label = Label(
+            text=str(subtitle),
+            font_size=status_font(),
+            color=(0.72, 0.84, 1, 1),
+            size_hint=(1, 0.30),
+            halign="center",
+            valign="middle",
+        )
+        subtitle_label.bind(
+            size=lambda instance, value: setattr(
+                instance,
+                "text_size",
+                value,
+            )
+        )
+        card.add_widget(subtitle_label)
+
+        return card
+
+    def add_dashboard_button(
+        self,
+        card,
+        text,
+        callback,
+        color=BLUE,
+    ):
+        button = Button(
+            text=text,
+            font_size=button_font(),
+            bold=True,
+            background_normal="",
+            background_color=color,
+            color=WHITE,
+            size_hint=(1, 0.38),
+        )
+        button.bind(
+            on_press=callback
+        )
+        card.add_widget(button)
+        return button
+
     def build_settings_view(self, instance=None):
         self.clear_screen()
         self.config = ConfigManager()
@@ -144,54 +273,179 @@ class SettingsScreen(Screen):
         root = BoxLayout(
             orientation="vertical",
             padding=padding_size(),
-            spacing=spacing_size()
+            spacing=spacing_size(),
         )
         self.add_bg(root)
 
-        root.add_widget(self.make_title("Settings"))
-        root.add_widget(self.make_subtitle(version_text()))
-
-        root.add_widget(self.make_section_label("Weather"))
-
-        self.unit_spinner = self.make_spinner(
-            self.config.get("temperature_unit", "F"),
-            ("F", "C")
+        self.add_system_header(
+            root=root,
+            title="Settings",
+            back_callback=self.go_back,
         )
-        self.unit_spinner.bind(text=self.change_unit)
-        root.add_widget(self.unit_spinner)
 
-        root.add_widget(self.make_section_label("System"))
+        dashboard_scroll = ScrollView(
+            size_hint=(1, 1),
+            do_scroll_x=False,
+            do_scroll_y=True,
+        )
 
-        self.auto_btn = self.make_button(
+        dashboard = GridLayout(
+            cols=2,
+            spacing=spacing_size(),
+            padding=(
+                0,
+                spacing_size(),
+                0,
+                spacing_size(),
+            ),
+            size_hint_y=None,
+        )
+        dashboard.bind(
+            minimum_height=dashboard.setter(
+                "height"
+            )
+        )
+
+        weather_card = self.make_dashboard_card(
+            "Weather",
+            "Temperature unit",
+            CARD_ALT,
+        )
+
+        self.unit_spinner = Spinner(
+            text=self.config.get(
+                "temperature_unit",
+                "F",
+            ),
+            values=("F", "C"),
+            font_size=button_font(),
+            bold=True,
+            background_normal="",
+            background_color=BLUE,
+            color=WHITE,
+            size_hint=(1, 0.38),
+        )
+        self.unit_spinner.bind(
+            text=self.change_unit
+        )
+        weather_card.add_widget(
+            self.unit_spinner
+        )
+        dashboard.add_widget(weather_card)
+
+        updates_card = self.make_dashboard_card(
+            "Automatic Updates",
+            "Enable or disable update checks",
+            CARD,
+        )
+        self.auto_btn = self.add_dashboard_button(
+            updates_card,
             self.auto_update_text(),
-            GREEN if self.config.get("auto_update", True) else RED
+            self.toggle_auto_update,
+            GREEN
+            if self.config.get(
+                "auto_update",
+                True,
+            )
+            else RED,
         )
-        self.auto_btn.bind(on_press=self.toggle_auto_update)
-        root.add_widget(self.auto_btn)
+        dashboard.add_widget(updates_card)
 
-        updater_btn = self.make_button("Open Updater", BLUE)
-        updater_btn.bind(on_press=self.open_updater)
-        root.add_widget(updater_btn)
+        updater_card = self.make_dashboard_card(
+            "Updater",
+            "Check and install a new M12OS version",
+            CARD_ALT,
+        )
+        self.add_dashboard_button(
+            updater_card,
+            "Open Updater",
+            self.open_updater,
+            BLUE,
+        )
+        dashboard.add_widget(updater_card)
 
-        backup_btn = self.make_button("Backup", GREEN)
-        backup_btn.bind(on_press=self.open_backup)
-        root.add_widget(backup_btn)
+        backup_card = self.make_dashboard_card(
+            "Backup",
+            "Back up or restore M12OS data",
+            CARD,
+        )
+        self.add_dashboard_button(
+            backup_card,
+            "Open Backup",
+            self.open_backup,
+            GREEN,
+        )
+        dashboard.add_widget(backup_card)
 
-        bluetooth_btn = self.make_button("Bluetooth", BLUE)
-        bluetooth_btn.bind(on_press=self.open_bluetooth)
-        root.add_widget(bluetooth_btn)
+        bluetooth_card = self.make_dashboard_card(
+            "Bluetooth",
+            "Connect and manage speakers",
+            CARD,
+        )
+        self.add_dashboard_button(
+            bluetooth_card,
+            "Open Bluetooth",
+            self.open_bluetooth,
+            BLUE,
+        )
+        dashboard.add_widget(bluetooth_card)
 
-        storage_btn = self.make_button("Storage", BLUE)
-        storage_btn.bind(on_press=self.build_storage_view)
-        root.add_widget(storage_btn)
+        storage_card = self.make_dashboard_card(
+            "Storage",
+            "Internal and external media locations",
+            CARD_ALT,
+        )
+        self.add_dashboard_button(
+            storage_card,
+            "Open Storage",
+            self.build_storage_view,
+            BLUE,
+        )
+        dashboard.add_widget(storage_card)
 
-        log_btn = self.make_button("View Log", ORANGE)
-        log_btn.bind(on_press=self.build_log_view)
-        root.add_widget(log_btn)
+        log_card = self.make_dashboard_card(
+            "System Log",
+            "Read, copy, or clear the M12OS log",
+            CARD_ALT,
+        )
+        self.add_dashboard_button(
+            log_card,
+            "Open Log",
+            self.build_log_view,
+            ORANGE,
+        )
+        dashboard.add_widget(log_card)
 
-        back_btn = self.make_button("< Back", DARK)
-        back_btn.bind(on_press=self.go_back)
-        root.add_widget(back_btn)
+        info_card = self.make_dashboard_card(
+            "About Settings",
+            "Changes are saved automatically",
+            CARD,
+        )
+        info_label = Label(
+            text="M12OS",
+            font_size=button_font(),
+            bold=True,
+            color=(0.72, 0.88, 1, 1),
+            size_hint=(1, 0.38),
+            halign="center",
+            valign="middle",
+        )
+        info_label.bind(
+            size=lambda instance, value: setattr(
+                instance,
+                "text_size",
+                value,
+            )
+        )
+        info_card.add_widget(info_label)
+        dashboard.add_widget(info_card)
+
+        dashboard_scroll.add_widget(
+            dashboard
+        )
+        root.add_widget(
+            dashboard_scroll
+        )
 
         self.add_widget(root)
 
@@ -252,13 +506,11 @@ class SettingsScreen(Screen):
         )
         self.add_bg(root)
 
-        root.add_widget(Label(
-            text="Storage Settings",
-            font_size=title_font(),
-            bold=True,
-            color=WHITE,
-            size_hint=(1, 0.08)
-        ))
+        self.add_system_header(
+            root=root,
+            title="Storage Settings",
+            back_callback=self.build_settings_view,
+        )
 
         root.add_widget(Label(
             text="Internal Storage Root",
@@ -310,10 +562,6 @@ class SettingsScreen(Screen):
         detect_btn = self.make_button("View Detected Storage Paths", BLUE)
         detect_btn.bind(on_press=self.build_storage_paths_view)
         root.add_widget(detect_btn)
-
-        back_btn = self.make_button("< Settings", DARK)
-        back_btn.bind(on_press=self.build_settings_view)
-        root.add_widget(back_btn)
 
         self.add_widget(root)
 
@@ -559,13 +807,11 @@ class SettingsScreen(Screen):
         )
         self.add_bg(root)
 
-        root.add_widget(Label(
-            text="Detected Storage Paths",
-            font_size=title_font(),
-            bold=True,
-            color=WHITE,
-            size_hint=(1, 0.10)
-        ))
+        self.add_system_header(
+            root=root,
+            title="Detected Storage Paths",
+            back_callback=self.build_storage_view,
+        )
 
         root.add_widget(Label(
             text="View only. Use this list to find the real Internal or SD card root.",
@@ -586,10 +832,6 @@ class SettingsScreen(Screen):
         refresh_btn = self.make_small_button("Refresh", BLUE)
         refresh_btn.bind(on_press=self.build_storage_paths_view)
         buttons.add_widget(refresh_btn)
-
-        storage_btn = self.make_small_button("< Storage", DARK)
-        storage_btn.bind(on_press=self.build_storage_view)
-        buttons.add_widget(storage_btn)
 
         root.add_widget(buttons)
 
@@ -655,13 +897,11 @@ class SettingsScreen(Screen):
         )
         self.add_bg(root)
 
-        root.add_widget(Label(
-            text="M12 OS Log",
-            font_size=title_font(),
-            bold=True,
-            color=WHITE,
-            size_hint=(1, 0.08)
-        ))
+        self.add_system_header(
+            root=root,
+            title="M12 OS Log",
+            back_callback=self.build_settings_view,
+        )
 
         self.log_status = Label(
             text="Tap a line, then Copy Line.",
@@ -707,14 +947,6 @@ class SettingsScreen(Screen):
         clear_btn = self.make_small_button("Clear Log", RED)
         clear_btn.bind(on_press=self.clear_log_confirm)
         buttons2.add_widget(clear_btn)
-
-        back_settings_btn = self.make_small_button("< Settings", DARK)
-        back_settings_btn.bind(on_press=self.build_settings_view)
-        buttons2.add_widget(back_settings_btn)
-
-        home_btn = self.make_small_button("< Home", DARK)
-        home_btn.bind(on_press=self.go_back)
-        buttons2.add_widget(home_btn)
 
         root.add_widget(buttons2)
 
@@ -907,7 +1139,7 @@ class SettingsScreen(Screen):
             self.log_status.text = f"Clear log failed: {e}"
             log.error(f"Settings clear log failed: {e}")
 
-    def go_back(self, instance):
+    def go_back(self, instance=None):
         if self.manager and self.manager.has_screen("home"):
             home = self.manager.get_screen("home")
             if hasattr(home, "refresh_weather_card"):

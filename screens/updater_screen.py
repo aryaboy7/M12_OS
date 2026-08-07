@@ -8,6 +8,7 @@ from kivy.uix.scrollview import ScrollView
 from config.version import VERSION
 from utils.config_manager import ConfigManager
 from utils.updater import Updater
+from utils.system_header import create_system_header
 from utils.ui_scale import (
     title_font,
     button_font,
@@ -34,14 +35,13 @@ class UpdaterScreen(Screen):
             spacing=spacing_size(),
         )
 
-        root.add_widget(
-            Label(
-                text="Updater",
-                font_size=title_font(),
-                bold=True,
-                size_hint=(1, 0.11),
-            )
+        self.system_header = create_system_header(
+            title="Updater",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
         )
+        root.add_widget(self.system_header)
 
         self.scroll = ScrollView(
             size_hint=(1, 0.42),
@@ -123,18 +123,24 @@ class UpdaterScreen(Screen):
         self.restart_btn.bind(on_press=self.restart_app)
         root.add_widget(self.restart_btn)
 
-        back_btn = Button(
-            text="< Back",
-            font_size=button_font(),
-            size_hint=(1, None),
-            height=button_height(),
-            background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1),
-        )
-        back_btn.bind(on_press=self.go_back)
-        root.add_widget(back_btn)
-
         self.add_widget(root)
+
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
 
     def set_status(self, text):
         self.status.text = text
@@ -266,5 +272,5 @@ class UpdaterScreen(Screen):
 
         Clock.schedule_once(lambda dt: self.updater.restart_app(), 0.2)
 
-    def go_back(self, instance):
+    def go_back(self, instance=None):
         self.manager.current = "settings"

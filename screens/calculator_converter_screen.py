@@ -8,6 +8,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
 from kivy.graphics import Color, Rectangle
 
+from utils.system_header import create_system_header
 from utils.ui_scale import (
     title_font,
     button_font,
@@ -46,27 +47,13 @@ class CalculatorConverterScreen(Screen):
 
         root.bind(pos=self.update_bg, size=self.update_bg)
 
-        top = BoxLayout(size_hint=(1, 0.10), spacing=spacing_size())
-
-        back = Button(
-            text="< Back",
-            font_size=button_font(),
-            background_normal="",
-            background_color=(0.25, 0.25, 0.30, 1),
-            color=(1, 1, 1, 1)
+        self.system_header = create_system_header(
+            title="Calculator / Converter",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
         )
-        back.bind(on_press=self.go_back)
-
-        title = Label(
-            text="Calculator",
-            font_size=title_font(),
-            bold=True,
-            color=(0.85, 0.95, 1, 1)
-        )
-
-        top.add_widget(back)
-        top.add_widget(title)
-        root.add_widget(top)
+        root.add_widget(self.system_header)
 
         tabs = BoxLayout(size_hint=(1, 0.10), spacing=spacing_size())
 
@@ -99,11 +86,28 @@ class CalculatorConverterScreen(Screen):
         self.add_widget(root)
         self.show_calculator(None)
 
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
+
     def update_bg(self, instance, value):
         self.bg_rect.pos = instance.pos
         self.bg_rect.size = instance.size
 
-    def go_back(self, instance):
+    def go_back(self, instance=None):
         if self.manager:
             self.manager.current = "home"
 

@@ -21,6 +21,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 
 from utils.logger import log
+from utils.system_header import create_system_header
 from utils.ui_scale import (
     title_font,
     button_font,
@@ -56,12 +57,13 @@ class BluetoothScreen(Screen):
             spacing=spacing_size(),
         )
 
-        root.add_widget(Label(
-            text="Bluetooth",
-            font_size=title_font(),
-            bold=True,
-            size_hint=(1, 0.08),
-        ))
+        self.system_header = create_system_header(
+            title="Bluetooth",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
+        )
+        root.add_widget(self.system_header)
 
         self.selected_label = Label(
             text="No device selected",
@@ -124,10 +126,6 @@ class BluetoothScreen(Screen):
         disconnect_btn.bind(on_press=self.disconnect_selected)
         row2.add_widget(disconnect_btn)
 
-        back_btn = self.make_button("< Back", (0.10, 0.15, 0.25, 1))
-        back_btn.bind(on_press=self.go_back)
-        row2.add_widget(back_btn)
-
         root.add_widget(row2)
 
         row3 = BoxLayout(
@@ -182,6 +180,23 @@ class BluetoothScreen(Screen):
         root.add_widget(self.status_label)
 
         self.add_widget(root)
+
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
 
     def make_button(self, text, color):
         return Button(
@@ -1071,6 +1086,6 @@ class BluetoothScreen(Screen):
         self.status_label.text = "Speaker removed."
         self.do_scan_devices()
 
-    def go_back(self, instance):
+    def go_back(self, instance=None):
         if self.manager:
             self.manager.current = "home"

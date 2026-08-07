@@ -7,6 +7,7 @@ from kivy.uix.gridlayout import GridLayout
 
 from services.service_manager import ServiceManager
 from utils.logger import log
+from utils.system_header import create_system_header
 from utils.ui_scale import (
     device_profile,
     is_mobile,
@@ -84,13 +85,13 @@ class NotesScreen(Screen):
             padding=padding_size(),
         )
 
-        title = Label(
-            text="Notes",
-            font_size=title_font(),
-            bold=True,
-            size_hint=(1, title_hint),
+        self.system_header = create_system_header(
+            title="Notes",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
         )
-        layout.add_widget(title)
+        layout.add_widget(self.system_header)
 
         self.filter_box = GridLayout(
             cols=self.filter_cols(),
@@ -118,7 +119,7 @@ class NotesScreen(Screen):
         layout.add_widget(scroll)
 
         bottom = GridLayout(
-            cols=5 if not is_mobile() else 3,
+            cols=4 if not is_mobile() else 2,
             spacing=spacing_size(),
             size_hint=(1, bottom_hint),
         )
@@ -128,7 +129,6 @@ class NotesScreen(Screen):
             ("Open", self.open_note),
             ("Delete", self.delete_note),
             ("Types", self.open_types),
-            ("Back", self.go_back),
         ]:
             btn = Button(
                 text=text,
@@ -510,6 +510,26 @@ class NotesScreen(Screen):
         )
 
         self.manager.current = "note_types"
+
+    def get_system_status_text(self):
+        """
+        Use the Home screen as the single source for system status.
+        """
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
 
     def go_back(
         self,

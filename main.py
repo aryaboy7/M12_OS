@@ -189,46 +189,6 @@ class M12OS(App):
 
         root.add_widget(self.screen_manager)
 
-        # ---------------------------------------------------------
-        # Global AI button
-        # ---------------------------------------------------------
-        self.ai_button = Button(
-            text="AI",
-            font_size=font(22),
-            bold=True,
-
-            size_hint=(None, None),
-            size=(height(68), height(54)),
-
-            pos_hint={
-                "right": 0.985,
-                "top": 0.985,
-            },
-
-            background_normal="",
-            background_down="",
-
-            background_color=(
-                0.20,
-                0.35,
-                0.85,
-                0.96,
-            ),
-
-            color=(1, 1, 1, 1),
-        )
-
-        self.ai_button.bind(
-            on_press=self.open_global_ai
-        )
-
-        root.add_widget(self.ai_button)
-
-        # Keep the AI button above all screens.
-        self.screen_manager.bind(
-            current=self.update_ai_button
-        )
-
         Window.set_title(
             f"W:{Window.width} "
             f"H:{Window.height} "
@@ -280,8 +240,6 @@ class M12OS(App):
                 f"{error}"
             )
 
-        self.update_ai_button()
-
         return root
 
     # -------------------------------------------------------------
@@ -307,23 +265,6 @@ class M12OS(App):
             )
 
         manager.current = "ai"
-
-    # -------------------------------------------------------------
-    # Hide the floating button while AI is already open
-    # -------------------------------------------------------------
-    def update_ai_button(self, *args):
-        if not hasattr(self, "ai_button"):
-            return
-
-        on_ai_screen = (
-            self.screen_manager.current == "ai"
-        )
-
-        self.ai_button.opacity = (
-            0 if on_ai_screen else 1
-        )
-
-        self.ai_button.disabled = on_ai_screen
 
     # -------------------------------------------------------------
     # Stop services

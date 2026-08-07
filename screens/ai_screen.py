@@ -25,6 +25,7 @@ from services.ai_session_memory import get_ai_session_memory
 from services.realtime_voice_service import RealtimeVoiceService
 from services.voice_service import VoiceService
 from utils.ui_scale import font, height
+from utils.system_header import create_system_header
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AI_SETTINGS_FILE = BASE_DIR / "config" / "ai_settings.json"
@@ -99,26 +100,16 @@ class AIScreen(Screen):
         )
 
         # ---------------------------------------------------------
-        # Title
+        # Permanent system header and screen navigation
         # ---------------------------------------------------------
-        title = Label(
-            text="AI Assistant",
-            font_size=font(36),
-            bold=True,
-            size_hint=(1, 0.07),
-            halign="center",
-            valign="middle",
+        self.system_header = create_system_header(
+            title="AI Assistant",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=True,
         )
-
-        title.bind(
-            size=lambda instance, value: setattr(
-                instance,
-                "text_size",
-                value,
-            )
-        )
-
-        root.add_widget(title)
+        self.back_btn = self.system_header.back_button
+        root.add_widget(self.system_header)
 
         # ---------------------------------------------------------
         # Hidden status state
@@ -481,27 +472,6 @@ class AIScreen(Screen):
 
         root.add_widget(system_log_buttons)
 
-        # ---------------------------------------------------------
-        # Back
-        # ---------------------------------------------------------
-        self.back_btn = Button(
-            text="< Back",
-            font_size=font(27),
-            size_hint=(1, 0.05),
-            background_normal="",
-            background_color=(
-                0.10,
-                0.15,
-                0.25,
-                1,
-            ),
-        )
-
-        self.back_btn.bind(
-            on_press=self.go_back
-        )
-
-        root.add_widget(self.back_btn)
         self.add_widget(root)
 
         self.log_system(
@@ -787,18 +757,25 @@ class AIScreen(Screen):
         # Notes, Music, Calendar, and other screens are open.
         pass
 
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
+
     def update_back_button(self):
-        screen_name = self.return_screen.replace(
-            "_",
-            " ",
-        ).title()
-
-        if not screen_name:
-            screen_name = "Home"
-
-        self.back_btn.text = (
-            f"< Back to {screen_name}"
-        )
+        self.back_btn.text = "< Back"
 
     # -------------------------------------------------------------
     # AI / Control mode
@@ -1298,10 +1275,31 @@ class AIScreen(Screen):
         self,
         error_message,
     ):
+        message = str(error_message)
+
+        # A local skill may finish before OpenAI starts a response.
+        # In that case cancelling the nonexistent response is normal and
+        # must not be shown as a Realtime failure.
+        if "response_cancel_not_active" in message:
+            self.realtime_answer_active = False
+            self.realtime_answer_text = ""
+
+            if self.realtime_voice_active:
+                self.voice_btn.text = "Stop Voice"
+                self.voice_status.text = (
+                    "Realtime connected — listening"
+                )
+            else:
+                self.voice_btn.text = "Voice"
+                self.voice_status.text = "Voice ready"
+
+            self.set_controls_enabled(True)
+            return
+
         self.realtime_voice_active = False
         self.voice_btn.text = "Voice"
         self.voice_status.text = (
-            f"Realtime error: {error_message}"
+            f"Realtime error: {message}"
         )
         self.set_controls_enabled(True)
 

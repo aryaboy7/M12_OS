@@ -29,6 +29,7 @@ from utils.ui_scale import (
     spacing_size,
 )
 from utils.logger import log
+from utils.system_header import create_system_header
 from utils.text_editor_popup import open_text_editor
 
 
@@ -150,6 +151,35 @@ class CalendarScreen(Screen):
         )
         self.add_widget(self.root_box)
         self.build_list_view()
+
+    def get_system_status_text(self):
+        """
+        Use the Home screen as the single source for system status.
+        """
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
+
+    def add_system_header(self, title):
+        self.system_header = create_system_header(
+            title=title,
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
+        )
+        self.root_box.add_widget(self.system_header)
 
     def load_events(self):
         if not EVENTS_FILE.exists():
@@ -485,12 +515,7 @@ class CalendarScreen(Screen):
         self.mode = "list"
         self.clear()
 
-        self.root_box.add_widget(Label(
-            text="Calendar Events",
-            font_size=title_font(),
-            bold=True,
-            size_hint=(1, 0.08)
-        ))
+        self.add_system_header("Calendar Events")
 
         filters = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.08))
         for label, key in [
@@ -552,7 +577,6 @@ class CalendarScreen(Screen):
 
         buttons2 = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.10))
         buttons2.add_widget(self.make_btn("Refresh", self.build_list_view))
-        buttons2.add_widget(self.make_btn("< Back", self.go_back))
         self.root_box.add_widget(buttons2)
 
     def select_event(self, index):
@@ -608,12 +632,9 @@ class CalendarScreen(Screen):
         if not is_new:
             event = dict(self.events[index])
 
-        self.root_box.add_widget(Label(
-            text="Add Event" if is_new else "Edit Event",
-            font_size=title_font(),
-            bold=True,
-            size_hint=(1, 0.07)
-        ))
+        self.add_system_header(
+            "Add Event" if is_new else "Edit Event"
+        )
 
         self.title_input = TextInput(
             text=event.get("title", ""),

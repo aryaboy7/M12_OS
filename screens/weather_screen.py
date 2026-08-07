@@ -17,6 +17,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.gridlayout import GridLayout
 
 from utils.config_manager import ConfigManager
+from utils.system_header import create_system_header
 from utils.ui_scale import (
     device_profile,
     title_font,
@@ -231,8 +232,19 @@ class WeatherScreen(Screen):
         self.selected_city = None
         self.active_tab = "current"
 
-        root = BoxLayout(orientation="vertical", padding=padding_size(), spacing=spacing_size())
-        root.add_widget(Label(text="Weather", font_size=title_font(), bold=True, size_hint=(1, 0.09)))
+        root = BoxLayout(
+            orientation="vertical",
+            padding=padding_size(),
+            spacing=spacing_size(),
+        )
+
+        self.system_header = create_system_header(
+            title="Weather",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
+        )
+        root.add_widget(self.system_header)
 
         tabs = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.09))
         self.current_btn = self.make_tab_button("Current")
@@ -258,10 +270,6 @@ class WeatherScreen(Screen):
         cities_btn = Button(text="Cities", font_size=button_font(), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
         cities_btn.bind(on_release=self.open_city_manager)
         bottom.add_widget(cities_btn)
-
-        back_btn = Button(text="< Back", font_size=button_font(), background_normal="", background_color=(0.10, 0.15, 0.25, 1))
-        back_btn.bind(on_release=self.go_back)
-        bottom.add_widget(back_btn)
 
         root.add_widget(bottom)
         self.add_widget(root)
@@ -1006,7 +1014,27 @@ class WeatherScreen(Screen):
             advice.append("Thunderstorm possible. Stay alert.")
         return "\n".join(advice)
 
-    def go_back(self, instance):
+    def get_system_status_text(self):
+        """
+        Use the Home screen as the single source for system status.
+        """
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
+
+    def go_back(self, instance=None):
         if self.manager and self.manager.has_screen("home"):
             home = self.manager.get_screen("home")
             if hasattr(home, "refresh_weather_card"):

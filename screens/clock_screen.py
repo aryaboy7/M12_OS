@@ -10,6 +10,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 
 from utils.logger import log
+from utils.system_header import create_system_header
 from utils.ui_scale import (
     device_profile,
     button_font,
@@ -64,22 +65,14 @@ class ClockScreen(Screen):
             padding=padding_size(),
         )
 
-        top = BoxLayout(
-            size_hint=(1, None),
-            height=button_height(),
-            spacing=spacing_size(),
+        self.system_header = create_system_header(
+            title="Clock",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
         )
-
-        self.back_btn = Button(
-            text="< Back",
-            font_size=button_font(),
-            background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1),
-        )
-        self.back_btn.bind(on_press=self.go_back)
-
-        top.add_widget(self.back_btn)
-        self.root_box.add_widget(top)
+        self.back_btn = self.system_header.back_button
+        self.root_box.add_widget(self.system_header)
 
         self.time_label = Label(
             text="00:00 AM",
@@ -157,6 +150,23 @@ class ClockScreen(Screen):
         self.add_widget(self.root_box)
 
         Window.bind(size=self.on_window_size)
+
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
 
     def on_enter(self):
         log.info("Clock: opened")
@@ -291,7 +301,7 @@ class ClockScreen(Screen):
             log.error(f"Clock: alarm info failed {e}")
             self.alarm_info_label.text = "No Alarm"
 
-    def go_back(self, instance):
+    def go_back(self, instance=None):
         log.info("Clock: Back pressed")
         self.manager.current = "home"
 

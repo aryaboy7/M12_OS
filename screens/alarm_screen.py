@@ -12,6 +12,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 
 from utils.logger import log
+from utils.system_header import create_system_header
 from utils.ui_scale import (
     device_profile,
     title_font,
@@ -254,26 +255,25 @@ class AlarmScreen(Screen):
             padding=padding_size()
         )
 
+        self.system_header = create_system_header(
+            title="Alarm",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
+        )
+        root.add_widget(self.system_header)
+
         top = BoxLayout(
             size_hint=(1, None),
             height=alarm_main_button_height(),
-            spacing=spacing_size()
+            spacing=spacing_size(),
         )
-
-        back_btn = Button(
-            text="< Back",
-            font_size=alarm_control_font(),
-            background_normal="",
-            background_color=(0.12, 0.20, 0.35, 1)
-        )
-        back_btn.bind(on_press=self.go_back)
-        top.add_widget(back_btn)
 
         new_btn = Button(
             text="New",
             font_size=alarm_control_font(),
             background_normal="",
-            background_color=(0.10, 0.45, 0.20, 1)
+            background_color=(0.10, 0.45, 0.20, 1),
         )
         new_btn.bind(on_press=self.new_alarm)
         top.add_widget(new_btn)
@@ -468,6 +468,23 @@ class AlarmScreen(Screen):
         )
         btn.bind(on_press=callback)
         return btn
+
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
 
     def on_enter(self):
         self.load_alarms()
@@ -811,5 +828,5 @@ class AlarmScreen(Screen):
         except Exception as e:
             self.status_label.text = str(e)
 
-    def go_back(self, instance):
+    def go_back(self, instance=None):
         self.manager.current = "clock"

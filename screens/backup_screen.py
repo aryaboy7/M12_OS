@@ -17,6 +17,7 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.uix.popup import Popup
 
 from utils.logger import log
+from utils.system_header import create_system_header
 from utils.ui_scale import (
     title_font,
     button_font,
@@ -70,6 +71,23 @@ class BackupScreen(Screen):
 
         self.build_screen()
 
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
+
     def clear_screen(self):
         self.clear_widgets()
 
@@ -106,12 +124,13 @@ class BackupScreen(Screen):
 
         root = BoxLayout(orientation="vertical", padding=padding_size(), spacing=spacing_size())
 
-        root.add_widget(Label(
-            text="Backup",
-            font_size=title_font(),
-            bold=True,
-            size_hint=(1, 0.10),
-        ))
+        self.system_header = create_system_header(
+            title="Backup",
+            back_callback=self.go_settings,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
+        )
+        root.add_widget(self.system_header)
 
         tabs = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.10))
 
@@ -130,18 +149,6 @@ class BackupScreen(Screen):
 
         self.body = BoxLayout(orientation="vertical", spacing=spacing_size(), size_hint=(1, 0.68))
         root.add_widget(self.body)
-
-        bottom = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.10))
-
-        settings_btn = self.make_button("< Settings", (0.10, 0.15, 0.25, 1))
-        settings_btn.bind(on_press=self.go_settings)
-
-        home_btn = self.make_button("< Home", (0.10, 0.15, 0.25, 1))
-        home_btn.bind(on_press=self.go_home)
-
-        bottom.add_widget(settings_btn)
-        bottom.add_widget(home_btn)
-        root.add_widget(bottom)
 
         self.add_widget(root)
         self.show_backup_tab(None)

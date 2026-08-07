@@ -5,6 +5,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 
 from utils.logger import log
+from utils.system_header import create_system_header
 from utils.ui_scale import (
     device_profile,
     title_font,
@@ -177,13 +178,13 @@ class TimerScreen(Screen):
             padding=padding_size(),
         )
 
-        title = Label(
-            text="Timer",
-            font_size=title_font(),
-            bold=True,
-            size_hint=(1, 0.09),
+        self.system_header = create_system_header(
+            title="Timer",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
         )
-        root.add_widget(title)
+        root.add_widget(self.system_header)
 
         wheels = BoxLayout(
             spacing=spacing_size(),
@@ -250,18 +251,24 @@ class TimerScreen(Screen):
 
         root.add_widget(controls)
 
-        back_btn = Button(
-            text="< Back",
-            font_size=button_font(),
-            size_hint=(1, None),
-            height=button_height(),
-            background_normal="",
-            background_color=(0.10, 0.15, 0.25, 1),
-        )
-        back_btn.bind(on_press=self.go_back)
-        root.add_widget(back_btn)
-
         self.add_widget(root)
+
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
 
     def on_enter(self):
         log.info("Timer: opened")
@@ -331,6 +338,6 @@ class TimerScreen(Screen):
 
         self.time_label.text = f"{h:02}:{m:02}:{s:02}"
 
-    def go_back(self, instance):
+    def go_back(self, instance=None):
         log.info("Timer: Back pressed")
         self.manager.current = "clock"

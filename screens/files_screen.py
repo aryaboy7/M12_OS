@@ -16,6 +16,7 @@ from kivy.uix.textinput import TextInput
 
 from utils.ui_scale import font, device_profile, is_mobile
 from utils.logger import log
+from utils.system_header import create_system_header
 
 
 TEXT_EXTENSIONS = {
@@ -242,6 +243,36 @@ class FilesScreen(Screen):
 
         self.build_main_view()
 
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
+
+    def add_system_header(
+        self,
+        title,
+        back_callback,
+    ):
+        self.system_header = create_system_header(
+            title=title,
+            back_callback=back_callback,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
+        )
+        self.root_box.add_widget(self.system_header)
+
     def make_btn(self, text):
         return Button(
             text=text,
@@ -253,12 +284,10 @@ class FilesScreen(Screen):
     def build_main_view(self):
         self.root_box.clear_widgets()
 
-        self.root_box.add_widget(Label(
-            text="File Manager",
-            font_size=m12_button_font() if is_m12() else font(26),
-            bold=True,
-            size_hint=(1, 0.055)
-        ))
+        self.add_system_header(
+            title="File Manager",
+            back_callback=self.go_back,
+        )
 
         self.path_label = Label(
             text="Path",
@@ -416,10 +445,6 @@ class FilesScreen(Screen):
         delete_btn.bind(on_release=self.delete_checked_confirm)
         bottom.add_widget(delete_btn)
 
-        back_btn = self.make_btn("< Back")
-        back_btn.bind(on_release=self.go_back)
-        bottom.add_widget(back_btn)
-
         self.root_box.add_widget(bottom)
 
     def default_start_path(self):
@@ -575,14 +600,17 @@ class FilesScreen(Screen):
     def refresh(self, instance):
         self.load_path(self.current_path)
 
-    def go_back(self, instance):
+    def go_back(self, instance=None):
         log.info("Files: Back pressed")
         self.manager.current = "home"
 
     def build_input_view(self, title, default_text, ok_callback):
         self.root_box.clear_widgets()
 
-        self.root_box.add_widget(Label(text=title, font_size=42 if device_profile() == 'phone' else (32 if is_m12() else font(26)), bold=True, size_hint=(1, 0.14)))
+        self.add_system_header(
+            title=title,
+            back_callback=self.cancel_input,
+        )
 
         self.input_status = Label(
             text=f"Current folder:\n{self.short_path(self.current_path)}",
@@ -633,7 +661,7 @@ class FilesScreen(Screen):
         self.rename_target = next(iter(self.checked_paths))
         self.build_input_view("Rename", self.rename_target.name, self.rename_item)
 
-    def cancel_input(self, instance):
+    def cancel_input(self, instance=None):
         self.rename_target = None
         self.build_main_view()
         self.load_path(self.current_path)

@@ -27,6 +27,7 @@ except Exception:
     autoclass = None
 
 from utils.logger import log
+from utils.system_header import create_system_header
 from utils.storage_roots import load_storage_roots
 from utils.ui_scale import (
     title_font,
@@ -257,6 +258,7 @@ class MusicScreen(Screen):
         self.last_scan_supported = 0
         self.last_scan_unsupported = 0
         self.last_scan_errors = 0
+        self.pending_ai_action = None
 
         root = BoxLayout(
             orientation="vertical",
@@ -264,12 +266,13 @@ class MusicScreen(Screen):
             spacing=spacing_size(),
         )
 
-        root.add_widget(Label(
-            text="Music / Video",
-            font_size=title_font(),
-            bold=True,
-            size_hint=(1, 0.035),
-        ))
+        self.system_header = create_system_header(
+            title="Music / Video",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=False,
+        )
+        root.add_widget(self.system_header)
 
         self.now_label = Label(
             text="No file selected",
@@ -397,6 +400,15 @@ class MusicScreen(Screen):
         self.play_btn.bind(on_press=self.play_selected)
         nav_row.add_widget(self.play_btn)
 
+        self.pause_btn = self.make_button(
+            "Pause",
+            (0.48, 0.32, 0.10, 1),
+        )
+        self.pause_btn.bind(
+            on_press=self.toggle_pause_resume
+        )
+        nav_row.add_widget(self.pause_btn)
+
         next_btn = self.make_button("Next >>", (0.55, 0.45, 0.10, 1))
         next_btn.bind(on_press=self.play_next)
         nav_row.add_widget(next_btn)
@@ -438,10 +450,6 @@ class MusicScreen(Screen):
         refresh_btn = self.make_button("Rescan", (0.12, 0.20, 0.35, 1))
         refresh_btn.bind(on_press=self.refresh_media)
         controls2.add_widget(refresh_btn)
-
-        back_btn = self.make_button("< Back", (0.10, 0.15, 0.25, 1))
-        back_btn.bind(on_press=self.go_back)
-        controls2.add_widget(back_btn)
 
         root.add_widget(controls2)
 
@@ -864,6 +872,58 @@ class MusicScreen(Screen):
             self.selected_file = None
 
         self.apply_filters()
+        self.run_pending_ai_action()
+
+    def run_pending_ai_action(self):
+        action = self.pending_ai_action
+        self.pending_ai_action = None
+
+        if action == "play_audio":
+            self.play_first_audio()
+        elif action == "play_favorites":
+            self.play_favorites()
+
+    def request_play_audio(self):
+        if self.scan_in_progress or not self.media_files:
+            self.pending_ai_action = "play_audio"
+            if not self.scan_in_progress:
+                self.refresh_media(None)
+            self.status_label.text = "Preparing audio..."
+            return True
+
+        return self.play_first_audio()
+
+    def request_play_favorites(self):
+        if self.scan_in_progress or not self.media_files:
+            self.pending_ai_action = "play_favorites"
+            if not self.scan_in_progress:
+                self.refresh_media(None)
+            self.status_label.text = "Preparing Favorites..."
+            return True
+
+        return self.play_favorites()
+
+    def play_first_audio(self):
+        audio_files = [
+            path for path in self.media_files
+            if self.is_audio_file(path)
+        ]
+
+        if not audio_files:
+            self.status_label.text = "No audio files found."
+            return False
+
+        self.selected_file = audio_files[0]
+
+        try:
+            self.selected_index = self.media_files.index(
+                self.selected_file
+            )
+        except ValueError:
+            pass
+
+        self.play_selected(None)
+        return True
 
     def path_is_inside_any(self, path, folders):
         try:
@@ -1317,6 +1377,8 @@ class MusicScreen(Screen):
             self.write_player_status(True)
 
             self.play_btn.text = "Play"
+            self.pause_btn.text = "Pause"
+            self.pause_btn.background_color = (0.48, 0.32, 0.10, 1)
             self.now_label.text = f"Playing:\n{self.selected_file.name}"
             self.rebuild_file_list()
             self.update_status_count()
@@ -1457,6 +1519,8 @@ class MusicScreen(Screen):
             self.write_player_status(True)
 
             self.play_btn.text = "Play"
+            self.pause_btn.text = "Pause"
+            self.pause_btn.background_color = (0.48, 0.32, 0.10, 1)
             self.now_label.text = f"Playing Audio:\n{self.selected_file.name}"
             self.rebuild_file_list()
             self.update_status_count()
@@ -1485,6 +1549,8 @@ class MusicScreen(Screen):
             self.write_player_status(True)
 
             self.play_btn.text = "Play"
+            self.pause_btn.text = "Pause"
+            self.pause_btn.background_color = (0.48, 0.32, 0.10, 1)
             self.now_label.text = f"Playing:\n{self.selected_file.name}"
             self.rebuild_file_list()
             self.update_status_count()
@@ -1523,6 +1589,15 @@ class MusicScreen(Screen):
                     self.auto_next()
             except Exception:
                 pass
+
+    def toggle_pause_resume(self, instance=None):
+        """
+        Pause the current song or resume it when already paused.
+        """
+        if self.is_paused:
+            return self.resume_media(instance)
+
+        return self.pause_media(instance)
 
     def pause_media(self, instance=None):
         """
@@ -1588,7 +1663,9 @@ class MusicScreen(Screen):
 
             self.is_playing = False
             self.is_paused = True
-            self.play_btn.text = "Resume"
+            self.play_btn.text = "Play"
+            self.pause_btn.text = "Resume"
+            self.pause_btn.background_color = (0.10, 0.45, 0.20, 1)
             self.status_label.text = "Paused"
             self.write_player_status(
                 False,
@@ -1667,6 +1744,8 @@ class MusicScreen(Screen):
             self.is_playing = True
             self.is_paused = False
             self.play_btn.text = "Play"
+            self.pause_btn.text = "Pause"
+            self.pause_btn.background_color = (0.48, 0.32, 0.10, 1)
             self.status_label.text = "Playing"
             self.write_player_status(True)
 
@@ -1801,9 +1880,13 @@ class MusicScreen(Screen):
         return True
 
     def play_favorites(self):
+        # Music voice commands must play audio favorites only.
+        # Video favorites remain visible in the Favorites list, but they
+        # are not selected by the "Play Favorites" music command.
         favorites = [
             p for p in self.media_files
-            if self.normalized_path(p) in self.favorite_paths
+            if self.is_audio_file(p)
+            and self.normalized_path(p) in self.favorite_paths
         ]
 
         if not favorites:
@@ -1819,11 +1902,89 @@ class MusicScreen(Screen):
         self.play_selected(None)
         return True
 
+    def set_shuffle(self, enabled):
+        """Set shuffle explicitly and return the resulting state."""
+        enabled = bool(enabled)
+        if self.shuffle_on != enabled:
+            self.toggle_shuffle(None)
+        return self.shuffle_on
+
+    def set_repeat_mode(self, mode):
+        """Set repeat mode to OFF, ONE, or ALL."""
+        target = str(mode).strip().upper()
+        if target not in (REPEAT_OFF, REPEAT_ONE, REPEAT_ALL):
+            return False
+
+        self.repeat_mode = target
+        self.repeat_btn.text = f"Repeat {self.repeat_mode}"
+        self.repeat_btn.background_color = (
+            (0.10, 0.45, 0.20, 1)
+            if self.repeat_mode != REPEAT_OFF
+            else (0.12, 0.20, 0.35, 1)
+        )
+        self.update_status_count()
+        return True
+
+    def add_selected_to_favorites(self):
+        if not self.selected_file:
+            self.status_label.text = "Select a file first."
+            return False
+
+        key = self.normalized_path(self.selected_file)
+        self.favorite_paths.add(key)
+        self.save_favorites()
+        self.apply_filters()
+        self.status_label.text = "Added to Favorites"
+        return True
+
+    def remove_selected_from_favorites(self):
+        if not self.selected_file:
+            self.status_label.text = "Select a file first."
+            return False
+
+        key = self.normalized_path(self.selected_file)
+        if key not in self.favorite_paths:
+            self.status_label.text = "Selected file is not in Favorites"
+            return False
+
+        self.favorite_paths.remove(key)
+        self.save_favorites()
+        self.apply_filters()
+        self.status_label.text = "Removed from Favorites"
+        return True
+
+    def search_media(self, query):
+        self.search_input.text = str(query or "").strip()
+        self.search_text = self.search_input.text.lower()
+        self.apply_filters()
+        return True
+
+    def clear_media_search(self):
+        self.clear_search(None)
+        return True
+
+    def rescan_media(self):
+        self.refresh_media(None)
+        return True
+
+    def volume_up(self, step=10):
+        current = int(round(float(self.volume_slider.value) * 100))
+        return self.set_volume(min(100, current + int(step)))
+
+    def volume_down(self, step=10):
+        current = int(round(float(self.volume_slider.value) * 100))
+        return self.set_volume(max(0, current - int(step)))
+
+    def mute_volume(self):
+        return self.set_volume(0)
+
     def stop_media(self, instance=None):
         self.is_playing = False
         self.is_paused = False
         self.paused_position = 0.0
         self.play_btn.text = "Play"
+        self.pause_btn.text = "Pause"
+        self.pause_btn.background_color = (0.48, 0.32, 0.10, 1)
         self.unload_current_sound()
         self.write_player_status(False)
         self.status_label.text = "Stopped"
@@ -1859,6 +2020,26 @@ class MusicScreen(Screen):
         except Exception as e:
             self.status_label.text = f"Open folder failed:\n{e}"
 
-    def go_back(self, instance):
+    def get_system_status_text(self):
+        """
+        Use the Home screen as the single source for system status.
+        """
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
+
+    def go_back(self, instance=None):
         if self.manager:
             self.manager.current = "home"
