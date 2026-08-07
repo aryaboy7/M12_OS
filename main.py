@@ -1,12 +1,33 @@
+import sys
+
 from kivy.config import Config
 
 Config.set("kivy", "clipboard", "sdl2")
 
-Config.set("graphics", "width", "900")
-Config.set("graphics", "height", "650")
-Config.set("graphics", "minimum_width", "900")
-Config.set("graphics", "minimum_height", "650")
-Config.set("graphics", "resizable", "0")
+# -------------------------------------------------------------
+# Platform-specific window configuration
+# -------------------------------------------------------------
+IS_LINUX = sys.platform.startswith("linux")
+
+if IS_LINUX:
+    # Linux desktop/laptop:
+    # larger resizable window + F11 fullscreen
+    Config.set("graphics", "width", "1400")
+    Config.set("graphics", "height", "900")
+    Config.set("graphics", "minimum_width", "900")
+    Config.set("graphics", "minimum_height", "650")
+    Config.set("graphics", "resizable", "1")
+    Config.set("graphics", "borderless", "0")
+    Config.set("graphics", "fullscreen", "0")
+
+else:
+    # Preserve existing behavior on macOS and other desktop platforms.
+    Config.set("graphics", "width", "900")
+    Config.set("graphics", "height", "650")
+    Config.set("graphics", "minimum_width", "900")
+    Config.set("graphics", "minimum_height", "650")
+    Config.set("graphics", "resizable", "0")
+    Config.set("graphics", "fullscreen", "0")
 
 
 from kivy.app import App
@@ -74,6 +95,7 @@ log.info(f"{APP_NAME} {VERSION} started")
 
 
 class M12OS(App):
+
     def build(self):
         self.config_manager = ConfigManager()
 
@@ -189,17 +211,18 @@ class M12OS(App):
 
         root.add_widget(self.screen_manager)
 
-        Window.set_title(
-            f"W:{Window.width} "
-            f"H:{Window.height} "
-            f"DPI:{Window.dpi}"
-        )
+        self.update_window_title()
 
         print("================================")
         print("PLATFORM =", platform)
         print("WIDTH =", Window.width)
         print("HEIGHT =", Window.height)
         print("DPI =", Window.dpi)
+        print("LINUX =", IS_LINUX)
+
+        if IS_LINUX:
+            print("F11 FULLSCREEN = ENABLED")
+
         print("================================")
 
         # ---------------------------------------------------------
@@ -243,6 +266,100 @@ class M12OS(App):
         return root
 
     # -------------------------------------------------------------
+    # Linux window setup
+    # -------------------------------------------------------------
+    def on_start(self):
+        if IS_LINUX:
+            Window.bind(
+                on_key_down=self.on_window_key_down
+            )
+
+            Window.bind(
+                size=self.on_window_size
+            )
+
+            try:
+                Window.minimum_width = 900
+                Window.minimum_height = 650
+            except Exception:
+                pass
+
+        self.update_window_title()
+
+    # -------------------------------------------------------------
+    # Linux keyboard handling
+    # -------------------------------------------------------------
+    def on_window_key_down(
+        self,
+        window,
+        key,
+        scancode,
+        codepoint,
+        modifiers,
+    ):
+        if not IS_LINUX:
+            return False
+
+        # F11
+        if key == 292:
+            self.toggle_fullscreen()
+            return True
+
+        return False
+
+    # -------------------------------------------------------------
+    # Linux fullscreen
+    # -------------------------------------------------------------
+    def toggle_fullscreen(self):
+        if not IS_LINUX:
+            return
+
+        try:
+            if Window.fullscreen:
+                Window.fullscreen = False
+            else:
+                Window.fullscreen = "auto"
+
+            Clock.schedule_once(
+                lambda dt: self.update_window_title(),
+                0.15,
+            )
+
+            log.info(
+                "Linux fullscreen: "
+                f"{Window.fullscreen}"
+            )
+
+        except Exception as error:
+            log.error(
+                "Fullscreen toggle failed: "
+                f"{type(error).__name__}: {error}"
+            )
+
+    # -------------------------------------------------------------
+    # Window size changed
+    # -------------------------------------------------------------
+    def on_window_size(self, *args):
+        self.update_window_title()
+
+    # -------------------------------------------------------------
+    # Window title
+    # -------------------------------------------------------------
+    def update_window_title(self):
+        mode = (
+            "Fullscreen"
+            if Window.fullscreen
+            else "Windowed"
+        )
+
+        Window.set_title(
+            f"{APP_NAME} {VERSION} | "
+            f"{mode} | "
+            f"{int(Window.width)}x{int(Window.height)} | "
+            f"DPI {Window.dpi:.0f}"
+        )
+
+    # -------------------------------------------------------------
     # Open AI from any screen
     # -------------------------------------------------------------
     def open_global_ai(self, instance=None):
@@ -270,6 +387,19 @@ class M12OS(App):
     # Stop services
     # -------------------------------------------------------------
     def on_stop(self):
+        if IS_LINUX:
+            try:
+                Window.unbind(
+                    on_key_down=self.on_window_key_down
+                )
+
+                Window.unbind(
+                    size=self.on_window_size
+                )
+
+            except Exception:
+                pass
+
         if hasattr(self, "event_notifier"):
             self.event_notifier.stop()
 
