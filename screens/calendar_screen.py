@@ -33,7 +33,13 @@ from utils.system_header import create_system_header
 from utils.text_editor_popup import open_text_editor
 
 
-Window.softinput_mode = "resize"
+try:
+    if Window is not None:
+        Window.softinput_mode = "resize"
+except Exception:
+    # Android may import screens before Kivy has created the Window.
+    # The screen can still run; soft keyboard resize is optional here.
+    pass
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 EVENTS_DIR = BASE_DIR / "data" / "events"

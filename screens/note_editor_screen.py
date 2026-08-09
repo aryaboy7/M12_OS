@@ -28,7 +28,13 @@ from utils.ui_scale import (
 )
 
 
-Window.softinput_mode = "resize"
+try:
+    if Window is not None:
+        Window.softinput_mode = "resize"
+except Exception:
+    # Android can import this screen before Kivy creates the Window.
+    # Keyboard resize is optional during startup.
+    pass
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -161,7 +167,12 @@ class NoteEditorScreen(Screen):
 
         form.add_widget(self.body_input)
 
-        form.add_widget(BoxLayout(size_hint=(1, None), height=button_height()))
+        form.add_widget(
+            BoxLayout(
+                size_hint=(1, None),
+                height=button_height(),
+            )
+        )
 
         self.scroll.add_widget(form)
         root.add_widget(self.scroll)
@@ -209,22 +220,38 @@ class NoteEditorScreen(Screen):
     def load_types(self):
         try:
             if TYPES_FILE.exists():
-                data = json.loads(TYPES_FILE.read_text(encoding="utf-8"))
+                data = json.loads(
+                    TYPES_FILE.read_text(
+                        encoding="utf-8"
+                    )
+                )
 
                 if isinstance(data, list) and data:
                     return data
 
         except Exception as e:
-            log.error(f"Editor: failed to load types: {e}")
+            log.error(
+                f"Editor: failed to load types: {e}"
+            )
 
-        return ["Personal", "Work", "Project", "Shopping", "Idea"]
+        return [
+            "Personal",
+            "Work",
+            "Project",
+            "Shopping",
+            "Idea",
+        ]
 
     def refresh_type_spinner(self):
         types = self.load_types()
         self.type_spinner.values = types
 
         if self.type_spinner.text not in types:
-            self.type_spinner.text = types[0] if types else "Personal"
+            self.type_spinner.text = (
+                types[0]
+                if types
+                else "Personal"
+            )
 
     def new_note(self):
         types = self.load_types()
@@ -232,7 +259,11 @@ class NoteEditorScreen(Screen):
         self.current_path = None
         self.title_input.text = ""
         self.type_spinner.values = types
-        self.type_spinner.text = types[0] if types else "Personal"
+        self.type_spinner.text = (
+            types[0]
+            if types
+            else "Personal"
+        )
         self.body_input.text = ""
 
         log.info("Editor: new note")
@@ -243,23 +274,50 @@ class NoteEditorScreen(Screen):
         self.type_spinner.values = types
 
         try:
-            data = json.loads(self.current_path.read_text(encoding="utf-8"))
-            note_type = data.get("type", types[0] if types else "Personal")
+            data = json.loads(
+                self.current_path.read_text(
+                    encoding="utf-8"
+                )
+            )
+            note_type = data.get(
+                "type",
+                types[0] if types else "Personal",
+            )
 
-            self.title_input.text = data.get("title", self.current_path.stem)
+            self.title_input.text = data.get(
+                "title",
+                self.current_path.stem,
+            )
             self.type_spinner.text = note_type
-            self.body_input.text = data.get("body", "")
+            self.body_input.text = data.get(
+                "body",
+                "",
+            )
 
-            log.info(f"Editor: loaded {self.current_path.name}")
+            log.info(
+                f"Editor: loaded {self.current_path.name}"
+            )
 
         except Exception as e:
-            log.error(f"Editor: failed to load note JSON: {e}")
+            log.error(
+                f"Editor: failed to load note JSON: {e}"
+            )
 
-            self.title_input.text = self.current_path.stem
-            self.type_spinner.text = types[0] if types else "Personal"
+            self.title_input.text = (
+                self.current_path.stem
+            )
+            self.type_spinner.text = (
+                types[0]
+                if types
+                else "Personal"
+            )
 
             try:
-                self.body_input.text = self.current_path.read_text(encoding="utf-8")
+                self.body_input.text = (
+                    self.current_path.read_text(
+                        encoding="utf-8"
+                    )
+                )
             except Exception:
                 self.body_input.text = ""
 
@@ -277,7 +335,13 @@ class NoteEditorScreen(Screen):
             halign="center",
             valign="middle",
         )
-        label.bind(size=lambda inst, val: setattr(inst, "text_size", val))
+        label.bind(
+            size=lambda inst, val: setattr(
+                inst,
+                "text_size",
+                val,
+            )
+        )
         box.add_widget(label)
 
         self.saved_popup = Popup(
@@ -288,7 +352,10 @@ class NoteEditorScreen(Screen):
         )
 
         self.saved_popup.open()
-        Clock.schedule_once(self.close_saved_popup_and_back, 0.7)
+        Clock.schedule_once(
+            self.close_saved_popup_and_back,
+            0.7,
+        )
 
     def close_saved_popup_and_back(self, dt):
         try:
@@ -301,8 +368,14 @@ class NoteEditorScreen(Screen):
         self.go_back(None)
 
     def save_note(self, instance):
-        title = self.title_input.text.strip() or "Untitled"
-        note_type = self.type_spinner.text.strip() or "Personal"
+        title = (
+            self.title_input.text.strip()
+            or "Untitled"
+        )
+        note_type = (
+            self.type_spinner.text.strip()
+            or "Personal"
+        )
         body = self.body_input.text
 
         data = {
@@ -314,18 +387,35 @@ class NoteEditorScreen(Screen):
         if self.current_path:
             path = self.current_path
         else:
-            safe_title = title.replace("/", "_").replace("\\", "_")
-            path = NOTES_DIR / f"{safe_title}.json"
+            safe_title = (
+                title
+                .replace("/", "_")
+                .replace("\\", "_")
+            )
+            path = (
+                NOTES_DIR
+                / f"{safe_title}.json"
+            )
 
         try:
-            path.write_text(json.dumps(data, indent=4), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    data,
+                    indent=4,
+                ),
+                encoding="utf-8",
+            )
             self.current_path = path
-            log.info(f"Editor: saved {path.name}")
+            log.info(
+                f"Editor: saved {path.name}"
+            )
             self.show_saved_then_back()
 
         except Exception as e:
-            log.error(f"Editor: failed to save note: {e}")
+            log.error(
+                f"Editor: failed to save note: {e}"
+            )
 
-    def go_back(self, instance):
+    def go_back(self, instance=None):
         log.info("Editor: Back pressed")
         self.manager.current = "notes"

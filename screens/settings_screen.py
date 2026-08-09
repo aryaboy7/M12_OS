@@ -36,7 +36,13 @@ from utils.ui_scale import (
 )
 
 
-Window.softinput_mode = "resize"
+try:
+    if Window is not None:
+        Window.softinput_mode = "resize"
+except Exception:
+    # Android may import screens before Kivy has created the Window.
+    # The screen can still run; soft keyboard resize is optional here.
+    pass
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
