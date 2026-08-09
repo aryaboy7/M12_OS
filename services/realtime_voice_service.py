@@ -7,7 +7,14 @@ import threading
 import time
 from pathlib import Path
 
-import sounddevice as sd
+try:
+    import sounddevice as sd
+    SOUNDDEVICE_AVAILABLE = True
+    SOUNDDEVICE_ERROR = ""
+except Exception as error:
+    sd = None
+    SOUNDDEVICE_AVAILABLE = False
+    SOUNDDEVICE_ERROR = f"{type(error).__name__}: {error}"
 from openai import AsyncOpenAI
 
 from services.memory_manager import get_memory_manager
@@ -372,6 +379,12 @@ class RealtimeVoiceService:
 
         Server VAD detects when the user starts and stops speaking.
         """
+        if not SOUNDDEVICE_AVAILABLE:
+            raise RuntimeError(
+                "Realtime voice audio is unavailable on this device. "
+                "sounddevice/PortAudio could not be loaded. "
+                + SOUNDDEVICE_ERROR
+            )
         if not self.start(
             wait_until_ready=True,
             timeout=timeout,
@@ -1236,6 +1249,13 @@ class RealtimeVoiceService:
     def _start_microphone(
         self,
     ):
+        if not SOUNDDEVICE_AVAILABLE:
+            raise RuntimeError(
+                "Microphone audio is unavailable because "
+                "sounddevice/PortAudio is not available. "
+                + SOUNDDEVICE_ERROR
+            )
+
         if self._input_stream is not None:
             return
 
@@ -1365,6 +1385,16 @@ class RealtimeVoiceService:
     def _speaker_worker(
         self,
     ):
+        if not SOUNDDEVICE_AVAILABLE:
+            self._report_error(
+                "Realtime speaker unavailable",
+                RuntimeError(
+                    "sounddevice/PortAudio is not available. "
+                    + SOUNDDEVICE_ERROR
+                ),
+            )
+            return
+
         try:
             self._output_stream = (
                 sd.RawOutputStream(
