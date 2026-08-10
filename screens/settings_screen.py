@@ -17,6 +17,7 @@ from kivy.uix.textinput import TextInput
 from kivy.graphics import Color, Rectangle
 
 from utils.config_manager import ConfigManager
+from services.api_key_manager import APIKeyManager
 from utils.system_header import create_system_header
 from utils.logger import log
 from utils.text_editor_popup import open_text_editor
@@ -409,6 +410,30 @@ class SettingsScreen(Screen):
         )
         dashboard.add_widget(storage_card)
 
+        ai_key_configured = APIKeyManager.has_key()
+
+        ai_card = self.make_dashboard_card(
+            "AI Setup",
+            (
+                "OpenAI access is configured"
+                if ai_key_configured
+                else "Configure OpenAI access"
+            ),
+            CARD,
+        )
+
+        self.add_dashboard_button(
+            ai_card,
+            (
+                "Open AI Setup"
+                if ai_key_configured
+                else "Set Up AI"
+            ),
+            self.build_ai_setup_view,
+            GREEN if ai_key_configured else ORANGE,
+        )
+        dashboard.add_widget(ai_card)
+
         log_card = self.make_dashboard_card(
             "System Log",
             "Read, copy, or clear the M12OS log",
@@ -476,6 +501,241 @@ class SettingsScreen(Screen):
             use_bubble=False,
             use_handles=False,
         )
+
+    def build_ai_setup_view(
+        self,
+        instance=None,
+    ):
+        self.clear_screen()
+
+        root = BoxLayout(
+            orientation="vertical",
+            padding=padding_size(),
+            spacing=spacing_size(),
+        )
+        self.add_bg(root)
+
+        self.add_system_header(
+            root=root,
+            title="AI Setup",
+            back_callback=self.build_settings_view,
+        )
+
+        configured = APIKeyManager.has_key()
+        source = APIKeyManager.key_source()
+
+        self.ai_key_status = Label(
+            text=(
+                "OpenAI access: CONFIGURED\n"
+                f"Source: {source}"
+                if configured
+                else (
+                    "OpenAI access: NOT CONFIGURED\n"
+                    "Enter a personal OpenAI API key below."
+                )
+            ),
+            font_size=text_font(),
+            color=(
+                (0.60, 1.00, 0.70, 1)
+                if configured
+                else (1.00, 0.78, 0.45, 1)
+            ),
+            size_hint=(1, 0.16),
+            halign="center",
+            valign="middle",
+        )
+        self.ai_key_status.bind(
+            size=lambda inst, val: setattr(
+                inst,
+                "text_size",
+                val,
+            )
+        )
+        root.add_widget(
+            self.ai_key_status
+        )
+
+        description = Label(
+            text=(
+                "The key is saved only in M12 private app storage. "
+                "It is not saved in config/ai_settings.json, "
+                "Git, or the APK source files."
+            ),
+            font_size=status_font(),
+            color=(0.78, 0.88, 1, 1),
+            size_hint=(1, 0.15),
+            halign="center",
+            valign="middle",
+        )
+        description.bind(
+            size=lambda inst, val: setattr(
+                inst,
+                "text_size",
+                val,
+            )
+        )
+        root.add_widget(description)
+
+        self.ai_key_input = self.make_text_input(
+            ""
+        )
+        self.ai_key_input.hint_text = (
+            "Paste OpenAI API key"
+        )
+        self.ai_key_input.password = True
+        self.ai_key_input.password_mask = "*"
+        root.add_widget(
+            self.ai_key_input
+        )
+
+        save_btn = self.make_button(
+            "Save OpenAI Key",
+            GREEN,
+        )
+        save_btn.bind(
+            on_press=self.save_ai_api_key
+        )
+        root.add_widget(save_btn)
+
+        remove_btn = self.make_button(
+            "Remove Saved Key",
+            RED,
+        )
+        remove_btn.disabled = (
+            not APIKeyManager.load_private_key()
+        )
+        remove_btn.bind(
+            on_press=self.remove_ai_api_key
+        )
+        root.add_widget(remove_btn)
+
+        note = Label(
+            text=(
+                "Linux/macOS may continue using the "
+                "OPENAI_API_KEY environment variable."
+            ),
+            font_size=status_font(),
+            color=(0.72, 0.82, 0.92, 1),
+            size_hint=(1, 0.12),
+            halign="center",
+            valign="middle",
+        )
+        note.bind(
+            size=lambda inst, val: setattr(
+                inst,
+                "text_size",
+                val,
+            )
+        )
+        root.add_widget(note)
+
+        root.add_widget(
+            BoxLayout(
+                size_hint=(1, 1)
+            )
+        )
+
+        self.add_widget(root)
+
+    def save_ai_api_key(
+        self,
+        instance=None,
+    ):
+        key = str(
+            self.ai_key_input.text
+        ).strip()
+
+        if not key:
+            self.ai_key_status.text = (
+                "Enter an OpenAI API key first."
+            )
+            self.ai_key_status.color = (
+                1.00,
+                0.60,
+                0.45,
+                1,
+            )
+            return
+
+        try:
+            APIKeyManager.save_api_key(
+                key
+            )
+
+            self.ai_key_input.text = ""
+            self.ai_key_status.text = (
+                "OpenAI access: CONFIGURED\n"
+                f"Source: {APIKeyManager.key_source()}"
+            )
+            self.ai_key_status.color = (
+                0.60,
+                1.00,
+                0.70,
+                1,
+            )
+
+            log.info(
+                "Settings: OpenAI API key saved "
+                "to private application storage"
+            )
+
+        except Exception as error:
+            self.ai_key_status.text = (
+                "Could not save OpenAI API key:\n"
+                f"{type(error).__name__}: {error}"
+            )
+            self.ai_key_status.color = (
+                1.00,
+                0.45,
+                0.45,
+                1,
+            )
+            log.error(
+                "Settings: OpenAI API key save failed: "
+                f"{type(error).__name__}: {error}"
+            )
+
+    def remove_ai_api_key(
+        self,
+        instance=None,
+    ):
+        try:
+            APIKeyManager.delete_api_key()
+
+            self.ai_key_input.text = ""
+
+            if APIKeyManager.has_key():
+                self.ai_key_status.text = (
+                    "Private key removed.\n"
+                    f"Active source: {APIKeyManager.key_source()}"
+                )
+            else:
+                self.ai_key_status.text = (
+                    "OpenAI access: NOT CONFIGURED"
+                )
+
+            self.ai_key_status.color = (
+                1.00,
+                0.78,
+                0.45,
+                1,
+            )
+
+            log.info(
+                "Settings: private OpenAI API key removed"
+            )
+
+        except Exception as error:
+            self.ai_key_status.text = (
+                "Could not remove OpenAI API key:\n"
+                f"{type(error).__name__}: {error}"
+            )
+            self.ai_key_status.color = (
+                1.00,
+                0.45,
+                0.45,
+                1,
+            )
 
     def make_path_row(self, text):
         row = Button(

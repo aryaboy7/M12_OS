@@ -4,10 +4,10 @@ from pathlib import Path
 
 from openai import OpenAI
 
+from services.api_key_manager import APIKeyManager
 from services.ai_session_memory import (
     get_ai_session_memory,
 )
-from services.memory_manager import get_memory_manager
 from utils.clean_ai_answer import clean_ai_answer
 
 
@@ -45,26 +45,12 @@ class AIService:
     def __init__(self):
         settings = self.load_settings()
 
-        saved_key = str(
-            settings.get(
-                "api_key",
-                "",
-            )
-        ).strip()
-
-        environment_key = os.getenv(
-            "OPENAI_API_KEY",
-            "",
-        ).strip()
-
-        api_key = (
-            saved_key
-            or environment_key
-        )
+        api_key = APIKeyManager.get_api_key()
 
         if not api_key:
             raise RuntimeError(
-                "OpenAI API key is not configured."
+                "OpenAI API key is not configured. "
+                "Open Settings -> AI Setup."
             )
 
         self.model = str(
@@ -93,17 +79,12 @@ class AIService:
             get_ai_session_memory()
         )
 
-        self.permanent_memory = (
-            get_memory_manager()
-        )
-
     @staticmethod
     def load_settings():
         defaults = {
             "provider": "OpenAI",
             "model": "gpt-5-mini",
             "ai_history_messages": 24,
-            "api_key": "",
         }
 
         if not SETTINGS_FILE.exists():
@@ -194,31 +175,6 @@ class AIService:
             "Do not switch to Russian unless the user asks."
         )
 
-    def combined_instructions(
-        self,
-    ):
-        permanent_context = (
-            self.permanent_memory.get_prompt_context(
-                limit=50
-            )
-        )
-
-        parts = [
-            self.language_instruction(),
-            BRIEF_INSTRUCTIONS,
-        ]
-
-        if permanent_context:
-            parts.append(
-                permanent_context
-            )
-            parts.append(
-                "Use permanent memory when relevant. "
-                "Do not mention the memory system unless asked."
-            )
-
-        return "\n\n".join(parts)
-
     def _build_input(
         self,
         message,
@@ -280,7 +236,8 @@ class AIService:
         request = {
             "model": self.model,
             "instructions": (
-                self.combined_instructions()
+                f"{self.language_instruction()}\n\n"
+                f"{BRIEF_INSTRUCTIONS}"
             ),
             "input": self._build_input(
                 message
@@ -370,7 +327,8 @@ class AIService:
         request = {
             "model": self.model,
             "instructions": (
-                self.combined_instructions()
+                f"{self.language_instruction()}\n\n"
+                f"{BRIEF_INSTRUCTIONS}"
             ),
             "input": self._build_input(
                 message

@@ -10,6 +10,8 @@ from pathlib import Path
 from kivy.utils import platform as kivy_platform
 from openai import OpenAI
 
+from services.api_key_manager import APIKeyManager
+
 
 IS_ANDROID = kivy_platform == "android"
 
@@ -39,12 +41,13 @@ class VoiceService:
     def __init__(self):
         settings = self.load_settings()
 
-        saved_api_key = str(settings.get("api_key", "")).strip()
-        environment_api_key = os.getenv("OPENAI_API_KEY", "").strip()
-        api_key = saved_api_key or environment_api_key
+        api_key = APIKeyManager.get_api_key()
 
         if not api_key:
-            raise RuntimeError("OpenAI API key is not configured.")
+            raise RuntimeError(
+                "OpenAI API key is not configured. "
+                "Open Settings -> AI Setup."
+            )
 
         self.client = OpenAI(api_key=api_key, timeout=90.0)
 
@@ -104,7 +107,6 @@ class VoiceService:
             ),
             "voice_answers_enabled": True,
             "voice_language": "en",
-            "api_key": "",
         }
 
         if not SETTINGS_FILE.exists():
@@ -212,6 +214,10 @@ class VoiceService:
                     dict,
                 ):
                     settings = loaded
+                    settings.pop(
+                        "api_key",
+                        None,
+                    )
 
             except (
                 OSError,

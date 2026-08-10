@@ -13,6 +13,7 @@ from kivy.utils import platform as kivy_platform
 from openai import AsyncOpenAI
 
 from services.memory_manager import get_memory_manager
+from services.api_key_manager import APIKeyManager
 
 
 IS_ANDROID = kivy_platform == "android"
@@ -104,26 +105,12 @@ class RealtimeVoiceService:
     ):
         settings = self.load_settings()
 
-        saved_api_key = str(
-            settings.get(
-                "api_key",
-                "",
-            )
-        ).strip()
-
-        environment_api_key = os.getenv(
-            "OPENAI_API_KEY",
-            "",
-        ).strip()
-
-        api_key = (
-            saved_api_key
-            or environment_api_key
-        )
+        api_key = APIKeyManager.get_api_key()
 
         if not api_key:
             raise RuntimeError(
-                "OpenAI API key is not configured."
+                "OpenAI API key is not configured. "
+                "Open Settings -> AI Setup."
             )
 
         self.model = str(
@@ -247,7 +234,6 @@ class RealtimeVoiceService:
                 "Give a short, direct answer unless the user "
                 "explicitly requests more detail."
             ),
-            "api_key": "",
         }
 
         if not SETTINGS_FILE.exists():
