@@ -37,3 +37,6 @@ data/notes/
 data/ai/
 data/ai_history
 data/ai_history/
+
+.buildozer/
+bin/
