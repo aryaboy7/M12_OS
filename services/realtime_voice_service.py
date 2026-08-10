@@ -1,5 +1,7 @@
 import asyncio
 import base64
+import ctypes
+import ctypes.util
 import json
 import os
 import queue
@@ -7,17 +9,29 @@ import threading
 import time
 from pathlib import Path
 
-try:
-    import sounddevice as sd
-    SOUNDDEVICE_AVAILABLE = True
-    SOUNDDEVICE_ERROR = ""
-except Exception as error:
-    sd = None
-    SOUNDDEVICE_AVAILABLE = False
-    SOUNDDEVICE_ERROR = f"{type(error).__name__}: {error}"
+from kivy.utils import platform as kivy_platform
 from openai import AsyncOpenAI
 
 from services.memory_manager import get_memory_manager
+
+
+IS_ANDROID = kivy_platform == "android"
+
+if IS_ANDROID:
+    sd = None
+    SOUNDDEVICE_AVAILABLE = False
+    SOUNDDEVICE_ERROR = "PortAudio is not used on Android."
+else:
+    try:
+        import sounddevice as sd
+        SOUNDDEVICE_AVAILABLE = True
+        SOUNDDEVICE_ERROR = ""
+    except Exception as error:
+        sd = None
+        SOUNDDEVICE_AVAILABLE = False
+        SOUNDDEVICE_ERROR = (
+            f"{type(error).__name__}: {error}"
+        )
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -33,6 +47,23 @@ INPUT_CHUNK_MS = 20
 INPUT_FRAMES = int(
     SAMPLE_RATE * INPUT_CHUNK_MS / 1000
 )
+
+SDL_INIT_AUDIO = 0x00000010
+AUDIO_S16LSB = 0x8010
+
+
+class SDL_AudioSpec(ctypes.Structure):
+    _fields_ = [
+        ("freq", ctypes.c_int),
+        ("format", ctypes.c_uint16),
+        ("channels", ctypes.c_uint8),
+        ("silence", ctypes.c_uint8),
+        ("samples", ctypes.c_uint16),
+        ("padding", ctypes.c_uint16),
+        ("size", ctypes.c_uint32),
+        ("callback", ctypes.c_void_p),
+        ("userdata", ctypes.c_void_p),
+    ]
 
 
 class RealtimeVoiceService:
@@ -181,6 +212,12 @@ class RealtimeVoiceService:
         self._input_stream = None
         self._output_stream = None
         self._speaker_thread = None
+
+        self._android_sdl = None
+        self._android_mic_thread = None
+        self._android_mic_device = 0
+        self._android_speaker_device = 0
+        self._android_audio_lock = threading.Lock()
 
         self._last_error = ""
         self._running = False
@@ -379,12 +416,6 @@ class RealtimeVoiceService:
 
         Server VAD detects when the user starts and stops speaking.
         """
-        if not SOUNDDEVICE_AVAILABLE:
-            raise RuntimeError(
-                "Realtime voice audio is unavailable on this device. "
-                "sounddevice/PortAudio could not be loaded. "
-                + SOUNDDEVICE_ERROR
-            )
         if not self.start(
             wait_until_ready=True,
             timeout=timeout,
@@ -1246,9 +1277,437 @@ class RealtimeVoiceService:
                     message
                 )
 
+    # -------------------------------------------------------------
+    # Android SDL2 audio backend
+    # -------------------------------------------------------------
+    def _load_android_sdl(
+        self,
+    ):
+        if not IS_ANDROID:
+            raise RuntimeError(
+                "Android SDL2 audio requested on a non-Android platform."
+            )
+
+        if self._android_sdl is not None:
+            return self._android_sdl
+
+        candidates = []
+
+        found = ctypes.util.find_library("SDL2")
+        if found:
+            candidates.append(found)
+
+        candidates.extend(
+            [
+                "libSDL2.so",
+                "SDL2",
+            ]
+        )
+
+        last_error = None
+        sdl = None
+
+        for name in candidates:
+            try:
+                sdl = ctypes.CDLL(name)
+                break
+            except Exception as error:
+                last_error = error
+
+        if sdl is None:
+            raise RuntimeError(
+                "SDL2 audio library could not be loaded on Android. "
+                f"Last error: {last_error}"
+            )
+
+        sdl.SDL_InitSubSystem.argtypes = [ctypes.c_uint32]
+        sdl.SDL_InitSubSystem.restype = ctypes.c_int
+
+        sdl.SDL_GetError.argtypes = []
+        sdl.SDL_GetError.restype = ctypes.c_char_p
+
+        sdl.SDL_OpenAudioDevice.argtypes = [
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.POINTER(SDL_AudioSpec),
+            ctypes.POINTER(SDL_AudioSpec),
+            ctypes.c_int,
+        ]
+        sdl.SDL_OpenAudioDevice.restype = ctypes.c_uint32
+
+        sdl.SDL_PauseAudioDevice.argtypes = [
+            ctypes.c_uint32,
+            ctypes.c_int,
+        ]
+        sdl.SDL_PauseAudioDevice.restype = None
+
+        sdl.SDL_CloseAudioDevice.argtypes = [ctypes.c_uint32]
+        sdl.SDL_CloseAudioDevice.restype = None
+
+        sdl.SDL_ClearQueuedAudio.argtypes = [ctypes.c_uint32]
+        sdl.SDL_ClearQueuedAudio.restype = None
+
+        sdl.SDL_GetQueuedAudioSize.argtypes = [ctypes.c_uint32]
+        sdl.SDL_GetQueuedAudioSize.restype = ctypes.c_uint32
+
+        sdl.SDL_DequeueAudio.argtypes = [
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+        ]
+        sdl.SDL_DequeueAudio.restype = ctypes.c_uint32
+
+        sdl.SDL_QueueAudio.argtypes = [
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+        ]
+        sdl.SDL_QueueAudio.restype = ctypes.c_int
+
+        result = sdl.SDL_InitSubSystem(SDL_INIT_AUDIO)
+
+        if result != 0:
+            raise RuntimeError(
+                "SDL2 Android audio initialization failed: "
+                + self._android_sdl_error(sdl)
+            )
+
+        self._android_sdl = sdl
+        return sdl
+
+    @staticmethod
+    def _android_sdl_error(
+        sdl,
+    ):
+        try:
+            value = sdl.SDL_GetError()
+            if value:
+                return value.decode(
+                    "utf-8",
+                    errors="replace",
+                )
+        except Exception:
+            pass
+
+        return "Unknown SDL2 audio error"
+
+    def _check_android_microphone_permission(
+        self,
+    ):
+        try:
+            from android.permissions import (
+                Permission,
+                check_permission,
+            )
+
+            if check_permission(Permission.RECORD_AUDIO):
+                return True
+
+        except Exception as error:
+            raise RuntimeError(
+                "Unable to check Android microphone permission: "
+                f"{type(error).__name__}: {error}"
+            ) from error
+
+        raise RuntimeError(
+            "Android microphone permission is not granted. "
+            "Allow Microphone permission for M12 OS."
+        )
+
+    def _open_android_audio_device(
+        self,
+        *,
+        capture,
+    ):
+        sdl = self._load_android_sdl()
+
+        desired = SDL_AudioSpec()
+        desired.freq = SAMPLE_RATE
+        desired.format = AUDIO_S16LSB
+        desired.channels = CHANNELS
+        desired.samples = INPUT_FRAMES
+        desired.callback = None
+        desired.userdata = None
+
+        obtained = SDL_AudioSpec()
+
+        device_id = sdl.SDL_OpenAudioDevice(
+            None,
+            1 if capture else 0,
+            ctypes.byref(desired),
+            ctypes.byref(obtained),
+            0,
+        )
+
+        if device_id == 0:
+            kind = "microphone" if capture else "speaker"
+            raise RuntimeError(
+                f"Unable to open Android {kind} at "
+                f"{SAMPLE_RATE} Hz: "
+                + self._android_sdl_error(sdl)
+            )
+
+        if (
+            int(obtained.format) != AUDIO_S16LSB
+            or int(obtained.channels) != CHANNELS
+            or int(obtained.freq) != SAMPLE_RATE
+        ):
+            try:
+                sdl.SDL_CloseAudioDevice(device_id)
+            except Exception:
+                pass
+
+            raise RuntimeError(
+                "Android audio device did not accept "
+                "24 kHz mono signed 16-bit PCM. "
+                f"Obtained: {int(obtained.freq)} Hz, "
+                f"{int(obtained.channels)} channel(s), "
+                f"format=0x{int(obtained.format):04x}"
+            )
+
+        return sdl, int(device_id)
+
+    def _android_microphone_worker(
+        self,
+    ):
+        device_id = 0
+
+        try:
+            self._check_android_microphone_permission()
+
+            sdl, device_id = self._open_android_audio_device(
+                capture=True
+            )
+
+            with self._android_audio_lock:
+                self._android_mic_device = device_id
+
+            sdl.SDL_ClearQueuedAudio(device_id)
+            sdl.SDL_PauseAudioDevice(device_id, 0)
+
+            bytes_per_chunk = (
+                INPUT_FRAMES
+                * CHANNELS
+                * SAMPLE_WIDTH
+            )
+
+            while (
+                not self._stop_event.is_set()
+                and self._conversation_active.is_set()
+            ):
+                queued = int(
+                    sdl.SDL_GetQueuedAudioSize(device_id)
+                )
+
+                if queued < bytes_per_chunk:
+                    time.sleep(0.003)
+                    continue
+
+                amount = min(
+                    queued,
+                    bytes_per_chunk * 4,
+                )
+
+                amount -= amount % (
+                    CHANNELS * SAMPLE_WIDTH
+                )
+
+                if amount <= 0:
+                    time.sleep(0.003)
+                    continue
+
+                buffer = ctypes.create_string_buffer(
+                    amount
+                )
+
+                received = int(
+                    sdl.SDL_DequeueAudio(
+                        device_id,
+                        buffer,
+                        amount,
+                    )
+                )
+
+                if received <= 0:
+                    time.sleep(0.003)
+                    continue
+
+                audio_bytes = buffer.raw[:received]
+
+                try:
+                    self._microphone_queue.put_nowait(
+                        audio_bytes
+                    )
+                except queue.Full:
+                    try:
+                        self._microphone_queue.get_nowait()
+                    except queue.Empty:
+                        pass
+
+                    try:
+                        self._microphone_queue.put_nowait(
+                            audio_bytes
+                        )
+                    except queue.Full:
+                        pass
+
+        except Exception as error:
+            if (
+                self._conversation_active.is_set()
+                and not self._stop_event.is_set()
+            ):
+                self._report_error(
+                    "Realtime Android microphone failed",
+                    error,
+                )
+
+        finally:
+            if device_id and self._android_sdl is not None:
+                try:
+                    self._android_sdl.SDL_PauseAudioDevice(
+                        device_id,
+                        1,
+                    )
+                except Exception:
+                    pass
+
+                try:
+                    self._android_sdl.SDL_CloseAudioDevice(
+                        device_id
+                    )
+                except Exception:
+                    pass
+
+            with self._android_audio_lock:
+                if self._android_mic_device == device_id:
+                    self._android_mic_device = 0
+
+    def _android_speaker_worker(
+        self,
+    ):
+        device_id = 0
+
+        try:
+            sdl, device_id = self._open_android_audio_device(
+                capture=False
+            )
+
+            with self._android_audio_lock:
+                self._android_speaker_device = device_id
+
+            sdl.SDL_ClearQueuedAudio(device_id)
+            sdl.SDL_PauseAudioDevice(device_id, 0)
+
+            max_queued_bytes = (
+                SAMPLE_RATE
+                * CHANNELS
+                * SAMPLE_WIDTH
+                * 2
+            )
+
+            while (
+                not self._stop_event.is_set()
+                and self._conversation_active.is_set()
+            ):
+                try:
+                    audio_bytes = self._speaker_queue.get(
+                        timeout=0.2
+                    )
+                except queue.Empty:
+                    continue
+
+                if audio_bytes is None:
+                    break
+
+                if not audio_bytes:
+                    continue
+
+                while (
+                    int(
+                        sdl.SDL_GetQueuedAudioSize(
+                            device_id
+                        )
+                    ) > max_queued_bytes
+                    and not self._stop_event.is_set()
+                    and self._conversation_active.is_set()
+                ):
+                    time.sleep(0.01)
+
+                buffer = ctypes.create_string_buffer(
+                    audio_bytes,
+                    len(audio_bytes),
+                )
+
+                result = sdl.SDL_QueueAudio(
+                    device_id,
+                    buffer,
+                    len(audio_bytes),
+                )
+
+                if result != 0:
+                    raise RuntimeError(
+                        "SDL2 speaker queue failed: "
+                        + self._android_sdl_error(sdl)
+                    )
+
+        except Exception as error:
+            if (
+                self._conversation_active.is_set()
+                and not self._stop_event.is_set()
+            ):
+                self._report_error(
+                    "Realtime Android speaker failed",
+                    error,
+                )
+
+        finally:
+            if device_id and self._android_sdl is not None:
+                try:
+                    self._android_sdl.SDL_ClearQueuedAudio(
+                        device_id
+                    )
+                except Exception:
+                    pass
+
+                try:
+                    self._android_sdl.SDL_PauseAudioDevice(
+                        device_id,
+                        1,
+                    )
+                except Exception:
+                    pass
+
+                try:
+                    self._android_sdl.SDL_CloseAudioDevice(
+                        device_id
+                    )
+                except Exception:
+                    pass
+
+            with self._android_audio_lock:
+                if self._android_speaker_device == device_id:
+                    self._android_speaker_device = 0
+
     def _start_microphone(
         self,
     ):
+        if IS_ANDROID:
+            if (
+                self._android_mic_thread is not None
+                and self._android_mic_thread.is_alive()
+            ):
+                return
+
+            self._check_android_microphone_permission()
+
+            self._android_mic_thread = threading.Thread(
+                target=self._android_microphone_worker,
+                name="M12RealtimeAndroidMic",
+                daemon=True,
+            )
+            self._android_mic_thread.start()
+            return
+
         if not SOUNDDEVICE_AVAILABLE:
             raise RuntimeError(
                 "Microphone audio is unavailable because "
@@ -1285,6 +1744,19 @@ class RealtimeVoiceService:
     def _stop_microphone(
         self,
     ):
+        if IS_ANDROID:
+            thread = self._android_mic_thread
+
+            if (
+                thread is not None
+                and thread.is_alive()
+                and thread is not threading.current_thread()
+            ):
+                thread.join(timeout=1.0)
+
+            self._android_mic_thread = None
+            return
+
         stream = self._input_stream
         self._input_stream = None
 
@@ -1385,6 +1857,10 @@ class RealtimeVoiceService:
     def _speaker_worker(
         self,
     ):
+        if IS_ANDROID:
+            self._android_speaker_worker()
+            return
+
         if not SOUNDDEVICE_AVAILABLE:
             self._report_error(
                 "Realtime speaker unavailable",
