@@ -2,11 +2,17 @@ import json
 import os
 import re
 import shutil
+import ssl
 import tempfile
 import urllib.request
+import certifi
 import zipfile
 from datetime import datetime
 from pathlib import Path
+
+SSL_CONTEXT = ssl.create_default_context(
+    cafile=certifi.where()
+)
 
 from config.version import VERSION
 from utils.logger import log
@@ -85,7 +91,11 @@ class Updater:
                 }
             )
 
-            with urllib.request.urlopen(request, timeout=20) as response:
+            with urllib.request.urlopen(
+                request,
+                timeout=20,
+                context=SSL_CONTEXT,
+            ) as response:
                 raw = response.read().decode("utf-8")
                 release = json.loads(raw)
 
@@ -166,7 +176,11 @@ class Updater:
                 headers={"User-Agent": "M12-OS-Updater"}
             )
 
-            with urllib.request.urlopen(request, timeout=60) as response:
+            with urllib.request.urlopen(
+                request,
+                timeout=60,
+                context=SSL_CONTEXT,
+            ) as response:
                 target.write_bytes(response.read())
 
             log.info(f"Update downloaded: {target}")

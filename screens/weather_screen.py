@@ -1,8 +1,15 @@
 # M12 OS Weather Screen - shared UI scale version
 import json
+import ssl
 import urllib.parse
 import urllib.request
+import certifi
 from datetime import datetime
+
+SSL_CONTEXT = ssl.create_default_context(
+    cafile=certifi.where()
+)
+
 
 from kivy.clock import Clock
 from kivy.graphics import Color, Ellipse, Line, Rectangle
@@ -17,7 +24,6 @@ from kivy.uix.popup import Popup
 from kivy.uix.gridlayout import GridLayout
 
 from utils.config_manager import ConfigManager
-from utils.system_header import create_system_header
 from utils.ui_scale import (
     device_profile,
     title_font,
@@ -232,19 +238,8 @@ class WeatherScreen(Screen):
         self.selected_city = None
         self.active_tab = "current"
 
-        root = BoxLayout(
-            orientation="vertical",
-            padding=padding_size(),
-            spacing=spacing_size(),
-        )
-
-        self.system_header = create_system_header(
-            title="Weather",
-            back_callback=self.go_back,
-            status_provider=self.get_system_status_text,
-            ai_active=False,
-        )
-        root.add_widget(self.system_header)
+        root = BoxLayout(orientation="vertical", padding=padding_size(), spacing=spacing_size())
+        root.add_widget(Label(text="Weather", font_size=title_font(), bold=True, size_hint=(1, 0.09)))
 
         tabs = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.09))
         self.current_btn = self.make_tab_button("Current")
@@ -270,6 +265,10 @@ class WeatherScreen(Screen):
         cities_btn = Button(text="Cities", font_size=button_font(), background_normal="", background_color=(0.12, 0.20, 0.35, 1))
         cities_btn.bind(on_release=self.open_city_manager)
         bottom.add_widget(cities_btn)
+
+        back_btn = Button(text="< Back", font_size=button_font(), background_normal="", background_color=(0.10, 0.15, 0.25, 1))
+        back_btn.bind(on_release=self.go_back)
+        bottom.add_widget(back_btn)
 
         root.add_widget(bottom)
         self.add_widget(root)
@@ -612,6 +611,7 @@ class WeatherScreen(Screen):
         with urllib.request.urlopen(
             url,
             timeout=10,
+            context=SSL_CONTEXT,
         ) as response:
             data = json.loads(
                 response.read().decode("utf-8")
@@ -759,14 +759,22 @@ class WeatherScreen(Screen):
             "&timezone=auto"
         )
         print("WEATHER URL =", url)
-        with urllib.request.urlopen(url, timeout=15) as response:
+        with urllib.request.urlopen(
+            url,
+            timeout=15,
+            context=SSL_CONTEXT,
+        ) as response:
             return json.loads(response.read().decode("utf-8"))
 
     def get_air_quality_data(self, latitude, longitude):
         url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={latitude}&longitude={longitude}&current=us_aqi&timezone=auto"
         print("AIR QUALITY URL =", url)
         try:
-            with urllib.request.urlopen(url, timeout=15) as response:
+            with urllib.request.urlopen(
+                url,
+                timeout=15,
+                context=SSL_CONTEXT,
+            ) as response:
                 return json.loads(response.read().decode("utf-8"))
         except Exception as e:
             print("AIR QUALITY ERROR =", e)
@@ -1014,27 +1022,7 @@ class WeatherScreen(Screen):
             advice.append("Thunderstorm possible. Stay alert.")
         return "\n".join(advice)
 
-    def get_system_status_text(self):
-        """
-        Use the Home screen as the single source for system status.
-        """
-        if (
-            self.manager
-            and self.manager.has_screen("home")
-        ):
-            home = self.manager.get_screen("home")
-            provider = getattr(
-                home,
-                "get_system_status_text",
-                None,
-            )
-
-            if callable(provider):
-                return provider()
-
-        return "WiFi"
-
-    def go_back(self, instance=None):
+    def go_back(self, instance):
         if self.manager and self.manager.has_screen("home"):
             home = self.manager.get_screen("home")
             if hasattr(home, "refresh_weather_card"):

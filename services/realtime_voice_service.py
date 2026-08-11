@@ -5,6 +5,8 @@ import ctypes.util
 import json
 import os
 import queue
+import ssl
+import certifi
 import threading
 import time
 from pathlib import Path
@@ -19,6 +21,12 @@ from services.api_key_manager import APIKeyManager
 IS_ANDROID = kivy_platform == "android"
 
 if IS_ANDROID:
+    # python-for-android may not expose Android's system CA store
+    # correctly to Python/OpenSSL. Use certifi's bundled CA store.
+    ca_bundle = certifi.where()
+    os.environ["SSL_CERT_FILE"] = ca_bundle
+    os.environ["REQUESTS_CA_BUNDLE"] = ca_bundle
+
     sd = None
     SOUNDDEVICE_AVAILABLE = False
     SOUNDDEVICE_ERROR = "PortAudio is not used on Android."
@@ -752,8 +760,15 @@ class RealtimeVoiceService:
             "Connecting to OpenAI Realtime..."
         )
 
+        ssl_context = ssl.create_default_context(
+            cafile=certifi.where()
+        )
+
         async with self.client.realtime.connect(
-            model=self.model
+            model=self.model,
+            websocket_connection_options={
+                "ssl": ssl_context,
+            },
         ) as connection:
             self._connection = connection
 

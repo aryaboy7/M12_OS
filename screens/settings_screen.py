@@ -498,8 +498,8 @@ class SettingsScreen(Screen):
             cursor_color=(1, 1, 1, 1),
             hint_text_color=(0.75, 0.85, 1, 1),
             padding=(spacing_size(), spacing_size(), spacing_size(), spacing_size()),
-            use_bubble=False,
-            use_handles=False,
+            use_bubble=True,
+            use_handles=True,
         )
 
     def build_ai_setup_view(

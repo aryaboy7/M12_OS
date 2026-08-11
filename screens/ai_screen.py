@@ -25,7 +25,6 @@ from services.ai_session_memory import get_ai_session_memory
 from services.realtime_voice_service import RealtimeVoiceService
 from services.voice_service import VoiceService
 from utils.ui_scale import font, height
-from utils.system_header import create_system_header
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AI_SETTINGS_FILE = BASE_DIR / "config" / "ai_settings.json"
@@ -100,16 +99,26 @@ class AIScreen(Screen):
         )
 
         # ---------------------------------------------------------
-        # Permanent system header and screen navigation
+        # Title
         # ---------------------------------------------------------
-        self.system_header = create_system_header(
-            title="AI Assistant",
-            back_callback=self.go_back,
-            status_provider=self.get_system_status_text,
-            ai_active=True,
+        title = Label(
+            text="AI Assistant",
+            font_size=font(36),
+            bold=True,
+            size_hint=(1, 0.07),
+            halign="center",
+            valign="middle",
         )
-        self.back_btn = self.system_header.back_button
-        root.add_widget(self.system_header)
+
+        title.bind(
+            size=lambda instance, value: setattr(
+                instance,
+                "text_size",
+                value,
+            )
+        )
+
+        root.add_widget(title)
 
         # ---------------------------------------------------------
         # Hidden status state
@@ -274,13 +283,14 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         message_buttons = BoxLayout(
             orientation="horizontal",
-            spacing=height(8),
+            spacing=height(6),
             size_hint=(1, 0.075),
         )
 
         self.voice_btn = Button(
             text="Voice",
-            font_size=font(23),
+            font_size=font(18),
+            size_hint_x=0.18,
             background_normal="",
             background_color=(
                 0.20,
@@ -298,7 +308,8 @@ class AIScreen(Screen):
 
         self.clear_btn = Button(
             text="Clear Messages",
-            font_size=font(20),
+            font_size=font(16),
+            size_hint_x=0.32,
             background_normal="",
             background_color=(
                 0.35,
@@ -316,7 +327,8 @@ class AIScreen(Screen):
 
         self.copy_btn = Button(
             text="Copy Messages",
-            font_size=font(20),
+            font_size=font(16),
+            size_hint_x=0.32,
             background_normal="",
             background_color=(
                 0.25,
@@ -334,7 +346,8 @@ class AIScreen(Screen):
 
         self.send_btn = Button(
             text="Send",
-            font_size=font(23),
+            font_size=font(18),
+            size_hint_x=0.18,
             background_normal="",
             background_color=(
                 0.10,
@@ -472,6 +485,27 @@ class AIScreen(Screen):
 
         root.add_widget(system_log_buttons)
 
+        # ---------------------------------------------------------
+        # Back
+        # ---------------------------------------------------------
+        self.back_btn = Button(
+            text="< Back",
+            font_size=font(27),
+            size_hint=(1, 0.05),
+            background_normal="",
+            background_color=(
+                0.10,
+                0.15,
+                0.25,
+                1,
+            ),
+        )
+
+        self.back_btn.bind(
+            on_press=self.go_back
+        )
+
+        root.add_widget(self.back_btn)
         self.add_widget(root)
 
         self.log_system(
@@ -757,25 +791,18 @@ class AIScreen(Screen):
         # Notes, Music, Calendar, and other screens are open.
         pass
 
-    def get_system_status_text(self):
-        if (
-            self.manager
-            and self.manager.has_screen("home")
-        ):
-            home = self.manager.get_screen("home")
-            provider = getattr(
-                home,
-                "get_system_status_text",
-                None,
-            )
-
-            if callable(provider):
-                return provider()
-
-        return "WiFi"
-
     def update_back_button(self):
-        self.back_btn.text = "< Back"
+        screen_name = self.return_screen.replace(
+            "_",
+            " ",
+        ).title()
+
+        if not screen_name:
+            screen_name = "Home"
+
+        self.back_btn.text = (
+            f"< Back to {screen_name}"
+        )
 
     # -------------------------------------------------------------
     # AI / Control mode

@@ -1,5 +1,7 @@
 [app]
 
+p4a.local_recipes = recipes
+
 title = M12 OS
 
 package.name = m12os
@@ -16,7 +18,7 @@ version = 0.5.3
 # M12 Android dependencies.
 # sounddevice and numpy are intentionally NOT included:
 # Android voice uses native Android/SDL2 audio.
-requirements = python3,kivy,pyjnius,openai
+requirements = python3,kivy,pyjnius,openai,jiter,websockets
 
 orientation = portrait
 fullscreen = 0
