@@ -1,11 +1,18 @@
 import json
 import re
+import ssl
 import urllib.parse
 import urllib.request
+import certifi
 from typing import Any
 
 from services.skills.base_skill import BaseSkill, SkillResult
 from utils.config_manager import ConfigManager
+
+
+SSL_CONTEXT = ssl.create_default_context(
+    cafile=certifi.where()
+)
 
 
 WEATHER_CODES = {
@@ -640,96 +647,231 @@ class WeatherSkill(BaseSkill):
     def _geocode_city(
         city: str,
     ) -> dict | None:
-        candidates = WeatherSkill._city_candidates(
-            city
+        """
+        Geocode a requested city while respecting optional state/country hints.
+
+        Examples:
+            Newport
+            Newport, RI
+            Newport, RI, USA
+            Moscow, Russia
+
+        Open-Meteo can return several cities with the same name. We search by
+        the city name and then rank results against the supplied region/country
+        hints instead of blindly accepting results[0].
+        """
+        requested = WeatherSkill._normalize_city_name(city)
+
+        if not requested:
+            return None
+
+        parts = [
+            part.strip()
+            for part in requested.split(",")
+            if part.strip()
+        ]
+
+        city_name = parts[0]
+        region_hint = parts[1] if len(parts) >= 2 else ""
+        country_hint = parts[2] if len(parts) >= 3 else ""
+
+        US_STATES = {
+            "AL": "ALABAMA", "AK": "ALASKA", "AZ": "ARIZONA",
+            "AR": "ARKANSAS", "CA": "CALIFORNIA", "CO": "COLORADO",
+            "CT": "CONNECTICUT", "DE": "DELAWARE", "FL": "FLORIDA",
+            "GA": "GEORGIA", "HI": "HAWAII", "ID": "IDAHO",
+            "IL": "ILLINOIS", "IN": "INDIANA", "IA": "IOWA",
+            "KS": "KANSAS", "KY": "KENTUCKY", "LA": "LOUISIANA",
+            "ME": "MAINE", "MD": "MARYLAND", "MA": "MASSACHUSETTS",
+            "MI": "MICHIGAN", "MN": "MINNESOTA", "MS": "MISSISSIPPI",
+            "MO": "MISSOURI", "MT": "MONTANA", "NE": "NEBRASKA",
+            "NV": "NEVADA", "NH": "NEW HAMPSHIRE", "NJ": "NEW JERSEY",
+            "NM": "NEW MEXICO", "NY": "NEW YORK",
+            "NC": "NORTH CAROLINA", "ND": "NORTH DAKOTA",
+            "OH": "OHIO", "OK": "OKLAHOMA", "OR": "OREGON",
+            "PA": "PENNSYLVANIA", "RI": "RHODE ISLAND",
+            "SC": "SOUTH CAROLINA", "SD": "SOUTH DAKOTA",
+            "TN": "TENNESSEE", "TX": "TEXAS", "UT": "UTAH",
+            "VT": "VERMONT", "VA": "VIRGINIA", "WA": "WASHINGTON",
+            "WV": "WEST VIRGINIA", "WI": "WISCONSIN", "WY": "WYOMING",
+        }
+
+        COUNTRY_ALIASES = {
+            "US": "US",
+            "USA": "US",
+            "UNITED STATES": "US",
+            "UNITED STATES OF AMERICA": "US",
+            "UK": "GB",
+            "UNITED KINGDOM": "GB",
+            "GREAT BRITAIN": "GB",
+        }
+
+        region_upper = region_hint.upper()
+        country_upper = country_hint.upper()
+
+        # A US state abbreviation itself implies United States.
+        expected_state = US_STATES.get(
+            region_upper,
+            region_upper,
         )
 
-        attempts = []
+        expected_country_code = COUNTRY_ALIASES.get(
+            country_upper,
+            "",
+        )
 
-        for candidate in candidates:
-            city_only = candidate.split(",")[0].strip()
+        if region_upper in US_STATES and not expected_country_code:
+            expected_country_code = "US"
 
-            for search_value in (
-                candidate,
-                city_only,
-            ):
-                for language in (
-                    "ru",
-                    "en",
-                ):
-                    item = (
-                        search_value,
-                        language,
-                    )
+        # For "City, Country" requests where the second component is not a
+        # US state, treat it as a country hint as well as a possible region.
+        second_part_country_code = COUNTRY_ALIASES.get(
+            region_upper,
+            "",
+        )
 
-                    if item not in attempts:
-                        attempts.append(item)
+        if second_part_country_code and not expected_country_code:
+            expected_country_code = second_part_country_code
+            expected_state = ""
 
-        for candidate, language in attempts:
-            query = urllib.parse.quote(
-                candidate
+        query = urllib.parse.quote(city_name)
+
+        url = (
+            "https://geocoding-api.open-meteo.com/v1/search"
+            f"?name={query}"
+            "&count=30"
+            "&language=en"
+            "&format=json"
+        )
+
+        try:
+            with urllib.request.urlopen(
+                url,
+                timeout=10,
+                context=SSL_CONTEXT,
+            ) as response:
+                data = json.loads(
+                    response.read().decode("utf-8")
+                )
+        except Exception as error:
+            print(
+                "WeatherSkill geocoding error: "
+                f"{type(error).__name__}: {error}"
             )
+            return None
 
-            url = (
-                "https://geocoding-api.open-meteo.com/v1/search"
-                f"?name={query}"
-                "&count=10"
-                f"&language={language}"
-                "&format=json"
-            )
+        results = data.get("results", [])
 
+        if not results:
+            return None
+
+        def score(item):
+            value = 0
+
+            item_name = str(
+                item.get("name", "")
+            ).strip().upper()
+
+            admin1 = str(
+                item.get("admin1", "")
+            ).strip().upper()
+
+            country = str(
+                item.get("country", "")
+            ).strip().upper()
+
+            country_code = str(
+                item.get("country_code", "")
+            ).strip().upper()
+
+            if item_name == city_name.upper():
+                value += 20
+
+            if expected_state:
+                if admin1 == expected_state:
+                    value += 100
+                elif expected_state in admin1:
+                    value += 60
+
+            if region_hint and not expected_state:
+                hint = region_hint.upper()
+                if admin1 == hint:
+                    value += 70
+                if country == hint:
+                    value += 80
+                if country_code == hint:
+                    value += 80
+
+            if expected_country_code:
+                if country_code == expected_country_code:
+                    value += 100
+                else:
+                    value -= 100
+
+            # Prefer more populated exact matches when geographic hints tie.
             try:
-                with urllib.request.urlopen(
-                    url,
-                    timeout=10,
-                ) as response:
-                    data = json.loads(
-                        response.read().decode(
-                            "utf-8"
-                        )
-                    )
+                population = int(item.get("population", 0) or 0)
+                value += min(population // 100000, 10)
             except Exception:
-                continue
+                pass
 
-            results = data.get(
-                "results",
-                [],
-            )
+            return value
 
-            if not results:
-                continue
+        selected = max(
+            results,
+            key=score,
+        )
 
-            item = results[0]
+        # If explicit geographic hints were supplied, do not silently use a
+        # conflicting city just because its name matches.
+        selected_admin1 = str(
+            selected.get("admin1", "")
+        ).strip().upper()
 
-            name_parts = [
-                str(
-                    item.get(
-                        "name",
-                        candidate,
-                    )
-                ).strip(),
-                str(
-                    item.get(
-                        "admin1",
-                        "",
-                    )
-                ).strip(),
-            ]
+        selected_country_code = str(
+            selected.get("country_code", "")
+        ).strip().upper()
 
-            name = ", ".join(
-                part
-                for part in name_parts
-                if part
-            )
+        if expected_state and selected_admin1 != expected_state:
+            return None
 
-            return {
-                "name": name,
-                "latitude": item["latitude"],
-                "longitude": item["longitude"],
-                "matched_query": candidate,
-            }
+        if (
+            expected_country_code
+            and selected_country_code != expected_country_code
+        ):
+            return None
 
-        return None
+        name_parts = [
+            str(
+                selected.get(
+                    "name",
+                    city_name,
+                )
+            ).strip(),
+            str(
+                selected.get(
+                    "admin1",
+                    "",
+                )
+            ).strip(),
+        ]
+
+        if selected_country_code and selected_country_code != "US":
+            name_parts.append(selected_country_code)
+
+        name = ", ".join(
+            part
+            for part in name_parts
+            if part
+        )
+
+        return {
+            "name": name,
+            "latitude": selected["latitude"],
+            "longitude": selected["longitude"],
+            "matched_query": requested,
+            "country_code": selected_country_code,
+        }
 
     @staticmethod
     def _get_weather_data(
@@ -767,6 +909,7 @@ class WeatherSkill(BaseSkill):
         with urllib.request.urlopen(
             url,
             timeout=15,
+            context=SSL_CONTEXT,
         ) as response:
             return json.loads(
                 response.read().decode(

@@ -12,8 +12,8 @@ IS_LINUX = sys.platform.startswith("linux")
 if IS_LINUX:
     # Linux desktop/laptop:
     # larger resizable window + F11 fullscreen
-    Config.set("graphics", "width", "1400")
-    Config.set("graphics", "height", "900")
+    Config.set("graphics", "width", "1000")
+    Config.set("graphics", "height", "700")
     Config.set("graphics", "minimum_width", "900")
     Config.set("graphics", "minimum_height", "650")
     Config.set("graphics", "resizable", "1")

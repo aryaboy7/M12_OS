@@ -2243,8 +2243,38 @@ class AIScreen(Screen):
             return
 
         # AI MODE:
-        # Every typed or spoken message goes to AI. This allows short
-        # natural follow-ups such as "more details" or "why?".
+        # Typed requests check M12 local skills first. This lets Weather,
+        # Notes, Calendar, and other local capabilities answer with live
+        # device/app data before falling back to OpenAI.
+        if source == "typed":
+            try:
+                local_handled, local_answer = (
+                    self.ai_router.process_local(
+                        message=user_message,
+                        ai_screen=self,
+                    )
+                )
+            except Exception as error:
+                local_handled = False
+                local_answer = ""
+                print(
+                    "Typed local routing error: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+            if local_handled:
+                self.append_message(
+                    speaker="M12 AI",
+                    message=str(local_answer or "").strip(),
+                )
+
+                self.ai_is_busy = False
+                self.set_controls_enabled(True)
+                self.voice_btn.text = "Voice"
+                self.voice_status.text = "AI Mode"
+                return
+
+        # Not handled locally: send the request to OpenAI.
         self.show_ai_screen_for_question()
 
         # Create an empty answer immediately. Text will appear
@@ -2256,7 +2286,14 @@ class AIScreen(Screen):
 
         self.streaming_answer = ""
         self.streaming_spoken_length = 0
-        self.start_streaming_speech_queue()
+
+        # Typed AI requests are text-only.
+        # Voice requests keep the spoken-answer queue.
+        if source == "voice":
+            self.start_streaming_speech_queue()
+        else:
+            self.speech_queue = None
+            self.speech_is_busy = False
 
         threading.Thread(
             target=self.request_ai_response,

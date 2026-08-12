@@ -16,9 +16,8 @@ def device_profile():
     w = Window.width
     h = Window.height
 
-    # Linux needs a dedicated HiDPI-friendly desktop profile.
-    # Check the platform first so a large Linux window is not
-    # incorrectly detected as a tablet or phone.
+    # Linux gets its own desktop profile so it is never mistaken
+    # for an Android tablet or phone when the window is large.
     if platform == "linux":
         return "linux"
 
@@ -61,9 +60,9 @@ def is_linux():
 def font(base):
     """
     General font scaling.
-    Use this for custom sizes only.
-    For normal screens, prefer:
-    title_font(), button_font(), list_font(), text_font(), small_font()
+
+    Linux uses near-desktop sizing. The earlier 2.00 scale caused
+    labels and button text to overflow a normal laptop window.
     """
     profile = device_profile()
 
@@ -74,7 +73,7 @@ def font(base):
     elif profile == "m12":
         scale = 1.45
     elif profile == "linux":
-        scale = 2.00
+        scale = 1.10
     else:
         scale = 1.00
 
@@ -84,9 +83,9 @@ def font(base):
 def height(base):
     """
     General height scaling.
-    Use this for custom sizes only.
-    For normal widgets, prefer:
-    button_height(), row_height(), input_height()
+
+    Linux stays close to standard desktop sizing so vertical
+    layouts fit correctly in a 900x650 to 1000x700 window.
     """
     profile = device_profile()
 
@@ -97,7 +96,7 @@ def height(base):
     elif profile == "m12":
         scale = 1.35
     elif profile == "linux":
-        scale = 1.80
+        scale = 1.05
     else:
         scale = 1.00
 
@@ -118,7 +117,7 @@ def title_font():
     if profile == "m12":
         return 32
     if profile == "linux":
-        return 52
+        return 30
 
     return font(26)
 
@@ -133,7 +132,7 @@ def button_font():
     if profile == "m12":
         return 30
     if profile == "linux":
-        return 34
+        return 18
 
     return font(16)
 
@@ -148,7 +147,7 @@ def list_font():
     if profile == "m12":
         return 32
     if profile == "linux":
-        return 32
+        return 17
 
     return font(14)
 
@@ -163,7 +162,7 @@ def text_font():
     if profile == "m12":
         return 22
     if profile == "linux":
-        return 28
+        return 16
 
     return font(14)
 
@@ -178,7 +177,7 @@ def status_font():
     if profile == "m12":
         return 20
     if profile == "linux":
-        return 24
+        return 14
 
     return font(12)
 
@@ -193,7 +192,7 @@ def small_font():
     if profile == "m12":
         return 18
     if profile == "linux":
-        return 22
+        return 13
 
     return font(11)
 
@@ -208,7 +207,7 @@ def input_font():
     if profile == "m12":
         return 30
     if profile == "linux":
-        return 36
+        return 18
 
     return font(20)
 
@@ -223,7 +222,7 @@ def clock_time_font():
     if profile == "m12":
         return 58
     if profile == "linux":
-        return 96
+        return 52
 
     return font(52)
 
@@ -238,7 +237,7 @@ def clock_date_font():
     if profile == "m12":
         return 24
     if profile == "linux":
-        return 38
+        return 20
 
     return font(20)
 
@@ -257,7 +256,7 @@ def button_height():
     if profile == "m12":
         return 66
     if profile == "linux":
-        return 86
+        return 52
 
     return height(48)
 
@@ -272,7 +271,7 @@ def row_height():
     if profile == "m12":
         return 96
     if profile == "linux":
-        return 108
+        return 64
 
     return height(60)
 
@@ -287,7 +286,7 @@ def small_row_height():
     if profile == "m12":
         return 66
     if profile == "linux":
-        return 78
+        return 48
 
     return height(44)
 
@@ -302,7 +301,7 @@ def input_height():
     if profile == "m12":
         return 72
     if profile == "linux":
-        return 90
+        return 56
 
     return height(52)
 
@@ -317,7 +316,7 @@ def top_bar_height():
     if profile == "m12":
         return 46
     if profile == "linux":
-        return 62
+        return 40
 
     return height(34)
 
@@ -332,7 +331,7 @@ def padding_size():
     if profile == "m12":
         return 10
     if profile == "linux":
-        return 18
+        return 10
 
     return 10
 
@@ -347,6 +346,6 @@ def spacing_size():
     if profile == "m12":
         return 8
     if profile == "linux":
-        return 14
+        return 8
 
     return 8

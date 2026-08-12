@@ -20,6 +20,13 @@ class AIRouter:
         self.ai_service = None
         self.internet_ai_service = None
         self.last_ai_route = None
+
+        # Remember the most recent request handled by an M12 local skill.
+        # This lets short follow-ups such as "more details", "and tomorrow",
+        # or "what about Friday?" stay with the same local context.
+        self.last_local_message = None
+        self.last_local_answer = None
+
         self.plugin_manager = AIPluginManager()
         self.memory_manager = get_memory_manager()
 
@@ -1020,23 +1027,101 @@ class AIRouter:
         message,
         ai_screen,
     ):
+        original_message = str(message).strip()
+
         context = M12Context(
             ai_screen=ai_screen,
             router=self,
         )
 
+        # Short follow-ups must never be appended to the previous command.
+        # Doing that corrupts parsers such as WeatherSkill's city extractor.
+        if (
+            self.last_ai_route == "local"
+            and self.last_local_message
+            and self.is_follow_up(original_message)
+        ):
+            follow_up = self.normalize_text(original_message)
+
+            # For "more details" style requests, let OpenAI elaborate on the
+            # already-fetched local result. The prompt includes the actual
+            # local answer, so OpenAI does not need to invent live data.
+            detail_followups = {
+                "more",
+                "more details",
+                "please more details",
+                "tell me more",
+                "continue",
+                "go on",
+                "why",
+            }
+
+            if follow_up in detail_followups and self.last_local_answer:
+                prompt = (
+                    "The previous user request was:\n"
+                    f"{self.last_local_message}\n\n"
+                    "M12 local data answered:\n"
+                    f"{self.last_local_answer}\n\n"
+                    "The user now says:\n"
+                    f"{original_message}\n\n"
+                    "Answer the follow-up using the local data above. "
+                    "Do not claim you cannot access live data. "
+                    "Do not invent measurements that are not present."
+                )
+
+                answer = self.ask_openai(prompt)
+                return True, answer
+
+            # Other short follow-ups (for example "what about tomorrow?")
+            # are not merged into the city/location text. If the local skill
+            # cannot understand the follow-up by itself, normal AI fallback
+            # remains available.
+            skill_result = self.skill_registry.dispatch(
+                message=original_message,
+                context=context,
+            )
+
+            if skill_result.handled:
+                self.last_local_message = original_message
+                self.last_local_answer = str(
+                    skill_result.answer or ""
+                ).strip()
+                self.last_ai_route = "local"
+                return True, skill_result.answer
+
+            return False, None
+
         skill_result = self.skill_registry.dispatch(
-            message=message,
+            message=original_message,
             context=context,
         )
 
         if skill_result.handled:
+            self.last_local_message = original_message
+            self.last_local_answer = str(
+                skill_result.answer or ""
+            ).strip()
+            self.last_ai_route = "local"
             return True, skill_result.answer
 
-        return self.plugin_manager.process(
-            message=message,
+        plugin_result = self.plugin_manager.process(
+            message=original_message,
             context=context,
         )
+
+        try:
+            plugin_handled, plugin_answer = plugin_result
+        except Exception:
+            return plugin_result
+
+        if plugin_handled:
+            self.last_local_message = original_message
+            self.last_local_answer = str(
+                plugin_answer or ""
+            ).strip()
+            self.last_ai_route = "local"
+
+        return plugin_handled, plugin_answer
 
     def ask_openai(
         self,
@@ -1167,11 +1252,15 @@ class AIRouter:
             self.internet_ai_service.clear_memory()
 
         self.last_ai_route = None
+        self.last_local_message = None
+        self.last_local_answer = None
 
     def reset_service(self):
         self.ai_service = None
         self.internet_ai_service = None
         self.last_ai_route = None
+        self.last_local_message = None
+        self.last_local_answer = None
 
     def reload_plugins(self):
         self.plugin_manager.reload_plugins()
