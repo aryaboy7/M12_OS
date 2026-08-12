@@ -855,6 +855,31 @@ class RealtimeVoiceService:
 
         instructions = self.instructions
 
+        # The language selected on the AI screen controls BOTH
+        # transcription and the assistant's spoken Realtime answer.
+        if self.language == "en":
+            instructions += (
+                "\n\nLANGUAGE RULE: "
+                "Always answer in English only, even when the user speaks "
+                "Russian or another language. Understand the user's question, "
+                "but translate your answer into natural American English. "
+                "Do not answer in Russian unless the selected voice language "
+                "is changed to Russian."
+            )
+        elif self.language == "ru":
+            instructions += (
+                "\n\nLANGUAGE RULE: "
+                "Always answer in Russian only, even when the user speaks "
+                "English or another language. Understand the user's question, "
+                "but answer in natural Russian."
+            )
+        else:
+            instructions += (
+                "\n\nLANGUAGE RULE: "
+                "Automatic language mode is selected. Answer in the same "
+                "language used by the user for the current request."
+            )
+
         if memory_context:
             instructions += (
                 "\n\n"

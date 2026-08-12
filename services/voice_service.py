@@ -625,8 +625,36 @@ class VoiceService:
                 "response_format": "mp3",
             }
 
+            # Keep spoken output synchronized with the language selected
+            # on the AI screen.
+            if self.transcription_language == "en":
+                language_instruction = (
+                    "Speak in English only. "
+                    "Use natural American English pronunciation. "
+                    "Do not switch to Russian."
+                )
+
+            elif self.transcription_language == "ru":
+                language_instruction = (
+                    "Speak in Russian only. "
+                    "Use natural Russian pronunciation."
+                )
+
+            else:
+                language_instruction = (
+                    "Speak in the same language as the input text. "
+                    "Use natural pronunciation for that language."
+                )
+
             if self.speech_instructions:
-                request["instructions"] = self.speech_instructions
+                request["instructions"] = (
+                    f"{language_instruction} "
+                    f"{self.speech_instructions}"
+                )
+            else:
+                request["instructions"] = (
+                    language_instruction
+                )
 
             with self.client.audio.speech.with_streaming_response.create(
                 **request
