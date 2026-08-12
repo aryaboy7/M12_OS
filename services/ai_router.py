@@ -2,6 +2,7 @@ import hashlib
 import re
 import unicodedata
 
+from services.skills import register_default_skills
 from services.ai_plugin_manager import AIPluginManager
 from services.ai_service import AIService
 from services.internet_ai_service import InternetAIService
@@ -22,17 +23,41 @@ class AIRouter:
         self.last_ai_route = None
 
         # Remember the most recent request handled by an M12 local skill.
-        # This lets short follow-ups such as "more details", "and tomorrow",
-        # or "what about Friday?" stay with the same local context.
         self.last_local_message = None
         self.last_local_answer = None
 
         self.plugin_manager = AIPluginManager()
         self.memory_manager = get_memory_manager()
 
+        # Shared skill registry.
         self.skill_registry = get_skill_registry()
+
+        # Explicit built-in registration.
+        # This is important for Android, where filesystem glob discovery
+        # may not reliably find packaged *_skill.py files.
+        self.builtin_skill_report = (
+            register_default_skills()
+        )
+
+        # Keep dynamic discovery too for Linux/macOS and future optional skills.
+        # Duplicate names are safely replaced by SkillRegistry.register().
         self.skill_load_report = load_all_skills(
             self.skill_registry
+        )
+
+        print(
+            "[AIRouter] Built-in skills: "
+            f"{self.builtin_skill_report}"
+        )
+
+        print(
+            "[AIRouter] Dynamic skills: "
+            f"{self.skill_load_report}"
+        )
+
+        print(
+            "[AIRouter] Registered skills: "
+            f"{self.skill_registry.list_names()}"
         )
 
     def process(
