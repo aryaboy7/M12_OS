@@ -24,10 +24,12 @@ from services.ai_router import AIRouter
 from services.ai_session_memory import get_ai_session_memory
 from services.realtime_voice_service import RealtimeVoiceService
 from services.voice_service import VoiceService
-from utils.ui_scale import font, height
+from utils.system_header import create_system_header
+from utils.ui_scale import font, height, device_profile
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AI_SETTINGS_FILE = BASE_DIR / "config" / "ai_settings.json"
+AI_CONVERSATION_FILE = BASE_DIR / "data" / "ai" / "conversation_history.txt"
 
 VOICE_LANGUAGES = (
     ("en", "English"),
@@ -71,6 +73,7 @@ class AIScreen(Screen):
         self._chat_refresh_event = None
         self._chat_refresh_pending = False
         self._chat_auto_follow = True
+        self._conversation_save_event = None
 
         # AI Mode is the default. In AI Mode every message goes to AI.
         # Control Mode is used only for M12 application commands.
@@ -87,38 +90,148 @@ class AIScreen(Screen):
             self.load_voice_language()
         )
 
-        self.chat_text = (
-            "M12 AI:\n"
-            "Hello, Anatoliy. How can I help?"
-        )
+        self.chat_text = self.load_conversation_history()
+
+        profile = device_profile()
+
+        # ---------------------------------------------------------
+        # Responsive AI layout
+        # ---------------------------------------------------------
+        # Keep all AI/voice logic identical; only widget sizing changes here.
+        # These values are deliberately denser than the original AI screen so
+        # Conversation remains the main area and controls never overlap.
+        if profile == "phone":
+            screen_padding = 12
+            screen_spacing = 7
+            title_hint = 0.055
+            mode_hint = 0.065
+            section_title_hint = 0.030
+            chat_hint = 0.365
+            input_hint = 0.105
+            message_buttons_hint = 0.070
+            log_hint = 0.105
+            log_buttons_hint = 0.060
+            back_hint = 0.055
+
+            title_size = 26
+            mode_size = 16
+            section_size = 14
+            chat_size = 18
+            input_size = 18
+            message_button_size = 14
+            log_size = 12
+            log_button_size = 13
+            back_size = 16
+
+        elif profile == "tablet":
+            screen_padding = 12
+            screen_spacing = 8
+            title_hint = 0.060
+            mode_hint = 0.070
+            section_title_hint = 0.032
+            chat_hint = 0.355
+            input_hint = 0.110
+            message_buttons_hint = 0.072
+            log_hint = 0.110
+            log_buttons_hint = 0.060
+            back_hint = 0.055
+
+            title_size = 24
+            mode_size = 16
+            section_size = 14
+            chat_size = 18
+            input_size = 18
+            message_button_size = 14
+            log_size = 12
+            log_button_size = 13
+            back_size = 16
+
+        elif profile == "m12":
+            screen_padding = 10
+            screen_spacing = 7
+            title_hint = 0.060
+            mode_hint = 0.070
+            section_title_hint = 0.032
+            chat_hint = 0.350
+            input_hint = 0.115
+            message_buttons_hint = 0.075
+            log_hint = 0.105
+            log_buttons_hint = 0.060
+            back_hint = 0.055
+
+            title_size = 22
+            mode_size = 15
+            section_size = 13
+            chat_size = 17
+            input_size = 17
+            message_button_size = 13
+            log_size = 11
+            log_button_size = 12
+            back_size = 15
+
+        elif profile == "linux":
+            screen_padding = 10
+            screen_spacing = 7
+            title_hint = 0.055
+            mode_hint = 0.065
+            section_title_hint = 0.032
+            chat_hint = 0.370
+            input_hint = 0.115
+            message_buttons_hint = 0.070
+            log_hint = 0.105
+            log_buttons_hint = 0.060
+            back_hint = 0.055
+
+            title_size = 25
+            mode_size = 16
+            section_size = 14
+            chat_size = 17
+            input_size = 17
+            message_button_size = 14
+            log_size = 11
+            log_button_size = 13
+            back_size = 16
+
+        else:
+            screen_padding = 10
+            screen_spacing = 7
+            title_hint = 0.060
+            mode_hint = 0.070
+            section_title_hint = 0.032
+            chat_hint = 0.355
+            input_hint = 0.110
+            message_buttons_hint = 0.072
+            log_hint = 0.110
+            log_buttons_hint = 0.060
+            back_hint = 0.055
+
+            title_size = 24
+            mode_size = 16
+            section_size = 14
+            chat_size = 17
+            input_size = 17
+            message_button_size = 14
+            log_size = 11
+            log_button_size = 13
+            back_size = 16
 
         root = BoxLayout(
             orientation="vertical",
-            padding=height(16),
-            spacing=height(10),
+            padding=height(screen_padding),
+            spacing=height(screen_spacing),
         )
 
         # ---------------------------------------------------------
-        # Title
+        # Permanent M12 system header and screen navigation
         # ---------------------------------------------------------
-        title = Label(
-            text="AI Assistant",
-            font_size=font(36),
-            bold=True,
-            size_hint=(1, 0.07),
-            halign="center",
-            valign="middle",
+        self.system_header = create_system_header(
+            title="AI Assistant",
+            back_callback=self.go_back,
+            status_provider=self.get_system_status_text,
+            ai_active=True,
         )
-
-        title.bind(
-            size=lambda instance, value: setattr(
-                instance,
-                "text_size",
-                value,
-            )
-        )
-
-        root.add_widget(title)
+        self.back_btn = self.system_header.back_button
+        root.add_widget(self.system_header)
 
         # ---------------------------------------------------------
         # Hidden status state
@@ -147,12 +260,12 @@ class AIScreen(Screen):
         mode_language_row = BoxLayout(
             orientation="horizontal",
             spacing=height(8),
-            size_hint=(1, 0.06),
+            size_hint=(1, mode_hint),
         )
 
         self.mode_btn = Button(
             text="Mode: AI",
-            font_size=font(22),
+            font_size=font(mode_size),
             background_normal="",
         )
         self.mode_btn.bind(
@@ -164,7 +277,7 @@ class AIScreen(Screen):
 
         self.language_btn = Button(
             text="Language: English",
-            font_size=font(22),
+            font_size=font(mode_size),
             background_normal="",
             background_color=(
                 0.25,
@@ -189,9 +302,9 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         conversation_title = Label(
             text="Conversation",
-            font_size=font(20),
+            font_size=font(section_size),
             bold=True,
-            size_hint=(1, 0.035),
+            size_hint=(1, section_title_hint),
             halign="left",
             valign="middle",
         )
@@ -208,8 +321,8 @@ class AIScreen(Screen):
             text=self.chat_text,
             readonly=True,
             multiline=True,
-            font_size=font(26),
-            size_hint=(1, 0.30),
+            font_size=font(chat_size),
+            size_hint=(1, chat_hint),
             padding=(
                 height(12),
                 height(12),
@@ -258,9 +371,9 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         self.message_input = TextInput(
             hint_text="Type a message or press Voice...",
-            font_size=font(26),
+            font_size=font(input_size),
             multiline=True,
-            size_hint=(1, 0.10),
+            size_hint=(1, input_hint),
             padding=(
                 height(12),
                 height(12),
@@ -284,12 +397,12 @@ class AIScreen(Screen):
         message_buttons = BoxLayout(
             orientation="horizontal",
             spacing=height(6),
-            size_hint=(1, 0.075),
+            size_hint=(1, message_buttons_hint),
         )
 
         self.voice_btn = Button(
             text="Voice",
-            font_size=font(18),
+            font_size=font(message_button_size),
             size_hint_x=0.18,
             background_normal="",
             background_color=(
@@ -308,7 +421,7 @@ class AIScreen(Screen):
 
         self.clear_btn = Button(
             text="Clear Messages",
-            font_size=font(16),
+            font_size=font(message_button_size),
             size_hint_x=0.32,
             background_normal="",
             background_color=(
@@ -327,7 +440,7 @@ class AIScreen(Screen):
 
         self.copy_btn = Button(
             text="Copy Messages",
-            font_size=font(16),
+            font_size=font(message_button_size),
             size_hint_x=0.32,
             background_normal="",
             background_color=(
@@ -346,7 +459,7 @@ class AIScreen(Screen):
 
         self.send_btn = Button(
             text="Send",
-            font_size=font(18),
+            font_size=font(message_button_size),
             size_hint_x=0.18,
             background_normal="",
             background_color=(
@@ -370,9 +483,9 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         system_log_title = Label(
             text="System Log",
-            font_size=font(20),
+            font_size=font(section_size),
             bold=True,
-            size_hint=(1, 0.035),
+            size_hint=(1, section_title_hint),
             halign="left",
             valign="middle",
         )
@@ -390,8 +503,8 @@ class AIScreen(Screen):
             readonly=True,
             multiline=True,
             cursor_blink=False,
-            font_size=font(15),
-            size_hint=(1, 0.16),
+            font_size=font(log_size),
+            size_hint=(1, log_hint),
             padding=(
                 height(10),
                 height(8),
@@ -426,12 +539,12 @@ class AIScreen(Screen):
         system_log_buttons = BoxLayout(
             orientation="horizontal",
             spacing=height(8),
-            size_hint=(1, 0.055),
+            size_hint=(1, log_buttons_hint),
         )
 
         self.copy_log_btn = Button(
             text="Copy Log",
-            font_size=font(18),
+            font_size=font(log_button_size),
             background_normal="",
             background_color=(
                 0.22,
@@ -449,7 +562,7 @@ class AIScreen(Screen):
 
         self.save_log_btn = Button(
             text="Save Log",
-            font_size=font(18),
+            font_size=font(log_button_size),
             background_normal="",
             background_color=(
                 0.20,
@@ -467,7 +580,7 @@ class AIScreen(Screen):
 
         self.clear_log_btn = Button(
             text="Clear Log",
-            font_size=font(18),
+            font_size=font(log_button_size),
             background_normal="",
             background_color=(
                 0.42,
@@ -490,8 +603,8 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         self.back_btn = Button(
             text="< Back",
-            font_size=font(27),
-            size_hint=(1, 0.05),
+            font_size=font(back_size),
+            size_hint=(1, back_hint),
             background_normal="",
             background_color=(
                 0.10,
@@ -516,6 +629,105 @@ class AIScreen(Screen):
             "STATUS",
             self.voice_status.text,
         )
+
+    # -------------------------------------------------------------
+    # Persistent visible conversation
+    # -------------------------------------------------------------
+    @staticmethod
+    def default_conversation_text():
+        return (
+            "M12 AI:\n"
+            "Hello, Anatoliy. How can I help?"
+        )
+
+    def load_conversation_history(self):
+        """
+        Load the complete visible conversation from disk.
+
+        This archive is intentionally separate from AISessionMemory.
+        AISessionMemory stays bounded for OpenAI prompt context, while this
+        file preserves the full transcript that the user sees on screen.
+        """
+        try:
+            if not AI_CONVERSATION_FILE.exists():
+                return self.default_conversation_text()
+
+            saved = AI_CONVERSATION_FILE.read_text(
+                encoding="utf-8"
+            ).strip()
+
+            return (
+                saved
+                if saved
+                else self.default_conversation_text()
+            )
+
+        except Exception as error:
+            print(
+                "AI conversation history load error: "
+                f"{type(error).__name__}: {error}"
+            )
+            return self.default_conversation_text()
+
+    def schedule_conversation_save(self, delay=0.15):
+        """
+        Debounce transcript writes while an AI answer is streaming.
+        """
+        if self._conversation_save_event is not None:
+            self._conversation_save_event.cancel()
+
+        self._conversation_save_event = Clock.schedule_once(
+            self.save_conversation_history,
+            delay,
+        )
+
+    def save_conversation_history(self, dt=0):
+        """
+        Save the complete visible conversation to disk.
+        """
+        self._conversation_save_event = None
+
+        try:
+            AI_CONVERSATION_FILE.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            temporary_file = AI_CONVERSATION_FILE.with_suffix(
+                ".tmp"
+            )
+
+            temporary_file.write_text(
+                self.chat_text.rstrip() + "\n",
+                encoding="utf-8",
+            )
+
+            temporary_file.replace(
+                AI_CONVERSATION_FILE
+            )
+
+        except Exception as error:
+            print(
+                "AI conversation history save error: "
+                f"{type(error).__name__}: {error}"
+            )
+
+    def delete_conversation_history(self):
+        """
+        Remove the saved visible transcript.
+        """
+        if self._conversation_save_event is not None:
+            self._conversation_save_event.cancel()
+            self._conversation_save_event = None
+
+        try:
+            if AI_CONVERSATION_FILE.exists():
+                AI_CONVERSATION_FILE.unlink()
+        except Exception as error:
+            print(
+                "AI conversation history delete error: "
+                f"{type(error).__name__}: {error}"
+            )
 
     # -------------------------------------------------------------
     # System Log
@@ -789,7 +1001,7 @@ class AIScreen(Screen):
     def on_leave(self, *args):
         # Continuous voice intentionally keeps running while
         # Notes, Music, Calendar, and other screens are open.
-        pass
+        self.save_conversation_history()
 
     def update_back_button(self):
         screen_name = self.return_screen.replace(
@@ -1130,10 +1342,33 @@ class AIScreen(Screen):
                 "Ask M12 AI anything..."
             )
 
+    def get_system_status_text(self):
+        if (
+            self.manager
+            and self.manager.has_screen("home")
+        ):
+            home = self.manager.get_screen("home")
+            provider = getattr(
+                home,
+                "get_system_status_text",
+                None,
+            )
+
+            if callable(provider):
+                return provider()
+
+        return "WiFi"
+
+
+    def refresh_status_bar(self):
+        if hasattr(self, "system_header"):
+            self.system_header.refresh(0)
+
     def on_enter(
         self,
         *args,
     ):
+        self.refresh_status_bar()
         """
         Opening the AI Assistant always activates AI Mode.
 
@@ -2551,6 +2786,7 @@ class AIScreen(Screen):
 
         self._chat_auto_follow = True
         self.schedule_chat_refresh()
+        self.schedule_conversation_save()
 
     def schedule_chat_refresh(
         self,
@@ -2872,6 +3108,7 @@ class AIScreen(Screen):
 
         self._chat_refresh_pending = True
         self.flush_chat_refresh()
+        self.schedule_conversation_save()
 
         Clock.schedule_once(
             self.scroll_to_bottom,
@@ -3001,6 +3238,7 @@ class AIScreen(Screen):
         self.voice_btn.text = "Voice"
 
         self.ai_router.clear_memory()
+        self.delete_conversation_history()
 
         self.chat_text = (
             "M12 AI:\n"
@@ -3022,6 +3260,7 @@ class AIScreen(Screen):
         )
 
         self.set_controls_enabled(True)
+        self.save_conversation_history()
 
         Clock.schedule_once(
             self.scroll_to_bottom,

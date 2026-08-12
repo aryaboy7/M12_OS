@@ -4,6 +4,7 @@ import ssl
 import urllib.parse
 import urllib.request
 import certifi
+from datetime import datetime
 from typing import Any
 
 from services.skills.base_skill import BaseSkill, SkillResult
@@ -1054,6 +1055,10 @@ class WeatherSkill(BaseSkill):
             {},
         )
 
+        dates = daily.get(
+            "time",
+            [],
+        )
         maximums = daily.get(
             "temperature_2m_max",
             [],
@@ -1074,7 +1079,8 @@ class WeatherSkill(BaseSkill):
         index = 1
 
         if (
-            len(maximums) <= index
+            len(dates) <= index
+            or len(maximums) <= index
             or len(minimums) <= index
             or len(codes) <= index
         ):
@@ -1082,9 +1088,36 @@ class WeatherSkill(BaseSkill):
                 "Tomorrow forecast is unavailable."
             )
 
+        forecast_date_text = str(
+            dates[index]
+        ).strip()
+
+        try:
+            forecast_date = datetime.strptime(
+                forecast_date_text,
+                "%Y-%m-%d",
+            )
+
+            english_date = (
+                f"{forecast_date.strftime('%A, %B')} "
+                f"{forecast_date.day}, "
+                f"{forecast_date.year}"
+            )
+
+            russian_date = (
+                f"{forecast_date.day:02d}."
+                f"{forecast_date.month:02d}."
+                f"{forecast_date.year}"
+            )
+
+        except ValueError:
+            english_date = forecast_date_text
+            russian_date = forecast_date_text
+
         high = round(maximums[index])
         low = round(minimums[index])
         condition_code = int(codes[index])
+
         condition = (
             WEATHER_CODES_RU.get(
                 condition_code,
@@ -1096,6 +1129,7 @@ class WeatherSkill(BaseSkill):
                 "Unknown conditions",
             )
         )
+
         rain_chance = (
             rain[index]
             if len(rain) > index
@@ -1104,7 +1138,7 @@ class WeatherSkill(BaseSkill):
 
         if russian:
             answer = (
-                f"Завтра в {city}: "
+                f"Завтра, {russian_date}, в {city}: "
                 f"{condition.lower()}. "
                 f"Максимум {high} градусов {unit}, "
                 f"минимум {low}. "
@@ -1113,7 +1147,7 @@ class WeatherSkill(BaseSkill):
             )
         else:
             answer = (
-                f"Tomorrow in {city}: "
+                f"Tomorrow, {english_date}, in {city}: "
                 f"{condition.lower()}. "
                 f"The high will be {high} degrees {unit}, "
                 f"the low {low}, "
@@ -1123,6 +1157,7 @@ class WeatherSkill(BaseSkill):
 
         return answer, {
             "city": city,
+            "date": forecast_date_text,
             "high": high,
             "low": low,
             "unit": unit,
