@@ -4,6 +4,7 @@ import re
 import threading
 import subprocess
 import sys
+from kivy.utils import platform
 from datetime import datetime
 from pathlib import Path
 
@@ -73,6 +74,7 @@ class AIScreen(Screen):
         self._chat_refresh_event = None
         self._chat_refresh_pending = False
         self._chat_auto_follow = True
+        self._log_auto_follow = True
         self._conversation_save_event = None
 
         # AI Mode is the default. In AI Mode every message goes to AI.
@@ -317,54 +319,105 @@ class AIScreen(Screen):
         )
         root.add_widget(conversation_title)
 
-        self.chat_view = TextInput(
-            text=self.chat_text,
-            readonly=True,
-            multiline=True,
-            font_size=font(chat_size),
-            size_hint=(1, chat_hint),
-            padding=(
-                height(12),
-                height(12),
-            ),
-            background_color=(
-                0.06,
-                0.07,
-                0.10,
-                1,
-            ),
-            foreground_color=(
-                0.95,
-                0.95,
-                0.95,
-                1,
-            ),
-            cursor_color=(
-                0.80,
-                0.88,
-                1.00,
-                1,
-            ),
-            selection_color=(
-                0.20,
-                0.45,
-                0.75,
-                0.65,
-            ),
-            use_bubble=True,
-            use_handles=True,
-            scroll_from_swipe=True,
-            scroll_distance=height(12),
-            scroll_timeout=150,
-        )
+        if platform == "android":
+            # Android: let ScrollView own finger/kinetic scrolling.
+            # A Label is used for display; Copy Messages still copies
+            # the complete conversation text.
+            self.chat_scroll = ScrollView(
+                size_hint=(1, chat_hint),
+                do_scroll_x=False,
+                do_scroll_y=True,
+                bar_width=height(8),
+                scroll_type=["content", "bars"],
+            )
 
-        self.chat_view.bind(
-            on_touch_down=self.on_chat_touch_down
-        )
+            self.chat_label = Label(
+                text=self.chat_text,
+                font_size=font(chat_size),
+                size_hint_y=None,
+                halign="left",
+                valign="top",
+                color=(
+                    0.95,
+                    0.95,
+                    0.95,
+                    1,
+                ),
+                padding=(
+                    height(12),
+                    height(12),
+                ),
+            )
 
-        root.add_widget(
-            self.chat_view
-        )
+            self.chat_label.bind(
+                width=self._update_chat_label_width,
+                texture_size=self._update_chat_label_height,
+            )
+
+            self.chat_scroll.bind(
+                on_touch_down=self.on_chat_touch_down
+            )
+
+            self.chat_scroll.add_widget(
+                self.chat_label
+            )
+
+            root.add_widget(
+                self.chat_scroll
+            )
+
+            # Compatibility alias used by some older logic.
+            self.chat_view = self.chat_label
+
+        else:
+            self.chat_view = TextInput(
+                text=self.chat_text,
+                readonly=True,
+                multiline=True,
+                font_size=font(chat_size),
+                size_hint=(1, chat_hint),
+                padding=(
+                    height(12),
+                    height(12),
+                ),
+                background_color=(
+                    0.06,
+                    0.07,
+                    0.10,
+                    1,
+                ),
+                foreground_color=(
+                    0.95,
+                    0.95,
+                    0.95,
+                    1,
+                ),
+                cursor_color=(
+                    0.80,
+                    0.88,
+                    1.00,
+                    1,
+                ),
+                selection_color=(
+                    0.20,
+                    0.45,
+                    0.75,
+                    0.65,
+                ),
+                use_bubble=True,
+                use_handles=True,
+                scroll_from_swipe=True,
+                scroll_distance=height(12),
+                scroll_timeout=150,
+            )
+
+            self.chat_view.bind(
+                on_touch_down=self.on_chat_touch_down
+            )
+
+            root.add_widget(
+                self.chat_view
+            )
 
         # ---------------------------------------------------------
         # Message input
@@ -498,40 +551,94 @@ class AIScreen(Screen):
         )
         root.add_widget(system_log_title)
 
-        self.system_log_view = TextInput(
-            text="",
-            readonly=True,
-            multiline=True,
-            cursor_blink=False,
-            font_size=font(log_size),
-            size_hint=(1, log_hint),
-            padding=(
-                height(10),
-                height(8),
-            ),
-            background_color=(
-                0.025,
-                0.03,
-                0.05,
-                1,
-            ),
-            foreground_color=(
-                0.82,
-                0.88,
-                0.92,
-                1,
-            ),
-            selection_color=(
-                0.20,
-                0.45,
-                0.75,
-                0.65,
-            ),
-            use_bubble=True,
-            use_handles=True,
-            scroll_from_swipe=True,
-        )
-        root.add_widget(self.system_log_view)
+        if platform == "android":
+            self.system_log_scroll = ScrollView(
+                size_hint=(1, log_hint),
+                do_scroll_x=False,
+                do_scroll_y=True,
+                bar_width=height(8),
+                scroll_type=["content", "bars"],
+            )
+
+            self.system_log_label = Label(
+                text="",
+                font_size=font(log_size),
+                size_hint_y=None,
+                halign="left",
+                valign="top",
+                color=(
+                    0.82,
+                    0.88,
+                    0.92,
+                    1,
+                ),
+                padding=(
+                    height(10),
+                    height(8),
+                ),
+            )
+
+            self.system_log_label.bind(
+                width=self._update_system_log_label_width,
+                texture_size=self._update_system_log_label_height,
+            )
+
+            self.system_log_scroll.bind(
+                on_touch_down=self.on_system_log_touch_down
+            )
+
+            self.system_log_scroll.add_widget(
+                self.system_log_label
+            )
+
+            root.add_widget(
+                self.system_log_scroll
+            )
+
+            self.system_log_view = self.system_log_label
+
+        else:
+            self.system_log_view = TextInput(
+                text="",
+                readonly=True,
+                multiline=True,
+                cursor_blink=False,
+                font_size=font(log_size),
+                size_hint=(1, log_hint),
+                padding=(
+                    height(10),
+                    height(8),
+                ),
+                background_color=(
+                    0.025,
+                    0.03,
+                    0.05,
+                    1,
+                ),
+                foreground_color=(
+                    0.82,
+                    0.88,
+                    0.92,
+                    1,
+                ),
+                selection_color=(
+                    0.20,
+                    0.45,
+                    0.75,
+                    0.65,
+                ),
+                use_bubble=True,
+                use_handles=True,
+                scroll_from_swipe=True,
+                scroll_distance=height(12),
+                scroll_timeout=150,
+            )
+
+            self.system_log_view.bind(
+                on_touch_down=self.on_system_log_touch_down
+            )
+
+            root.add_widget(self.system_log_view)
 
         # ---------------------------------------------------------
         # System Log controls
@@ -776,6 +883,68 @@ class AIScreen(Screen):
             text,
         )
 
+    def _update_chat_label_width(
+        self,
+        instance,
+        width,
+    ):
+        if platform != "android":
+            return
+
+        usable_width = max(
+            1,
+            width - height(24),
+        )
+
+        instance.text_size = (
+            usable_width,
+            None,
+        )
+
+    def _update_chat_label_height(
+        self,
+        instance,
+        texture_size,
+    ):
+        if platform != "android":
+            return
+
+        instance.height = max(
+            texture_size[1] + height(24),
+            height(40),
+        )
+
+    def _update_system_log_label_width(
+        self,
+        instance,
+        width,
+    ):
+        if platform != "android":
+            return
+
+        usable_width = max(
+            1,
+            width - height(20),
+        )
+
+        instance.text_size = (
+            usable_width,
+            None,
+        )
+
+    def _update_system_log_label_height(
+        self,
+        instance,
+        texture_size,
+    ):
+        if platform != "android":
+            return
+
+        instance.height = max(
+            texture_size[1] + height(16),
+            height(32),
+        )
+
     def log_system(
         self,
         category,
@@ -807,20 +976,36 @@ class AIScreen(Screen):
         if not hasattr(self, "system_log_view"):
             return
 
-        self.system_log_view.text = "\n".join(
+        log_text = "\n".join(
             self.system_log_lines
         )
 
-        Clock.schedule_once(
-            self.scroll_system_log_to_bottom,
-            0,
-        )
+        self.system_log_view.text = log_text
+
+        if self._log_auto_follow:
+            Clock.schedule_once(
+                self.scroll_system_log_to_bottom,
+                0,
+            )
 
     def scroll_system_log_to_bottom(
         self,
         dt=0,
     ):
         if not hasattr(self, "system_log_view"):
+            return
+
+        if not self._log_auto_follow:
+            return
+
+        if (
+            platform == "android"
+            and hasattr(
+                self,
+                "system_log_scroll",
+            )
+        ):
+            self.system_log_scroll.scroll_y = 0
             return
 
         try:
@@ -852,12 +1037,15 @@ class AIScreen(Screen):
         self,
         instance=None,
     ):
-        try:
-            selected = str(
-                self.system_log_view.selection_text
-            ).strip()
-        except Exception:
-            selected = ""
+        selected = ""
+
+        if platform != "android":
+            try:
+                selected = str(
+                    self.system_log_view.selection_text
+                ).strip()
+            except Exception:
+                selected = ""
 
         text_to_copy = selected or "\n".join(
             self.system_log_lines
@@ -2784,7 +2972,6 @@ class AIScreen(Screen):
             + str(answer)
         )
 
-        self._chat_auto_follow = True
         self.schedule_chat_refresh()
         self.schedule_conversation_save()
 
@@ -2819,6 +3006,45 @@ class AIScreen(Screen):
 
         self._chat_refresh_pending = False
 
+        if platform == "android":
+            old_scroll_y = getattr(
+                getattr(
+                    self,
+                    "chat_scroll",
+                    None,
+                ),
+                "scroll_y",
+                0,
+            )
+
+            self.chat_view.text = self.chat_text
+
+            if self._chat_auto_follow:
+                Clock.schedule_once(
+                    self.scroll_to_bottom,
+                    0,
+                )
+                Clock.schedule_once(
+                    self.scroll_to_bottom,
+                    0.04,
+                )
+            else:
+                def restore_android_scroll(dt):
+                    if hasattr(
+                        self,
+                        "chat_scroll",
+                    ):
+                        self.chat_scroll.scroll_y = (
+                            old_scroll_y
+                        )
+
+                Clock.schedule_once(
+                    restore_android_scroll,
+                    0,
+                )
+
+            return
+
         old_scroll_y = getattr(
             self.chat_view,
             "scroll_y",
@@ -2839,8 +3065,6 @@ class AIScreen(Screen):
         self.chat_view.text = self.chat_text
 
         if self._chat_auto_follow:
-            # TextInput calculates line geometry on the next Clock cycle.
-            # Scroll after that calculation, and repeat once for long answers.
             Clock.schedule_once(
                 self.scroll_to_bottom,
                 0,
@@ -3050,34 +3274,49 @@ class AIScreen(Screen):
         instance,
         touch,
     ):
-        """
-        Let the user scroll up without the view immediately snapping back.
+        target = (
+            self.chat_scroll
+            if (
+                platform == "android"
+                and hasattr(
+                    self,
+                    "chat_scroll",
+                )
+            )
+            else self.chat_view
+        )
 
-        New messages re-enable automatic scrolling to the bottom.
-        """
-        if not self.chat_view.collide_point(
+        if not target.collide_point(
             *touch.pos
         ):
             return False
 
-        if (
-            getattr(
-                touch,
-                "button",
-                "",
-            )
-            in {
-                "scrollup",
-                "scrolldown",
-            }
-            or getattr(
-                touch,
-                "is_mouse_scrolling",
-                False,
-            )
-        ):
-            self._chat_auto_follow = False
+        self._chat_auto_follow = False
+        return False
 
+    def on_system_log_touch_down(
+        self,
+        instance,
+        touch,
+    ):
+        target = (
+            self.system_log_scroll
+            if (
+                platform == "android"
+                and hasattr(
+                    self,
+                    "system_log_scroll",
+                )
+            )
+            else self.system_log_view
+        )
+
+        if not target.collide_point(
+            *touch.pos
+        ):
+            return False
+
+        self._log_auto_follow = False
         return False
 
     def append_message(
@@ -3087,6 +3326,9 @@ class AIScreen(Screen):
     ):
         speaker_text = str(speaker)
         message_text = str(message)
+
+        self._chat_auto_follow = True
+        self._log_auto_follow = True
 
         if speaker_text == "You":
             self.log_system(
@@ -3098,8 +3340,6 @@ class AIScreen(Screen):
                 "AI",
                 message_text,
             )
-
-        self._chat_auto_follow = True
 
         self.chat_text += (
             f"\n\n{str(speaker)}:\n"
@@ -3129,12 +3369,15 @@ class AIScreen(Screen):
         macOS uses pbcopy directly because Kivy's pygame clipboard provider
         can crash the application.
         """
-        try:
-            selected = str(
-                self.chat_view.selection_text
-            ).strip()
-        except Exception:
-            selected = ""
+        selected = ""
+
+        if platform != "android":
+            try:
+                selected = str(
+                    self.chat_view.selection_text
+                ).strip()
+            except Exception:
+                selected = ""
 
         text_to_copy = (
             selected
@@ -3179,10 +3422,18 @@ class AIScreen(Screen):
     ):
         """
         Keep the newest conversation text visible automatically.
-
-        TextInput.cursor expects a (column, row) pair, not a character index.
         """
         if not self._chat_auto_follow:
+            return
+
+        if (
+            platform == "android"
+            and hasattr(
+                self,
+                "chat_scroll",
+            )
+        ):
+            self.chat_scroll.scroll_y = 0
             return
 
         try:
@@ -3198,7 +3449,6 @@ class AIScreen(Screen):
 
             self.chat_view.cursor = cursor
 
-            # Force Kivy to bring the cursor line into the viewport.
             ensure_visible = getattr(
                 self.chat_view,
                 "_ensure_cursor_visible",
@@ -3208,7 +3458,6 @@ class AIScreen(Screen):
             if callable(ensure_visible):
                 ensure_visible()
 
-            # Fallback for providers where cursor visibility alone is delayed.
             self.chat_view.scroll_y = max(
                 0,
                 getattr(
@@ -3251,6 +3500,8 @@ class AIScreen(Screen):
             self._chat_refresh_event = None
 
         self._chat_refresh_pending = False
+        self._chat_auto_follow = True
+        self._log_auto_follow = True
         self.chat_view.text = self.chat_text
         self.message_input.text = ""
         self.voice_status.text = (
