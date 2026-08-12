@@ -4,64 +4,61 @@ import re
 def clean_ai_answer(text):
     """
     Clean AI output before displaying it or speaking it.
+
+    URLs are preserved so the AI Conversation screen can
+    display them as clickable links.
     """
 
     text = str(text).strip()
 
     # --------------------------------------------------
-    # Convert Markdown links:
-    # [OpenAI](https://openai.com)
+    # Convert Markdown links.
+    #
+    # [Yahoo](https://www.yahoo.com)
     # becomes:
-    # OpenAI
+    # Yahoo - https://www.yahoo.com
+    #
+    # [https://www.yahoo.com](https://www.yahoo.com)
+    # becomes:
+    # https://www.yahoo.com
     # --------------------------------------------------
-    text = re.sub(
-        r"\[([^\]]+)\]\(https?://[^)]+\)",
-        r"\1",
-        text,
-    )
+    def replace_markdown_link(match):
+        label = match.group(1).strip()
+        url = match.group(2).strip()
 
-    # --------------------------------------------------
-    # Remove bare URLs
-    # --------------------------------------------------
+        if label == url:
+            return url
+
+        return f"{label} - {url}"
+
     text = re.sub(
-        r"https?://\S+",
-        "",
+        r"\[([^\]]+)\]\((https?://[^)]+)\)",
+        replace_markdown_link,
         text,
         flags=re.IGNORECASE,
     )
 
     # --------------------------------------------------
-    # Remove domains inside parentheses
-    # Example:
-    # (diplomatie.gouv.fr)
-    # (bbc.com)
+    # IMPORTANT:
+    # Do NOT remove bare http:// or https:// URLs.
+    #
+    # ai_screen.py detects these URLs and turns them into
+    # clickable links.
     # --------------------------------------------------
-    text = re.sub(
-        r"\(\s*[A-Za-z0-9.-]+\.[A-Za-z]{2,}\s*\)",
-        "",
-        text,
-    )
 
     # --------------------------------------------------
-    # Remove standalone domains
-    # Example:
-    # diplomatie.gouv.fr
-    # cnn.com
-    # wikipedia.org
+    # Do NOT remove standalone domains either.
+    #
+    # They may be useful information in an AI response.
+    # Only complete http:// and https:// URLs become
+    # clickable in the AI Conversation screen.
     # --------------------------------------------------
-    text = re.sub(
-        r"\b[A-Za-z0-9.-]+\.(?:com|org|net|gov|edu|mil|io|ai|co|us|uk|ca|au|fr|de|it|es|jp|cn|ru|info|biz)\b",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    )
 
     # --------------------------------------------------
     # Remove source labels
     # Example:
     # Source: CNN
     # Sources:
-    # According to...
     # --------------------------------------------------
     text = re.sub(
         r"(?im)^(source|sources)\s*:.*$",

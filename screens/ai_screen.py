@@ -4,6 +4,7 @@ import re
 import threading
 import subprocess
 import sys
+import webbrowser
 from kivy.utils import platform
 from datetime import datetime
 from pathlib import Path
@@ -118,10 +119,10 @@ class AIScreen(Screen):
             title_size = 26
             mode_size = 16
             section_size = 14
-            chat_size = 18
+            chat_size = 22
             input_size = 18
             message_button_size = 14
-            log_size = 12
+            log_size = 16
             log_button_size = 13
             back_size = 16
 
@@ -332,7 +333,8 @@ class AIScreen(Screen):
             )
 
             self.chat_label = Label(
-                text=self.chat_text,
+                text=self.format_chat_links(self.chat_text),
+                markup=True,
                 font_size=font(chat_size),
                 size_hint_y=None,
                 halign="left",
@@ -352,6 +354,7 @@ class AIScreen(Screen):
             self.chat_label.bind(
                 width=self._update_chat_label_width,
                 texture_size=self._update_chat_label_height,
+                on_ref_press=self.open_chat_url,
             )
 
             self.chat_scroll.bind(
@@ -370,54 +373,42 @@ class AIScreen(Screen):
             self.chat_view = self.chat_label
 
         else:
-            self.chat_view = TextInput(
-                text=self.chat_text,
-                readonly=True,
-                multiline=True,
-                font_size=font(chat_size),
+            # Desktop/Linux/macOS: ScrollView + markup Label allows
+            # clickable URLs while preserving smooth scrolling.
+            self.chat_scroll = ScrollView(
                 size_hint=(1, chat_hint),
-                padding=(
-                    height(12),
-                    height(12),
-                ),
-                background_color=(
-                    0.06,
-                    0.07,
-                    0.10,
-                    1,
-                ),
-                foreground_color=(
-                    0.95,
-                    0.95,
-                    0.95,
-                    1,
-                ),
-                cursor_color=(
-                    0.80,
-                    0.88,
-                    1.00,
-                    1,
-                ),
-                selection_color=(
-                    0.20,
-                    0.45,
-                    0.75,
-                    0.65,
-                ),
-                use_bubble=True,
-                use_handles=True,
-                scroll_from_swipe=True,
-                scroll_distance=height(12),
-                scroll_timeout=150,
+                do_scroll_x=False,
+                do_scroll_y=True,
+                bar_width=height(8),
+                scroll_type=["content", "bars"],
             )
 
-            self.chat_view.bind(
+            self.chat_label = Label(
+                text=self.format_chat_links(self.chat_text),
+                markup=True,
+                font_size=font(chat_size),
+                size_hint_y=None,
+                halign="left",
+                valign="top",
+                color=(0.95, 0.95, 0.95, 1),
+                padding=(height(12), height(12)),
+            )
+
+            self.chat_label.bind(
+                width=self._update_chat_label_width,
+                texture_size=self._update_chat_label_height,
+                on_ref_press=self.open_chat_url,
+            )
+
+            self.chat_scroll.bind(
                 on_touch_down=self.on_chat_touch_down
             )
 
-            root.add_widget(
-                self.chat_view
-            )
+            self.chat_scroll.add_widget(self.chat_label)
+            root.add_widget(self.chat_scroll)
+
+            # Compatibility alias for existing conversation logic.
+            self.chat_view = self.chat_label
 
         # ---------------------------------------------------------
         # Message input
@@ -836,6 +827,122 @@ class AIScreen(Screen):
                 f"{type(error).__name__}: {error}"
             )
 
+    def render_chat_text(self):
+        """
+        Render the raw saved conversation into the visible markup Label.
+        """
+        if not hasattr(self, "chat_view"):
+            return
+
+        if getattr(self.chat_view, "markup", False):
+            self.chat_view.text = self.format_chat_links(
+                self.chat_text
+            )
+        else:
+            self.render_chat_text()
+
+    # -------------------------------------------------------------
+    # Clickable URLs in Conversation
+    # -------------------------------------------------------------
+    @staticmethod
+    def format_chat_links(text):
+        """Return safe Kivy markup with clickable http/https URLs."""
+        raw_text = str(text or "")
+        url_pattern = re.compile(r'https?://[^\s<>"]+')
+
+        parts = []
+        last_end = 0
+
+        for match in url_pattern.finditer(raw_text):
+            start, _ = match.span()
+            original_url = match.group(0)
+            url = original_url
+            trailing = ""
+
+            while url and url[-1] in ".,;:!?":
+                trailing = url[-1] + trailing
+                url = url[:-1]
+
+            while url.endswith(")") and url.count("(") < url.count(")"):
+                trailing = ")" + trailing
+                url = url[:-1]
+
+            parts.append(escape_markup(raw_text[last_end:start]))
+
+            if url:
+                safe_url = escape_markup(url)
+                parts.append(
+                    "[ref=" + safe_url + "]"
+                    "[color=4da3ff][u]" + safe_url +
+                    "[/u][/color][/ref]"
+                )
+
+            parts.append(escape_markup(trailing))
+            last_end = match.end()
+
+        parts.append(escape_markup(raw_text[last_end:]))
+        return "".join(parts)
+
+    def open_chat_url(
+        self,
+        instance,
+        url,
+    ):
+        """
+        Open a clicked Conversation URL in the system browser.
+        """
+        target = str(url or "").strip()
+
+        if not target.startswith(
+            ("http://", "https://")
+        ):
+            return
+
+        try:
+            if platform == "android":
+                from jnius import autoclass
+
+                Intent = autoclass(
+                    "android.content.Intent"
+                )
+                Uri = autoclass(
+                    "android.net.Uri"
+                )
+                PythonActivity = autoclass(
+                    "org.kivy.android.PythonActivity"
+                )
+
+                intent = Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse(target),
+                )
+
+                PythonActivity.mActivity.startActivity(
+                    intent
+                )
+
+                self.voice_status.text = (
+                    "Opening link in browser"
+                )
+                return
+
+            opened = webbrowser.open(
+                target,
+                new=2,
+            )
+
+            self.voice_status.text = (
+                "Opening link in browser"
+                if opened
+                else "Unable to open browser link"
+            )
+
+        except Exception as error:
+            self.voice_status.text = (
+                "Unable to open browser link: "
+                f"{type(error).__name__}: {error}"
+            )
+
     # -------------------------------------------------------------
     # System Log
     # -------------------------------------------------------------
@@ -888,9 +995,6 @@ class AIScreen(Screen):
         instance,
         width,
     ):
-        if platform != "android":
-            return
-
         usable_width = max(
             1,
             width - height(24),
@@ -906,9 +1010,6 @@ class AIScreen(Screen):
         instance,
         texture_size,
     ):
-        if platform != "android":
-            return
-
         instance.height = max(
             texture_size[1] + height(24),
             height(40),
@@ -3006,63 +3107,23 @@ class AIScreen(Screen):
 
         self._chat_refresh_pending = False
 
-        if platform == "android":
-            old_scroll_y = getattr(
-                getattr(
-                    self,
-                    "chat_scroll",
-                    None,
-                ),
+        scroll_widget = getattr(
+            self,
+            "chat_scroll",
+            None,
+        )
+
+        old_scroll_y = (
+            getattr(
+                scroll_widget,
                 "scroll_y",
                 0,
             )
-
-            self.chat_view.text = self.chat_text
-
-            if self._chat_auto_follow:
-                Clock.schedule_once(
-                    self.scroll_to_bottom,
-                    0,
-                )
-                Clock.schedule_once(
-                    self.scroll_to_bottom,
-                    0.04,
-                )
-            else:
-                def restore_android_scroll(dt):
-                    if hasattr(
-                        self,
-                        "chat_scroll",
-                    ):
-                        self.chat_scroll.scroll_y = (
-                            old_scroll_y
-                        )
-
-                Clock.schedule_once(
-                    restore_android_scroll,
-                    0,
-                )
-
-            return
-
-        old_scroll_y = getattr(
-            self.chat_view,
-            "scroll_y",
-            0,
+            if scroll_widget is not None
+            else 0
         )
 
-        try:
-            selection_from = (
-                self.chat_view.selection_from
-            )
-            selection_to = (
-                self.chat_view.selection_to
-            )
-        except Exception:
-            selection_from = None
-            selection_to = None
-
-        self.chat_view.text = self.chat_text
+        self.render_chat_text()
 
         if self._chat_auto_follow:
             Clock.schedule_once(
@@ -3075,20 +3136,14 @@ class AIScreen(Screen):
             )
             return
 
-        try:
-            self.chat_view.scroll_y = old_scroll_y
+        if scroll_widget is not None:
+            def restore_scroll(dt):
+                scroll_widget.scroll_y = old_scroll_y
 
-            if (
-                selection_from is not None
-                and selection_to is not None
-                and selection_from != selection_to
-            ):
-                self.chat_view.select_text(
-                    selection_from,
-                    selection_to,
-                )
-        except Exception:
-            pass
+            Clock.schedule_once(
+                restore_scroll,
+                0,
+            )
 
     def finish_streaming_response(
         self,
@@ -3276,12 +3331,9 @@ class AIScreen(Screen):
     ):
         target = (
             self.chat_scroll
-            if (
-                platform == "android"
-                and hasattr(
-                    self,
-                    "chat_scroll",
-                )
+            if hasattr(
+                self,
+                "chat_scroll",
             )
             else self.chat_view
         )
@@ -3426,12 +3478,9 @@ class AIScreen(Screen):
         if not self._chat_auto_follow:
             return
 
-        if (
-            platform == "android"
-            and hasattr(
-                self,
-                "chat_scroll",
-            )
+        if hasattr(
+            self,
+            "chat_scroll",
         ):
             self.chat_scroll.scroll_y = 0
             return
@@ -3457,15 +3506,6 @@ class AIScreen(Screen):
 
             if callable(ensure_visible):
                 ensure_visible()
-
-            self.chat_view.scroll_y = max(
-                0,
-                getattr(
-                    self.chat_view,
-                    "scroll_y",
-                    0,
-                ),
-            )
 
         except Exception as error:
             print(
@@ -3502,7 +3542,7 @@ class AIScreen(Screen):
         self._chat_refresh_pending = False
         self._chat_auto_follow = True
         self._log_auto_follow = True
-        self.chat_view.text = self.chat_text
+        self.render_chat_text()
         self.message_input.text = ""
         self.voice_status.text = (
             "Control Mode"
