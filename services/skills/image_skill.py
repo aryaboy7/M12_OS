@@ -112,10 +112,169 @@ class ImageSkill(BaseSkill):
         "больше деталей",
     }
 
+    CONTEXT_REFERENCE_PHRASES = {
+        "them",
+        "their pictures",
+        "their images",
+        "their photos",
+        "these people",
+        "those people",
+        "these persons",
+        "those persons",
+        "these presidents",
+        "those presidents",
+        "this presidents",
+        "these men",
+        "those men",
+        "these women",
+        "those women",
+        "их фото",
+        "их фотографии",
+        "эти люди",
+        "эти президенты",
+        "этих президентов",
+    }
+
     def __init__(self):
         self.last_query = ""
         self.last_results = []
         self.next_index = 0
+
+        self.last_context_subjects = []
+
+    def _is_context_reference_request(
+        self,
+        text: str,
+    ) -> bool:
+        if any(
+            phrase in text
+            for phrase in self.CONTEXT_REFERENCE_PHRASES
+        ):
+            return True
+
+        return bool(
+            re.search(
+                r"\b(?:pictures|images|photos|photographs)\s+of\s+"
+                r"(?:them|these|those|their|this)\b",
+                text,
+                re.IGNORECASE,
+            )
+        )
+
+    @staticmethod
+    def _extract_context_text(
+        context: Any,
+    ) -> str:
+        """
+        Return only the immediately previous assistant answer.
+
+        Do not scan broad conversation/history data here: doing so can
+        introduce unrelated names into contextual image requests.
+        """
+        if context is None:
+            return ""
+
+        router = getattr(
+            context,
+            "router",
+            None,
+        )
+
+        if router is None and isinstance(context, dict):
+            router = context.get("router")
+
+        if router is None:
+            return ""
+
+        value = getattr(
+            router,
+            "last_assistant_answer",
+            None,
+        )
+
+        if isinstance(value, str):
+            return value.strip()
+
+        return ""
+
+    @classmethod
+    def _extract_subjects_from_context(
+        cls,
+        context: Any,
+    ) -> list[str]:
+        text = cls._extract_context_text(
+            context
+        )
+
+        if not text:
+            return []
+
+        cleaned = re.sub(
+            r"\s+",
+            " ",
+            text,
+        ).strip()
+
+        # First choice: explicit numbered list, including inline lists:
+        # 1. George Washington; 2. John Adams; ...
+        numbered = re.findall(
+            r"(?:^|[;,\s])\d+[.)]\s*"
+            r"([^;,]+?)(?=(?:\s*[;,]\s*\d+[.)])|$)",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        candidates = numbered
+
+        # Second choice: semicolon-separated concise items.
+        if len(candidates) < 2 and ";" in cleaned:
+            candidates = cleaned.split(";")
+
+        subjects = []
+
+        for item in candidates:
+            item = re.sub(
+                r"^\s*\d+[.)]\s*",
+                "",
+                item,
+            ).strip(" .,:;-")
+
+            # Remove a short introductory clause before a colon.
+            if ":" in item:
+                left, right = item.split(":", 1)
+                if len(left.split()) > 3:
+                    item = right.strip()
+
+            # A subject should look like a concise entity/person name,
+            # not a descriptive sentence.
+            words = item.split()
+            if not (1 <= len(words) <= 5):
+                continue
+
+            if any(
+                token in item.lower()
+                for token in (
+                    "http://",
+                    "https://",
+                    "here are",
+                    "images of",
+                    "pictures of",
+                )
+            ):
+                continue
+
+            subjects.append(item)
+
+        unique = []
+        seen = set()
+
+        for item in subjects:
+            key = item.casefold()
+            if key not in seen:
+                seen.add(key)
+                unique.append(item)
+
+        return unique[:8]
 
     def can_handle(
         self,
@@ -131,6 +290,9 @@ class ImageSkill(BaseSkill):
             self.last_query
             and self._is_follow_up(text)
         ):
+            return 1.0
+
+        if self._is_context_reference_request(text):
             return 1.0
 
         words = set(text.split())
@@ -173,6 +335,24 @@ class ImageSkill(BaseSkill):
         detailed = self._is_detail_request(
             normalized
         )
+
+        context_reference = self._is_context_reference_request(
+            normalized
+        )
+
+        if context_reference:
+            subjects = self._extract_subjects_from_context(
+                context
+            )
+        else:
+            subjects = []
+
+        if context_reference and subjects:
+            self.last_context_subjects = subjects
+            return self._handle_subject_gallery(
+                subjects=subjects,
+                russian=russian,
+            )
 
         if follow_up:
             query = self.last_query
@@ -327,6 +507,278 @@ class ImageSkill(BaseSkill):
                     ),
                 },
             )
+
+    def _handle_subject_gallery(
+        self,
+        subjects: list[str],
+        russian: bool,
+    ) -> SkillResult:
+        images = []
+
+        for subject in subjects:
+            try:
+                # Ask Wikimedia for a broader set, then select the best
+                # subject-specific portrait locally instead of trusting
+                # the first search result.
+                results = self._search_commons(
+                    subject,
+                    limit=20,
+                )
+            except Exception:
+                results = []
+
+            if not results:
+                continue
+
+            best = self._pick_best_subject_image(
+                subject,
+                results,
+            )
+
+            if best is None:
+                continue
+
+            item = dict(best)
+            item["subject"] = subject
+            images.append(item)
+
+        if not images:
+            return SkillResult(
+                handled=True,
+                answer=(
+                    "Не удалось найти подходящие изображения."
+                    if russian
+                    else "I could not find suitable images for those people."
+                ),
+                confidence=1.0,
+            )
+
+        first = images[0]
+        query_label = ", ".join(subjects)
+
+        self.last_query = query_label
+        self.last_results = images
+        self.next_index = len(images)
+
+        return SkillResult(
+            handled=True,
+            answer=(
+                "Вот изображения этих людей."
+                if russian
+                else "Here are images of those people."
+            ),
+            confidence=1.0,
+            action="show_image_gallery",
+            data={
+                "type": "image_gallery",
+                "query": query_label,
+                "subjects": subjects,
+                "images": images[:4],
+                "image_url": first.get("image_url", ""),
+                "source_url": first.get("source_url", ""),
+                "title": first.get("title", query_label),
+                "provider": "Wikimedia Commons",
+            },
+        )
+
+    @classmethod
+    def _pick_best_subject_image(
+        cls,
+        subject: str,
+        results: list[dict],
+    ):
+        """
+        Choose a portrait-like Commons result that actually matches
+        the requested person/entity.
+
+        This prevents broad search results such as group photos,
+        presidential gatherings, or another president from being used
+        just because Commons ranked them first.
+        """
+        subject_clean = cls._normalize(
+            subject
+        )
+
+        subject_words = [
+            word
+            for word in subject_clean.split()
+            if len(word) >= 3
+        ]
+
+        if not subject_words:
+            return (
+                results[0]
+                if results
+                else None
+            )
+
+        surname = subject_words[-1]
+
+        reject_terms = {
+            "group",
+            "presidents",
+            "presidential",
+            "meeting",
+            "conference",
+            "summit",
+            "inauguration",
+            "family",
+            "wives",
+            "wife",
+            "cabinet",
+            "administration",
+            "white house",
+            "with president",
+            "with presidents",
+            "trump invited",
+            "all presidents",
+            "former presidents",
+        }
+
+        scored = []
+
+        for index, item in enumerate(results):
+            title = str(
+                item.get(
+                    "title",
+                    "",
+                )
+            )
+            description = str(
+                item.get(
+                    "description",
+                    "",
+                )
+            )
+            artist = str(
+                item.get(
+                    "artist",
+                    "",
+                )
+            )
+
+            searchable = cls._normalize(
+                " ".join(
+                    (
+                        title,
+                        description,
+                        artist,
+                    )
+                )
+            )
+
+            if not searchable:
+                continue
+
+            # Require at least the surname. For common surnames this is
+            # strengthened below by matching the full name tokens too.
+            if surname not in searchable:
+                continue
+
+            score = 0
+
+            # Exact full-name phrase is strongest.
+            if subject_clean in searchable:
+                score += 120
+
+            matched_words = sum(
+                1
+                for word in subject_words
+                if word in searchable
+            )
+
+            score += matched_words * 30
+
+            # Prefer files whose title itself identifies the person.
+            title_norm = cls._normalize(
+                title
+            )
+
+            if subject_clean in title_norm:
+                score += 100
+
+            if surname in title_norm:
+                score += 35
+
+            # Portrait/headshot/profile clues.
+            portrait_hints = (
+                "portrait",
+                "official portrait",
+                "painting",
+                "headshot",
+                "photograph",
+                "photo",
+                "profile",
+            )
+
+            if any(
+                hint in searchable
+                for hint in portrait_hints
+            ):
+                score += 20
+
+            # Reject or heavily penalize obvious group/event imagery.
+            rejected = False
+            for term in reject_terms:
+                if term in searchable:
+                    score -= 140
+                    rejected = True
+
+            width = item.get("width")
+            height = item.get("height")
+
+            try:
+                width_value = float(width or 0)
+                height_value = float(height or 0)
+
+                # Vertical/square images are more likely to be portraits.
+                if (
+                    width_value > 0
+                    and height_value > 0
+                ):
+                    ratio = (
+                        height_value
+                        / width_value
+                    )
+
+                    if ratio >= 1.0:
+                        score += 20
+                    elif ratio < 0.72:
+                        score -= 25
+            except Exception:
+                pass
+
+            # Commons relevance order is still useful as a small tie-breaker.
+            score += max(
+                0,
+                20 - index,
+            )
+
+            scored.append(
+                (
+                    score,
+                    rejected,
+                    item,
+                )
+            )
+
+        if not scored:
+            return None
+
+        scored.sort(
+            key=lambda row: row[0],
+            reverse=True,
+        )
+
+        best_score, rejected, best_item = (
+            scored[0]
+        )
+
+        # Do not knowingly return a weak/unrelated result.
+        if best_score < 55:
+            return None
+
+        return best_item
 
     def _next_batch(
         self,

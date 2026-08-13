@@ -860,9 +860,16 @@ class AIScreen(Screen):
     # -------------------------------------------------------------
     @staticmethod
     def format_chat_links(text):
-        """Return safe Kivy markup with clickable http/https URLs."""
+        """
+        Return safe Kivy markup with each http/https URL clickable
+        independently, including URL lists and Markdown-style links.
+        """
         raw_text = str(text or "")
-        url_pattern = re.compile(r'https?://[^\s<>"]+')
+
+        url_pattern = re.compile(
+            r'https?://[^\s<>"\]\[{}|]+',
+            re.IGNORECASE,
+        )
 
         parts = []
         last_end = 0
@@ -877,24 +884,43 @@ class AIScreen(Screen):
                 trailing = url[-1] + trailing
                 url = url[:-1]
 
-            while url.endswith(")") and url.count("(") < url.count(")"):
-                trailing = ")" + trailing
-                url = url[:-1]
+            for closing, opening in (
+                (")", "("),
+                ("}", "{"),
+            ):
+                while (
+                    url.endswith(closing)
+                    and url.count(opening) < url.count(closing)
+                ):
+                    trailing = closing + trailing
+                    url = url[:-1]
 
-            parts.append(escape_markup(raw_text[last_end:start]))
+            parts.append(
+                escape_markup(
+                    raw_text[last_end:start]
+                )
+            )
 
             if url:
                 safe_url = escape_markup(url)
                 parts.append(
                     "[ref=" + safe_url + "]"
-                    "[color=4da3ff][u]" + safe_url +
-                    "[/u][/color][/ref]"
+                    "[color=4da3ff][u]"
+                    + safe_url
+                    + "[/u][/color][/ref]"
                 )
 
-            parts.append(escape_markup(trailing))
+            parts.append(
+                escape_markup(trailing)
+            )
             last_end = match.end()
 
-        parts.append(escape_markup(raw_text[last_end:]))
+        parts.append(
+            escape_markup(
+                raw_text[last_end:]
+            )
+        )
+
         return "".join(parts)
 
     def copy_gallery_image(

@@ -22,6 +22,11 @@ class AIRouter:
         self.internet_ai_service = None
         self.last_ai_route = None
 
+        # Exact most recent assistant answer, regardless of route.
+        # ImageSkill uses this for references such as
+        # "show me pictures of these presidents".
+        self.last_assistant_answer = None
+
         # Remember the most recent request handled by an M12 local skill.
         self.last_local_message = None
         self.last_local_answer = None
@@ -79,9 +84,15 @@ class AIRouter:
         if handled:
             return answer
 
-        return self.process_ai(
+        answer = self.process_ai(
             user_message
         )
+
+        self.last_assistant_answer = str(
+            answer or ""
+        ).strip()
+
+        return answer
 
     def process_ai(
         self,
@@ -132,6 +143,17 @@ class AIRouter:
         message,
         on_delta,
     ):
+        """
+        Stream an AI answer and remember the exact completed assistant
+        response for contextual local-skill follow-ups.
+
+        Example:
+            User: show me presidents of USA from 1 to 4
+            AI:   1. George Washington; 2. John Adams; ...
+            User: show me pictures of these presidents
+
+        ImageSkill can then read only that immediately preceding answer.
+        """
         user_message = str(message).strip()
 
         if not user_message:
@@ -144,12 +166,41 @@ class AIRouter:
         )
 
         if handled:
-            on_delta(answer)
-            return answer
+            final_answer = str(
+                answer or ""
+            ).strip()
+
+            on_delta(
+                final_answer
+            )
+
+            self.last_assistant_answer = (
+                final_answer
+            )
+
+            return final_answer
 
         self.capture_automatic_fact(
             user_message
         )
+
+        streamed_parts = []
+
+        def capture_delta(
+            delta,
+        ):
+            chunk = str(
+                delta or ""
+            )
+
+            if chunk:
+                streamed_parts.append(
+                    chunk
+                )
+
+            on_delta(
+                delta
+            )
 
         if self.needs_internet(
             user_message
@@ -161,10 +212,25 @@ class AIRouter:
                     InternetAIService()
                 )
 
-            return self.internet_ai_service.stream(
+            result = self.internet_ai_service.stream(
                 user_message,
-                on_delta,
+                capture_delta,
             )
+
+            final_answer = str(
+                result or ""
+            ).strip()
+
+            if not final_answer:
+                final_answer = "".join(
+                    streamed_parts
+                ).strip()
+
+            self.last_assistant_answer = (
+                final_answer
+            )
+
+            return result
 
         if (
             self.last_ai_route == "internet"
@@ -177,20 +243,50 @@ class AIRouter:
                     InternetAIService()
                 )
 
-            return self.internet_ai_service.stream(
+            result = self.internet_ai_service.stream(
                 user_message,
-                on_delta,
+                capture_delta,
             )
+
+            final_answer = str(
+                result or ""
+            ).strip()
+
+            if not final_answer:
+                final_answer = "".join(
+                    streamed_parts
+                ).strip()
+
+            self.last_assistant_answer = (
+                final_answer
+            )
+
+            return result
 
         self.last_ai_route = "normal"
 
         if self.ai_service is None:
             self.ai_service = AIService()
 
-        return self.ai_service.stream(
+        result = self.ai_service.stream(
             user_message,
-            on_delta,
+            capture_delta,
         )
+
+        final_answer = str(
+            result or ""
+        ).strip()
+
+        if not final_answer:
+            final_answer = "".join(
+                streamed_parts
+            ).strip()
+
+        self.last_assistant_answer = (
+            final_answer
+        )
+
+        return result
 
     def process_memory(
         self,
@@ -1118,6 +1214,9 @@ class AIRouter:
                     skill_result.answer or ""
                 ).strip()
                 self.last_ai_route = "local"
+                self.last_assistant_answer = str(
+                    skill_result.answer or ""
+                ).strip()
                 return True, skill_result.answer
 
             return False, None
@@ -1134,6 +1233,9 @@ class AIRouter:
                 skill_result.answer or ""
             ).strip()
             self.last_ai_route = "local"
+            self.last_assistant_answer = str(
+                skill_result.answer or ""
+            ).strip()
             return True, skill_result.answer
 
         plugin_result = self.plugin_manager.process(
@@ -1152,6 +1254,9 @@ class AIRouter:
                 plugin_answer or ""
             ).strip()
             self.last_ai_route = "local"
+            self.last_assistant_answer = str(
+                plugin_answer or ""
+            ).strip()
 
         return plugin_handled, plugin_answer
 
@@ -1284,6 +1389,7 @@ class AIRouter:
             self.internet_ai_service.clear_memory()
 
         self.last_ai_route = None
+        self.last_assistant_answer = None
         self.last_local_message = None
         self.last_local_answer = None
         self.last_skill_result = None
@@ -1292,6 +1398,7 @@ class AIRouter:
         self.ai_service = None
         self.internet_ai_service = None
         self.last_ai_route = None
+        self.last_assistant_answer = None
         self.last_local_message = None
         self.last_local_answer = None
         self.last_skill_result = None
