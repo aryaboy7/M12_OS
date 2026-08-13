@@ -1,13 +1,19 @@
 import json
+import base64
 import queue
 import re
 import threading
 import subprocess
 import sys
+import ssl
+import urllib.parse
+import urllib.request
 import webbrowser
 from kivy.utils import platform
 from datetime import datetime
 from pathlib import Path
+
+import certifi
 
 from kivy.clock import Clock
 from kivy.core.clipboard import Clipboard
@@ -891,6 +897,877 @@ class AIScreen(Screen):
         parts.append(escape_markup(raw_text[last_end:]))
         return "".join(parts)
 
+    def copy_gallery_image(
+        self,
+        item,
+    ):
+        """
+        Copy the current image on desktop.
+
+        Linux uses xclip when available.
+        macOS uses osascript/NSPasteboard-compatible file copy behavior
+        by copying the downloaded image file through the Finder clipboard.
+
+        If binary image clipboard support is unavailable, the local file
+        path is copied as text instead of failing silently.
+        """
+        if platform == "android":
+            return
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+            return
+
+        image_url = str(
+            item.get(
+                "original_url",
+                "",
+            )
+            or item.get(
+                "image_url",
+                "",
+            )
+        ).strip()
+
+        if not image_url:
+            self.voice_status.text = (
+                "Copy Image failed: no image URL"
+            )
+            return
+
+        title = str(
+            item.get(
+                "title",
+                "",
+            )
+            or self.current_image_query
+            or "m12_image"
+        ).strip()
+
+        threading.Thread(
+            target=self._copy_gallery_image_worker,
+            args=(
+                image_url,
+                title,
+            ),
+            daemon=True,
+        ).start()
+
+        self.voice_status.text = (
+            "Copying image..."
+        )
+
+    def _copy_gallery_image_worker(
+        self,
+        image_url,
+        title,
+    ):
+        try:
+            request = urllib.request.Request(
+                image_url,
+                headers={
+                    "User-Agent": (
+                        "M12OS/0.5.3 image clipboard"
+                    ),
+                },
+            )
+
+            ssl_context = ssl.create_default_context(
+                cafile=certifi.where()
+            )
+
+            with urllib.request.urlopen(
+                request,
+                timeout=30,
+                context=ssl_context,
+            ) as response:
+                image_bytes = response.read()
+                content_type = str(
+                    response.headers.get(
+                        "Content-Type",
+                        "",
+                    )
+                ).split(
+                    ";",
+                    1,
+                )[0].strip().lower()
+
+            filename = self._image_filename(
+                title=title,
+                image_url=image_url,
+                content_type=content_type,
+            )
+
+            temp_dir = (
+                Path.home()
+                / ".cache"
+                / "m12os"
+                / "clipboard"
+            )
+            temp_dir.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            temp_path = (
+                temp_dir
+                / filename
+            )
+            temp_path.write_bytes(
+                image_bytes
+            )
+
+            copied = False
+
+            if sys.platform.startswith(
+                "linux"
+            ):
+                # Try xclip with MIME type first.
+                mime = (
+                    content_type
+                    if content_type.startswith(
+                        "image/"
+                    )
+                    else "image/png"
+                )
+
+                try:
+                    process = subprocess.run(
+                        [
+                            "xclip",
+                            "-selection",
+                            "clipboard",
+                            "-t",
+                            mime,
+                            "-i",
+                            str(temp_path),
+                        ],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    copied = (
+                        process.returncode == 0
+                    )
+                except Exception:
+                    copied = False
+
+            elif sys.platform == "darwin":
+                # Copy the image file into the macOS clipboard via Finder.
+                try:
+                    script = (
+                        'tell application "Finder" to set the clipboard '
+                        f'to (POSIX file "{str(temp_path)}")'
+                    )
+                    process = subprocess.run(
+                        [
+                            "/usr/bin/osascript",
+                            "-e",
+                            script,
+                        ],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    copied = (
+                        process.returncode == 0
+                    )
+                except Exception:
+                    copied = False
+
+            if not copied:
+                # Safe fallback: copy file path as text.
+                Clipboard.copy(
+                    str(temp_path)
+                )
+
+            Clock.schedule_once(
+                lambda dt, ok=copied, path=str(temp_path): (
+                    self._finish_image_copy(
+                        ok,
+                        path,
+                    )
+                ),
+                0,
+            )
+
+        except Exception as error:
+            error_message = (
+                f"{type(error).__name__}: "
+                f"{error}"
+            )
+
+            Clock.schedule_once(
+                lambda dt, message=error_message: (
+                    self._finish_image_copy_error(
+                        message
+                    )
+                ),
+                0,
+            )
+
+    def _finish_image_copy(
+        self,
+        copied,
+        path,
+    ):
+        self.voice_status.text = (
+            "Image copied to clipboard"
+            if copied
+            else (
+                "Image file path copied: "
+                + str(path)
+            )
+        )
+
+    def _finish_image_copy_error(
+        self,
+        error_message,
+    ):
+        self.voice_status.text = (
+            "Copy Image failed: "
+            + str(error_message)
+        )
+
+    def share_gallery_image(
+        self,
+        item,
+    ):
+        """
+        Android: download the image to a temporary cache file and open
+        the native share sheet using FileProvider.
+        """
+        if platform != "android":
+            return
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+            return
+
+        image_url = str(
+            item.get(
+                "original_url",
+                "",
+            )
+            or item.get(
+                "image_url",
+                "",
+            )
+        ).strip()
+
+        if not image_url:
+            self.voice_status.text = (
+                "Share Image failed: no image URL"
+            )
+            return
+
+        title = str(
+            item.get(
+                "title",
+                "",
+            )
+            or self.current_image_query
+            or "m12_image"
+        ).strip()
+
+        threading.Thread(
+            target=self._share_gallery_image_worker,
+            args=(
+                image_url,
+                title,
+            ),
+            daemon=True,
+        ).start()
+
+        self.voice_status.text = (
+            "Preparing image to share..."
+        )
+
+    def _share_gallery_image_worker(
+        self,
+        image_url,
+        title,
+    ):
+        try:
+            print(
+                "[IMAGE DEBUG] Android share worker started",
+                flush=True,
+            )
+
+            request = urllib.request.Request(
+                image_url,
+                headers={
+                    "User-Agent": (
+                        "M12OS/0.5.3 image share"
+                    ),
+                },
+            )
+
+            ssl_context = ssl.create_default_context(
+                cafile=certifi.where()
+            )
+
+            with urllib.request.urlopen(
+                request,
+                timeout=30,
+                context=ssl_context,
+            ) as response:
+                image_bytes = response.read()
+                content_type = str(
+                    response.headers.get(
+                        "Content-Type",
+                        "",
+                    )
+                ).split(
+                    ";",
+                    1,
+                )[0].strip().lower()
+
+            if not image_bytes:
+                raise RuntimeError(
+                    "Downloaded image is empty."
+                )
+
+            filename = self._image_filename(
+                title=title,
+                image_url=image_url,
+                content_type=content_type,
+            )
+
+            (
+                _destination,
+                content_uri_string,
+            ) = self._save_image_android_media_store(
+                image_bytes=image_bytes,
+                filename=filename,
+                content_type=content_type,
+            )
+
+            print(
+                "[IMAGE DEBUG] MediaStore share URI: "
+                + content_uri_string,
+                flush=True,
+            )
+
+            from jnius import autoclass, cast
+
+            PythonActivity = autoclass(
+                "org.kivy.android.PythonActivity"
+            )
+            Intent = autoclass(
+                "android.content.Intent"
+            )
+            Uri = autoclass(
+                "android.net.Uri"
+            )
+
+            activity = PythonActivity.mActivity
+            content_uri = Uri.parse(
+                content_uri_string
+            )
+
+            share_intent = Intent(
+                Intent.ACTION_SEND
+            )
+            share_intent.setType(
+                (
+                    content_type
+                    if content_type.startswith("image/")
+                    else "image/*"
+                )
+            )
+            share_intent.putExtra(
+                Intent.EXTRA_STREAM,
+                cast(
+                    "android.os.Parcelable",
+                    content_uri,
+                ),
+            )
+            share_intent.addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+
+            JavaString = autoclass(
+                "java.lang.String"
+            )
+
+            chooser = Intent.createChooser(
+                share_intent,
+                JavaString("Share Image"),
+            )
+            chooser.addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK
+            )
+
+            Clock.schedule_once(
+                lambda dt, intent=chooser: (
+                    self._launch_android_share_intent(
+                        intent
+                    )
+                ),
+                0,
+            )
+
+        except Exception as error:
+            error_message = (
+                f"{type(error).__name__}: {error}"
+            )
+
+            print(
+                "[IMAGE DEBUG] SHARE ERROR: "
+                + error_message,
+                flush=True,
+            )
+
+            Clock.schedule_once(
+                lambda dt, message=error_message: (
+                    self._finish_image_share_error(
+                        message
+                    )
+                ),
+                0,
+            )
+
+    @staticmethod
+    def _launch_android_share_intent(
+        intent,
+    ):
+        from jnius import autoclass
+
+        PythonActivity = autoclass(
+            "org.kivy.android.PythonActivity"
+        )
+
+        PythonActivity.mActivity.startActivity(
+            intent
+        )
+
+    def _finish_image_share_error(
+        self,
+        error_message,
+    ):
+        self.voice_status.text = (
+            "Share Image failed: "
+            + str(error_message)
+        )
+
+    def save_gallery_image(
+        self,
+        item,
+    ):
+        """
+        Download and save one gallery image.
+
+        Linux/macOS/desktop:
+            ~/Pictures/M12 AI/
+
+        Android:
+            Saves through MediaStore into:
+            Pictures/M12 AI/
+
+        MediaStore avoids broad storage permissions on modern Android.
+        """
+        if not isinstance(
+            item,
+            dict,
+        ):
+            return
+
+        image_url = str(
+            item.get(
+                "original_url",
+                "",
+            )
+            or item.get(
+                "image_url",
+                "",
+            )
+        ).strip()
+
+        if not image_url:
+            self.voice_status.text = (
+                "Image save failed: no image URL"
+            )
+            return
+
+        title = str(
+            item.get(
+                "title",
+                "",
+            )
+            or self.current_image_query
+            or "m12_image"
+        ).strip()
+
+        threading.Thread(
+            target=self._save_gallery_image_worker,
+            args=(
+                image_url,
+                title,
+            ),
+            daemon=True,
+        ).start()
+
+        self.voice_status.text = (
+            "Saving image..."
+        )
+
+    def _save_gallery_image_worker(
+        self,
+        image_url,
+        title,
+    ):
+        try:
+            print(
+                "[IMAGE DEBUG] Android/desktop save worker started "
+                f"platform={platform}",
+                flush=True,
+            )
+            request = urllib.request.Request(
+                image_url,
+                headers={
+                    "User-Agent": (
+                        "M12OS/0.5.3 image downloader"
+                    ),
+                },
+            )
+
+            ssl_context = ssl.create_default_context(
+                cafile=certifi.where()
+            )
+
+            with urllib.request.urlopen(
+                request,
+                timeout=30,
+                context=ssl_context,
+            ) as response:
+                image_bytes = response.read()
+                content_type = str(
+                    response.headers.get(
+                        "Content-Type",
+                        "",
+                    )
+                ).split(
+                    ";",
+                    1,
+                )[0].strip().lower()
+
+            if not image_bytes:
+                raise RuntimeError(
+                    "Downloaded image is empty."
+                )
+
+            filename = self._image_filename(
+                title=title,
+                image_url=image_url,
+                content_type=content_type,
+            )
+
+            if platform == "android":
+                (
+                    destination,
+                    _content_uri,
+                ) = self._save_image_android_media_store(
+                    image_bytes=image_bytes,
+                    filename=filename,
+                    content_type=content_type,
+                )
+            else:
+                destination = (
+                    self._save_image_desktop(
+                        image_bytes=image_bytes,
+                        filename=filename,
+                    )
+                )
+
+            Clock.schedule_once(
+                lambda dt, path=destination: (
+                    self._finish_image_save(
+                        path
+                    )
+                ),
+                0,
+            )
+
+        except Exception as error:
+            error_message = (
+                f"{type(error).__name__}: "
+                f"{error}"
+            )
+
+            Clock.schedule_once(
+                lambda dt, message=error_message: (
+                    self._finish_image_save_error(
+                        message
+                    )
+                ),
+                0,
+            )
+
+    @staticmethod
+    def _image_filename(
+        title,
+        image_url,
+        content_type,
+    ):
+        """
+        Build a safe file name while preserving a useful image extension.
+        """
+        value = str(
+            title or "m12_image"
+        )
+
+        if value.lower().startswith(
+            "file:"
+        ):
+            value = value[5:]
+
+        value = re.sub(
+            r"[^\w .()-]+",
+            "_",
+            value,
+            flags=re.UNICODE,
+        )
+
+        value = re.sub(
+            r"\s+",
+            " ",
+            value,
+        ).strip(
+            " ."
+        )
+
+        if not value:
+            value = "m12_image"
+
+        parsed_path = urllib.parse.urlparse(
+            image_url
+        ).path
+
+        extension = Path(
+            parsed_path
+        ).suffix.lower()
+
+        valid_extensions = {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+            ".gif",
+        }
+
+        if extension not in valid_extensions:
+            mime_extensions = {
+                "image/jpeg": ".jpg",
+                "image/png": ".png",
+                "image/webp": ".webp",
+                "image/gif": ".gif",
+            }
+
+            extension = mime_extensions.get(
+                content_type,
+                ".jpg",
+            )
+
+        if not value.lower().endswith(
+            extension
+        ):
+            value += extension
+
+        return value
+
+    @staticmethod
+    def _save_image_desktop(
+        image_bytes,
+        filename,
+    ):
+        pictures_dir = (
+            Path.home()
+            / "Pictures"
+            / "M12 AI"
+        )
+
+        pictures_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        destination = (
+            pictures_dir
+            / filename
+        )
+
+        counter = 2
+
+        while destination.exists():
+            destination = (
+                pictures_dir
+                / (
+                    f"{Path(filename).stem} "
+                    f"({counter})"
+                    f"{Path(filename).suffix}"
+                )
+            )
+            counter += 1
+
+        destination.write_bytes(
+            image_bytes
+        )
+
+        return str(
+            destination
+        )
+
+    @staticmethod
+    def _save_image_android_media_store(
+        image_bytes,
+        filename,
+        content_type,
+    ):
+        """
+        Save through Android MediaStore into Pictures/M12 AI.
+
+        Returns:
+            (display_path, content_uri_string)
+        """
+        from jnius import autoclass
+
+        PythonActivity = autoclass(
+            "org.kivy.android.PythonActivity"
+        )
+        MediaColumns = autoclass(
+            "android.provider.MediaStore$MediaColumns"
+        )
+        ImagesMedia = autoclass(
+            "android.provider.MediaStore$Images$Media"
+        )
+        ContentValues = autoclass(
+            "android.content.ContentValues"
+        )
+        Environment = autoclass(
+            "android.os.Environment"
+        )
+        BuildVersion = autoclass(
+            "android.os.Build$VERSION"
+        )
+
+        activity = PythonActivity.mActivity
+        resolver = activity.getContentResolver()
+
+        values = ContentValues()
+        values.put(
+            MediaColumns.DISPLAY_NAME,
+            filename,
+        )
+        values.put(
+            MediaColumns.MIME_TYPE,
+            (
+                content_type
+                if str(content_type).startswith("image/")
+                else "image/jpeg"
+            ),
+        )
+
+        relative_path = (
+            Environment.DIRECTORY_PICTURES
+            + "/M12 AI"
+        )
+
+        if int(BuildVersion.SDK_INT) >= 29:
+            values.put(
+                MediaColumns.RELATIVE_PATH,
+                relative_path,
+            )
+
+        collection = (
+            ImagesMedia.EXTERNAL_CONTENT_URI
+        )
+
+        uri = resolver.insert(
+            collection,
+            values,
+        )
+
+        if uri is None:
+            raise RuntimeError(
+                "Android MediaStore could not create image."
+            )
+
+        output_stream = resolver.openOutputStream(
+            uri
+        )
+
+        if output_stream is None:
+            resolver.delete(
+                uri,
+                None,
+                None,
+            )
+            raise RuntimeError(
+                "Android MediaStore could not open image output."
+            )
+
+        try:
+            output_stream.write(
+                image_bytes
+            )
+            output_stream.flush()
+        except Exception:
+            try:
+                resolver.delete(
+                    uri,
+                    None,
+                    None,
+                )
+            except Exception:
+                pass
+            raise
+        finally:
+            output_stream.close()
+
+        return (
+            "Pictures/M12 AI/" + filename,
+            str(uri.toString()),
+        )
+
+    def _finish_image_save(
+        self,
+        destination,
+    ):
+        self.voice_status.text = (
+            "Image saved: "
+            + str(destination)
+        )
+
+        self.log_system(
+            "INFO",
+            self.voice_status.text,
+        )
+
+    def _finish_image_save_error(
+        self,
+        error_message,
+    ):
+        print(
+            "[IMAGE DEBUG] SAVE ERROR: "
+            + str(error_message),
+            flush=True,
+        )
+
+        self.voice_status.text = (
+            "Image save failed: "
+            + str(error_message)
+        )
+
+        self.log_system(
+            "ERROR",
+            self.voice_status.text,
+        )
+
     def open_chat_url(
         self,
         instance,
@@ -1236,6 +2113,18 @@ class AIScreen(Screen):
             spacing=height(8),
         )
 
+        share_copy_btn = Button(
+            text=(
+                "Share Image"
+                if platform == "android"
+                else "Copy Image"
+            ),
+        )
+
+        save_btn = Button(
+            text="Save Image",
+        )
+
         source_btn = Button(
             text="Open Source",
         )
@@ -1244,6 +2133,12 @@ class AIScreen(Screen):
             text="Close",
         )
 
+        buttons.add_widget(
+            share_copy_btn
+        )
+        buttons.add_widget(
+            save_btn
+        )
         buttons.add_widget(
             source_btn
         )
@@ -1275,6 +2170,18 @@ class AIScreen(Screen):
             not bool(source_url)
         )
 
+        def save_image(
+            instance=None,
+        ):
+            print(
+                "[IMAGE DEBUG] SAVE BUTTON PRESSED",
+                flush=True,
+            )
+
+            self.save_gallery_image(
+                item
+            )
+
         def open_source(
             instance=None,
         ):
@@ -1284,6 +2191,30 @@ class AIScreen(Screen):
                     source_url,
                 )
 
+        def share_or_copy(
+            instance=None,
+        ):
+            print(
+                "[IMAGE DEBUG] SHARE/COPY BUTTON PRESSED "
+                f"platform={platform}",
+                flush=True,
+            )
+
+            if platform == "android":
+                self.share_gallery_image(
+                    item
+                )
+            else:
+                self.copy_gallery_image(
+                    item
+                )
+
+        share_copy_btn.bind(
+            on_press=share_or_copy
+        )
+        save_btn.bind(
+            on_press=save_image
+        )
         source_btn.bind(
             on_press=open_source
         )
