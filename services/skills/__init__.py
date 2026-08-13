@@ -2,6 +2,7 @@ from services.skills.alarm_skill import AlarmSkill
 from services.skills.calculator_skill import CalculatorSkill
 from services.skills.calendar_skill import CalendarSkill
 from services.skills.context_skill import ContextSkill
+from services.skills.image_skill import ImageSkill
 from services.skills.music_skill import MusicSkill
 from services.skills.note_skill import NotesSkill
 from services.skills.reminder_skill import ReminderSkill
@@ -15,14 +16,11 @@ from services.skills.registry import get_skill_registry
 
 def register_default_skills():
     """
-    Explicitly register all built-in M12 skills.
+    Explicitly register all built-in M12OS skills.
 
-    Android/python-for-android may not reliably discover packaged
-    *_skill.py files using filesystem globbing, so core M12 skills
-    are registered explicitly.
-
-    Dynamic discovery can still be used separately for optional
-    or future skills.
+    This is especially important on Android, where filesystem-based
+    automatic discovery of *_skill.py modules may not always work
+    reliably inside the packaged application.
     """
     registry = get_skill_registry()
 
@@ -31,6 +29,7 @@ def register_default_skills():
         CalculatorSkill,
         CalendarSkill,
         ContextSkill,
+        ImageSkill,
         MusicSkill,
         NotesSkill,
         ReminderSkill,
@@ -46,17 +45,11 @@ def register_default_skills():
     for skill_class in skill_classes:
         try:
             skill = skill_class()
-
-            registry.register(
-                skill
-            )
-
-            loaded.append(
-                skill.name
-            )
+            registry.register(skill)
+            loaded.append(skill.name)
 
             print(
-                "[BuiltInSkills] Loaded "
+                f"[BuiltInSkills] Loaded "
                 f"{skill_class.__name__} "
                 f"as '{skill.name}'"
             )
@@ -64,21 +57,18 @@ def register_default_skills():
         except Exception as error:
             message = (
                 f"{skill_class.__name__}: "
-                f"{type(error).__name__}: "
-                f"{error}"
+                f"{type(error).__name__}: {error}"
             )
 
-            errors.append(
-                message
-            )
+            errors.append(message)
 
             print(
-                "[BuiltInSkills] Load failed: "
+                f"[BuiltInSkills] Load failed: "
                 f"{message}"
             )
 
     print(
-        "[BuiltInSkills] Ready: "
+        f"[BuiltInSkills] Ready: "
         f"{len(loaded)} skill(s), "
         f"{len(errors)} error(s)."
     )

@@ -16,6 +16,8 @@ from kivy.utils import escape_markup
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from kivy.uix.image import AsyncImage
+from kivy.uix.gridlayout import GridLayout
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 from kivy.uix.scrollview import ScrollView
@@ -94,6 +96,12 @@ class AIScreen(Screen):
         )
 
         self.chat_text = self.load_conversation_history()
+
+        # ImageSkill popup-gallery state.
+        # Images are shown in a popup so Conversation/System Log sizing
+        # remains exactly the same as the stable AI screen.
+        self.current_image_items = []
+        self.current_image_query = ""
 
         profile = device_profile()
 
@@ -942,6 +950,348 @@ class AIScreen(Screen):
                 "Unable to open browser link: "
                 f"{type(error).__name__}: {error}"
             )
+
+    # -------------------------------------------------------------
+    # ImageSkill popup gallery
+    # -------------------------------------------------------------
+    def handle_structured_skill_result(
+        self,
+    ):
+        """
+        Display structured ImageSkill results without changing the
+        Conversation/System Log layout.
+        """
+        result = getattr(
+            self.ai_router,
+            "last_skill_result",
+            None,
+        )
+
+        if result is None:
+            return
+
+        action = str(
+            getattr(
+                result,
+                "action",
+                "",
+            )
+        )
+
+        if action not in {
+            "show_image",
+            "show_image_gallery",
+        }:
+            return
+
+        data = getattr(
+            result,
+            "data",
+            None,
+        )
+
+        if not isinstance(
+            data,
+            dict,
+        ):
+            return
+
+        images = data.get(
+            "images",
+            [],
+        )
+
+        if not isinstance(
+            images,
+            list,
+        ):
+            images = []
+
+        # Backward compatibility with ImageSkill v1.
+        if not images:
+            image_url = str(
+                data.get(
+                    "image_url",
+                    "",
+                )
+            ).strip()
+
+            if image_url:
+                images = [
+                    {
+                        "image_url": image_url,
+                        "source_url": str(
+                            data.get(
+                                "source_url",
+                                "",
+                            )
+                        ).strip(),
+                        "title": str(
+                            data.get(
+                                "title",
+                                "",
+                            )
+                        ).strip(),
+                    }
+                ]
+
+        images = [
+            item
+            for item in images[:4]
+            if isinstance(
+                item,
+                dict,
+            )
+            and str(
+                item.get(
+                    "image_url",
+                    "",
+                )
+            ).strip()
+        ]
+
+        if not images:
+            return
+
+        self.current_image_items = images
+        self.current_image_query = str(
+            data.get(
+                "query",
+                "",
+            )
+        ).strip()
+
+        self.open_image_gallery_popup()
+
+    def open_image_gallery_popup(
+        self,
+        instance=None,
+    ):
+        """
+        Open up to four ImageSkill results in a separate 2x2 popup.
+        """
+        if not self.current_image_items:
+            return
+
+        content = BoxLayout(
+            orientation="vertical",
+            spacing=height(8),
+            padding=height(8),
+        )
+
+        gallery = GridLayout(
+            cols=2,
+            spacing=height(8),
+            size_hint=(1, 1),
+        )
+
+        popup = Popup(
+            title=(
+                self.current_image_query
+                or "Images"
+            ),
+            content=content,
+            size_hint=(0.95, 0.92),
+        )
+
+        for index, item in enumerate(
+            self.current_image_items
+        ):
+            image_url = str(
+                item.get(
+                    "image_url",
+                    "",
+                )
+            ).strip()
+
+            preview = AsyncImage(
+                source=image_url,
+                allow_stretch=True,
+                keep_ratio=True,
+            )
+
+            preview._m12_image_index = index
+            preview.bind(
+                on_touch_down=lambda widget, touch, i=index: (
+                    self.on_popup_gallery_image_touch(
+                        widget,
+                        touch,
+                        i,
+                        popup,
+                    )
+                )
+            )
+
+            gallery.add_widget(
+                preview
+            )
+
+        close_btn = Button(
+            text="Close",
+            size_hint_y=None,
+            height=height(48),
+        )
+        close_btn.bind(
+            on_press=popup.dismiss
+        )
+
+        content.add_widget(
+            gallery
+        )
+        content.add_widget(
+            close_btn
+        )
+
+        popup.open()
+
+    def on_popup_gallery_image_touch(
+        self,
+        instance,
+        touch,
+        index,
+        gallery_popup,
+    ):
+        """
+        Tap one gallery image to open it larger.
+        """
+        if not instance.collide_point(
+            *touch.pos
+        ):
+            return False
+
+        if getattr(
+            touch,
+            "is_mouse_scrolling",
+            False,
+        ):
+            return False
+
+        # Keep the gallery open underneath the large-image popup.
+        # Closing the large image returns the user to the same gallery
+        # so another picture can be selected.
+        self.open_single_image_popup(
+            index
+        )
+        return True
+
+    def open_single_image_popup(
+        self,
+        index=0,
+    ):
+        """
+        Open one selected gallery image at large size.
+        """
+        if not self.current_image_items:
+            return
+
+        index = max(
+            0,
+            min(
+                int(index),
+                len(
+                    self.current_image_items
+                ) - 1,
+            ),
+        )
+
+        item = self.current_image_items[
+            index
+        ]
+
+        image_url = str(
+            item.get(
+                "image_url",
+                "",
+            )
+        ).strip()
+
+        if not image_url:
+            return
+
+        title = str(
+            item.get(
+                "title",
+                "",
+            )
+            or self.current_image_query
+            or "Image"
+        ).strip()
+
+        content = BoxLayout(
+            orientation="vertical",
+            spacing=height(8),
+            padding=height(8),
+        )
+
+        large_image = AsyncImage(
+            source=image_url,
+            allow_stretch=True,
+            keep_ratio=True,
+        )
+
+        buttons = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=height(48),
+            spacing=height(8),
+        )
+
+        source_btn = Button(
+            text="Open Source",
+        )
+
+        close_btn = Button(
+            text="Close",
+        )
+
+        buttons.add_widget(
+            source_btn
+        )
+        buttons.add_widget(
+            close_btn
+        )
+
+        content.add_widget(
+            large_image
+        )
+        content.add_widget(
+            buttons
+        )
+
+        popup = Popup(
+            title=title,
+            content=content,
+            size_hint=(0.96, 0.94),
+        )
+
+        source_url = str(
+            item.get(
+                "source_url",
+                "",
+            )
+        ).strip()
+
+        source_btn.disabled = (
+            not bool(source_url)
+        )
+
+        def open_source(
+            instance=None,
+        ):
+            if source_url:
+                self.open_chat_url(
+                    None,
+                    source_url,
+                )
+
+        source_btn.bind(
+            on_press=open_source
+        )
+        close_btn.bind(
+            on_press=popup.dismiss
+        )
+
+        popup.open()
 
     # -------------------------------------------------------------
     # System Log
@@ -2066,6 +2416,9 @@ class AIScreen(Screen):
                     answer or ""
                 ).strip()
 
+                if result_holder["handled"]:
+                    self.handle_structured_skill_result()
+
             except Exception as error:
                 print(
                     "Realtime local routing error: "
@@ -2791,6 +3144,8 @@ class AIScreen(Screen):
                     speaker="M12 AI",
                     message=str(local_answer or "").strip(),
                 )
+
+                self.handle_structured_skill_result()
 
                 self.ai_is_busy = False
                 self.set_controls_enabled(True)

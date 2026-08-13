@@ -25,6 +25,7 @@ class AIRouter:
         # Remember the most recent request handled by an M12 local skill.
         self.last_local_message = None
         self.last_local_answer = None
+        self.last_skill_result = None
 
         self.plugin_manager = AIPluginManager()
         self.memory_manager = get_memory_manager()
@@ -1054,6 +1055,10 @@ class AIRouter:
     ):
         original_message = str(message).strip()
 
+        # Expose the complete SkillResult to AIScreen when a local
+        # capability returns structured UI data such as an image.
+        self.last_skill_result = None
+
         context = M12Context(
             ai_screen=ai_screen,
             router=self,
@@ -1107,6 +1112,7 @@ class AIRouter:
             )
 
             if skill_result.handled:
+                self.last_skill_result = skill_result
                 self.last_local_message = original_message
                 self.last_local_answer = str(
                     skill_result.answer or ""
@@ -1122,6 +1128,7 @@ class AIRouter:
         )
 
         if skill_result.handled:
+            self.last_skill_result = skill_result
             self.last_local_message = original_message
             self.last_local_answer = str(
                 skill_result.answer or ""
@@ -1279,6 +1286,7 @@ class AIRouter:
         self.last_ai_route = None
         self.last_local_message = None
         self.last_local_answer = None
+        self.last_skill_result = None
 
     def reset_service(self):
         self.ai_service = None
@@ -1286,6 +1294,7 @@ class AIRouter:
         self.last_ai_route = None
         self.last_local_message = None
         self.last_local_answer = None
+        self.last_skill_result = None
 
     def reload_plugins(self):
         self.plugin_manager.reload_plugins()
