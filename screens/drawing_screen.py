@@ -29,7 +29,7 @@ from utils.ui_scale import (
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DRAWINGS_DIR = BASE_DIR / "data" / "drawings"
+from utils.data_paths import DRAWINGS_DIR
 DRAWINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 

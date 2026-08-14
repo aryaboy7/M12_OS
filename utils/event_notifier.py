@@ -17,8 +17,7 @@ from utils.logger import log
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-EVENTS_FILE = BASE_DIR / "data" / "events" / "events.json"
-SOUNDS_DIR = BASE_DIR / "data" / "sounds"
+from utils.data_paths import EVENTS_FILE, SOUNDS_DIR
 REMINDER_SOUND = SOUNDS_DIR / "reminder.wav"
 
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]

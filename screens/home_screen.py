@@ -36,10 +36,12 @@ from utils.ui_scale import (
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-EVENTS_FILE = BASE_DIR / "data" / "events" / "events.json"
-ALARMS_FILE = BASE_DIR / "data" / "alarms" / "alarms.json"
-BT_DEFAULT_FILE = BASE_DIR / "data" / "bluetooth" / "default_speaker.json"
-MUSIC_STATUS_FILE = BASE_DIR / "data" / "music" / "player_status.json"
+from utils.data_paths import (
+    EVENTS_FILE,
+    ALARMS_FILE,
+    BT_DEFAULT_FILE,
+    MUSIC_STATUS_FILE,
+)
 
 BG = (0.04, 0.07, 0.12, 1)
 CARD_CLOCK = (0.08, 0.18, 0.32, 1)

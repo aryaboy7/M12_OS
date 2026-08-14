@@ -8,7 +8,7 @@ from services.skills.base_skill import BaseSkill, SkillResult
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-EVENTS_FILE = BASE_DIR / "data" / "events" / "events.json"
+from utils.data_paths import EVENTS_FILE
 
 DAY_NAMES = (
     "Mon",

@@ -36,7 +36,7 @@ from utils.ui_scale import (
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-BT_DIR = BASE_DIR / "data" / "bluetooth"
+from utils.data_paths import BLUETOOTH_DIR as BT_DIR
 BT_DIR.mkdir(parents=True, exist_ok=True)
 SPEAKERS_FILE = BT_DIR / "speakers.json"
 DEFAULT_SPEAKER_FILE = BT_DIR / "default_speaker.json"

@@ -39,7 +39,7 @@ from utils.ui_scale import font, height, device_profile
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AI_SETTINGS_FILE = BASE_DIR / "config" / "ai_settings.json"
-AI_CONVERSATION_FILE = BASE_DIR / "data" / "ai" / "conversation_history.txt"
+from utils.data_paths import AI_CONVERSATION_FILE
 
 VOICE_LANGUAGES = (
     ("en", "English"),

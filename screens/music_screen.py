@@ -45,9 +45,7 @@ from utils.ui_scale import (
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_MUSIC_DIR = BASE_DIR / "data" / "music"
-DATA_MUSIC_DIR.mkdir(parents=True, exist_ok=True)
-FAVORITES_FILE = DATA_MUSIC_DIR / "favorites.json"
+from utils.data_paths import MUSIC_DIR as DATA_MUSIC_DIR, FAVORITES_FILE
 PLAYER_STATUS_FILE = DATA_MUSIC_DIR / "player_status.json"
 
 if platform == "macosx":

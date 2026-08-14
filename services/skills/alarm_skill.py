@@ -10,8 +10,7 @@ from services.skills.base_skill import BaseSkill, SkillResult
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-ALARMS_DIR = BASE_DIR / "data" / "alarms"
-ALARMS_FILE = ALARMS_DIR / "alarms.json"
+from utils.data_paths import ALARMS_DIR, ALARMS_FILE
 
 DAY_NAMES = [
     "Mon",

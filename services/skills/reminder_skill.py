@@ -8,8 +8,7 @@ from services.skills.base_skill import BaseSkill, SkillResult
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-EVENTS_DIR = BASE_DIR / "data" / "events"
-EVENTS_FILE = EVENTS_DIR / "events.json"
+from utils.data_paths import EVENTS_DIR, EVENTS_FILE
 
 REMINDER_MINUTES = {
     "Event Time": 0,

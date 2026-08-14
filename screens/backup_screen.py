@@ -17,6 +17,12 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.uix.popup import Popup
 
 from utils.logger import log
+from utils.data_paths import (
+    BACKUPS_DIR,
+    NOTES_DIR,
+    EVENTS_DIR,
+    ALARMS_DIR,
+)
 from utils.system_header import create_system_header
 from utils.ui_scale import (
     title_font,
@@ -31,15 +37,15 @@ from utils.ui_scale import (
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-BACKUP_DIR = BASE_DIR / "data" / "backups"
+BACKUP_DIR = BACKUPS_DIR
 GOOGLE_CONFIG_FILE = BASE_DIR / "config" / "google_drive_backup.json"
 GOOGLE_BACKUP_FILE = BACKUP_DIR / "google_drive_backup.zip"
 
 BACKUP_ITEMS = [
-    BASE_DIR / "config",
-    BASE_DIR / "data" / "notes",
-    BASE_DIR / "data" / "events",
-    BASE_DIR / "data" / "alarms",
+    (BASE_DIR / "config", "config"),
+    (NOTES_DIR, "data/notes"),
+    (EVENTS_DIR, "data/events"),
+    (ALARMS_DIR, "data/alarms"),
 ]
 
 # Android-safe restore rules.
@@ -277,14 +283,20 @@ class BackupScreen(Screen):
 
             with zipfile.ZipFile(backup_file, "w", zipfile.ZIP_DEFLATED) as zf:
                 for item in BACKUP_ITEMS:
-                    if not item.exists():
+                    source_path, archive_prefix = item
+
+                    if not source_path.exists():
                         continue
-                    if item.is_file():
-                        zf.write(item, item.relative_to(BASE_DIR))
+
+                    if source_path.is_file():
+                        zf.write(source_path, archive_prefix)
                         continue
-                    for path in item.rglob("*"):
-                        if path.is_file():
-                            zf.write(path, path.relative_to(BASE_DIR))
+
+                    for source_file in source_path.rglob("*"):
+                        if source_file.is_file():
+                            relative = source_file.relative_to(source_path)
+                            archive_name = Path(archive_prefix) / relative
+                            zf.write(source_file, archive_name.as_posix())
 
             self.status_label.text = f"Backup Completed\n\n{backup_file.name}"
             log.info(f"Backup created: {backup_file}")
@@ -432,7 +444,17 @@ class BackupScreen(Screen):
                         skipped += 1
                         continue
 
-                    target = BASE_DIR / name
+                    if name.startswith("data/notes/"):
+                        target = NOTES_DIR / name[len("data/notes/"):]
+                    elif name.startswith("data/events/"):
+                        target = EVENTS_DIR / name[len("data/events/"):]
+                    elif name.startswith("data/alarms/"):
+                        target = ALARMS_DIR / name[len("data/alarms/"):]
+                    elif name.startswith("config/"):
+                        target = BASE_DIR / name
+                    else:
+                        skipped += 1
+                        continue
 
                     try:
                         target.parent.mkdir(parents=True, exist_ok=True)

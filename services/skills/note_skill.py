@@ -9,7 +9,7 @@ from services.skills.base_skill import BaseSkill, SkillResult
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-NOTES_DIR = BASE_DIR / "data" / "notes"
+from utils.data_paths import NOTES_DIR
 TYPES_FILE = BASE_DIR / "config" / "note_types.json"
 
 DEFAULT_TYPES = [

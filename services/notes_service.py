@@ -8,7 +8,7 @@ from utils.logger import log
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-NOTES_DIR = BASE_DIR / "data" / "notes"
+from utils.data_paths import NOTES_DIR
 TYPES_FILE = BASE_DIR / "config" / "note_types.json"
 
 NOTES_DIR.mkdir(

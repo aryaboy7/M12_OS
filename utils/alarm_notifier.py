@@ -17,8 +17,7 @@ from utils.ui_scale import font, height
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-ALARMS_FILE = BASE_DIR / "data" / "alarms" / "alarms.json"
-SOUND_FILE = BASE_DIR / "data" / "sounds" / "reminder.wav"
+from utils.data_paths import ALARMS_FILE, REMINDER_SOUND_FILE as SOUND_FILE
 
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 

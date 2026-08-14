@@ -42,8 +42,7 @@ except Exception:
     pass
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-EVENTS_DIR = BASE_DIR / "data" / "events"
-EVENTS_FILE = EVENTS_DIR / "events.json"
+from utils.data_paths import EVENTS_DIR, EVENTS_FILE
 EVENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]

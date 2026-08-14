@@ -25,7 +25,7 @@ from utils.ui_scale import (
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-ALARMS_FILE = BASE_DIR / "data" / "alarms" / "alarms.json"
+from utils.data_paths import ALARMS_FILE
 
 
 def alarm_info_font():

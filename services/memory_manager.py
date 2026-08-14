@@ -6,6 +6,8 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
+from utils.data_paths import MEMORY_DIR
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -105,49 +107,8 @@ class MemoryManager:
                 / "permanent.json"
             )
 
-        android_private = os.getenv(
-            "ANDROID_PRIVATE",
-            "",
-        ).strip()
-
-        if android_private:
-            return (
-                Path(android_private)
-                / "memory"
-                / "permanent.json"
-            )
-
-        try:
-            from kivy.utils import platform
-
-            if platform == "android":
-                from kivy.app import App
-
-                app = App.get_running_app()
-
-                if app is not None:
-                    user_data_dir = str(
-                        getattr(
-                            app,
-                            "user_data_dir",
-                            "",
-                        )
-                    ).strip()
-
-                    if user_data_dir:
-                        return (
-                            Path(user_data_dir)
-                            / "memory"
-                            / "permanent.json"
-                        )
-
-        except Exception:
-            pass
-
         return (
-            BASE_DIR
-            / "data"
-            / "memory"
+            MEMORY_DIR
             / "permanent.json"
         )
 
