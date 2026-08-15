@@ -215,61 +215,149 @@ class ImageSkill(BaseSkill):
             text,
         ).strip()
 
-        # First choice: explicit numbered list, including inline lists:
-        # 1. George Washington; 2. John Adams; ...
-        numbered = re.findall(
-            r"(?:^|[;,\s])\d+[.)]\s*"
-            r"([^;,]+?)(?=(?:\s*[;,]\s*\d+[.)])|$)",
+        candidates = []
+
+        numeric = re.findall(
+            (
+                r"(?:^|[.;]\s*|,\s*)"
+                r"\d{1,2}[.)]\s*"
+                r"(.+?)"
+                r"(?=(?:[.;]\s*|,\s*)\d{1,2}[.)]\s*|$)"
+            ),
             cleaned,
             flags=re.IGNORECASE,
         )
 
-        candidates = numbered
+        if len(numeric) >= 2:
+            candidates = numeric
 
-        # Second choice: semicolon-separated concise items.
+        if len(candidates) < 2:
+            ordinal_words = (
+                r"first|second|third|fourth|fifth|sixth|seventh|"
+                r"eighth|ninth|tenth"
+            )
+
+            ordinal = re.findall(
+                (
+                    rf"(?:^|[.;]\s*)"
+                    rf"(?:{ordinal_words})"
+                    r"\s*[,.:)-]\s*"
+                    r"(.+?)"
+                    rf"(?=(?:[.;]\s*)(?:{ordinal_words})"
+                    r"\s*[,.:)-]\s*|$)"
+                ),
+                cleaned,
+                flags=re.IGNORECASE,
+            )
+
+            if len(ordinal) >= 2:
+                candidates = ordinal
+
+        if len(candidates) < 2:
+            number_words = (
+                r"one|two|three|four|five|six|seven|eight|nine|ten"
+            )
+
+            word_numbered = re.findall(
+                (
+                    rf"(?:^|[.;]\s*)"
+                    rf"(?:{number_words})"
+                    r"\s*[,.:)-]\s*"
+                    r"(.+?)"
+                    rf"(?=(?:[.;]\s*)(?:{number_words})"
+                    r"\s*[,.:)-]\s*|$)"
+                ),
+                cleaned,
+                flags=re.IGNORECASE,
+            )
+
+            if len(word_numbered) >= 2:
+                candidates = word_numbered
+
         if len(candidates) < 2 and ";" in cleaned:
             candidates = cleaned.split(";")
 
+        if len(candidates) < 2:
+            comma_parts = [
+                part.strip()
+                for part in cleaned.split(",")
+            ]
+
+            if (
+                2 <= len(comma_parts) <= 10
+                and all(
+                    1 <= len(part.split()) <= 5
+                    for part in comma_parts
+                )
+            ):
+                candidates = comma_parts
+
         subjects = []
 
+        ordinal_prefix = re.compile(
+            r"^\s*(?:"
+            r"\d{1,2}[.)]|"
+            r"first|second|third|fourth|fifth|sixth|seventh|"
+            r"eighth|ninth|tenth|"
+            r"one|two|three|four|five|six|seven|eight|nine|ten"
+            r")\s*[,.:)-]?\s*",
+            flags=re.IGNORECASE,
+        )
+
         for item in candidates:
-            item = re.sub(
-                r"^\s*\d+[.)]\s*",
+            item = ordinal_prefix.sub(
                 "",
-                item,
+                str(item),
             ).strip(" .,:;-")
 
-            # Remove a short introductory clause before a colon.
+            item = re.sub(
+                r"^(?:and\s+)?(?:then\s+)?",
+                "",
+                item,
+                flags=re.IGNORECASE,
+            ).strip()
+
             if ":" in item:
-                left, right = item.split(":", 1)
+                left, right = item.split(
+                    ":",
+                    1,
+                )
                 if len(left.split()) > 3:
                     item = right.strip()
 
-            # A subject should look like a concise entity/person name,
-            # not a descriptive sentence.
             words = item.split()
-            if not (1 <= len(words) <= 5):
+
+            if not (
+                1 <= len(words) <= 5
+            ):
                 continue
 
+            lowered = item.lower()
+
             if any(
-                token in item.lower()
+                token in lowered
                 for token in (
                     "http://",
                     "https://",
                     "here are",
                     "images of",
                     "pictures of",
+                    "i can",
+                    "let me",
                 )
             ):
                 continue
 
-            subjects.append(item)
+            subjects.append(
+                item
+            )
 
         unique = []
         seen = set()
 
         for item in subjects:
             key = item.casefold()
+
             if key not in seen:
                 seen.add(key)
                 unique.append(item)
