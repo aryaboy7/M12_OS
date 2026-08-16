@@ -335,63 +335,54 @@ class AIScreen(Screen):
         root.add_widget(conversation_title)
 
         if platform == "android":
-            # Android: let ScrollView own finger/kinetic scrolling.
-            # A Label is used for display; Copy Messages still copies
-            # the complete conversation text.
-            self.chat_scroll = ScrollView(
-                size_hint=(1, chat_hint),
-                do_scroll_x=False,
-                do_scroll_y=True,
-                bar_width=height(8),
-                scroll_type=["content", "bars"],
-            )
-
-            self.chat_label = Label(
-                # Start empty on Android. The persistent transcript may be
-                # very large, and assigning it here can create an oversized
-                # texture before render_chat_text() gets a chance to trim it.
-                text="",
-                markup=True,
+            # Android: use a readonly TextInput for Conversation instead of one
+            # enormous markup Label. A long Label can exceed Android/Kivy
+            # texture limits and render blank until the transcript is cleared.
+            # TextInput renders long text incrementally and does not depend on
+            # one giant texture.
+            self.chat_view = TextInput(
+                text=self.chat_text,
+                readonly=True,
+                multiline=True,
+                cursor_blink=False,
                 font_size=font(chat_size),
-                size_hint_y=None,
-                halign="left",
-                valign="top",
-                color=(
+                size_hint=(1, chat_hint),
+                padding=(
+                    height(12),
+                    height(12),
+                ),
+                background_color=(
+                    0.025,
+                    0.03,
+                    0.05,
+                    1,
+                ),
+                foreground_color=(
                     0.95,
                     0.95,
                     0.95,
                     1,
                 ),
-                padding=(
-                    height(12),
-                    height(12),
+                selection_color=(
+                    0.20,
+                    0.45,
+                    0.75,
+                    0.65,
                 ),
+                use_bubble=True,
+                use_handles=True,
+                scroll_from_swipe=True,
+                scroll_distance=height(12),
+                scroll_timeout=150,
             )
 
-            self.chat_label.bind(
-                width=self._update_chat_label_width,
-                texture_size=self._update_chat_label_height,
-                on_ref_press=self.open_chat_url,
-            )
-
-            self.chat_scroll.bind(
+            self.chat_view.bind(
                 on_touch_down=self.on_chat_touch_down
             )
 
-            self.chat_scroll.add_widget(
-                self.chat_label
-            )
-
             root.add_widget(
-                self.chat_scroll
+                self.chat_view
             )
-
-            # Compatibility alias used by some older logic.
-            self.chat_view = self.chat_label
-
-            # Render only the Android-safe visible tail now that the widget
-            # exists. Never hand the full persistent transcript to one Label.
-            self.render_chat_text()
 
         else:
             # Desktop/Linux/macOS: ScrollView + markup Label allows
@@ -850,39 +841,23 @@ class AIScreen(Screen):
 
     def render_chat_text(self):
         """
-        Render the conversation into the visible chat widget.
+        Render the complete saved conversation into the visible widget.
 
-        Android uses a single Kivy Label texture. A very long persistent
-        transcript can create a texture taller than the GPU can render,
-        leaving the Conversation area visually blank. Keep the full transcript
-        in self.chat_text/on disk, but render only the newest portion on Android.
+        Android uses a readonly TextInput, avoiding the giant-texture failure
+        of a long markup Label. Desktop keeps the markup Label so URLs remain
+        clickable there.
         """
         if not hasattr(self, "chat_view"):
             return
 
-        display_text = self.chat_text
-
-        if platform == "android" and len(display_text) > 3500:
-            display_text = display_text[-3500:]
-
-            # Start at a paragraph boundary when possible.
-            paragraph = display_text.find("\n\n")
-            if paragraph >= 0:
-                display_text = display_text[paragraph + 2:]
-
-            display_text = (
-                "M12 AI:\n"
-                "[Earlier conversation is saved but hidden from this view "
-                "to keep Android rendering stable.]\n\n"
-                + display_text
-            )
-
         if getattr(self.chat_view, "markup", False):
             self.chat_view.text = self.format_chat_links(
-                display_text
+                self.chat_text
             )
         else:
-            self.chat_view.text = display_text
+            self.chat_view.text = str(
+                self.chat_text or ""
+            )
 
     # -------------------------------------------------------------
     # Clickable URLs in Conversation
@@ -2968,22 +2943,6 @@ class AIScreen(Screen):
         *args,
     ):
         self.refresh_status_bar()
-
-        # Always repaint the persistent conversation when the AI screen opens.
-        # This prevents Android's markup Label from remaining visually blank
-        # until Clear Messages forces a redraw.
-        self._chat_auto_follow = True
-        self._chat_refresh_pending = True
-
-        Clock.schedule_once(
-            lambda dt: self.flush_chat_refresh(),
-            0,
-        )
-        Clock.schedule_once(
-            self.scroll_to_bottom,
-            0.05,
-        )
-
         """
         Opening the AI Assistant always activates AI Mode.
 
@@ -2992,6 +2951,16 @@ class AIScreen(Screen):
         """
         self.control_mode = False
         self.update_mode_button()
+
+        self.render_chat_text()
+        Clock.schedule_once(
+            lambda dt: self.render_chat_text(),
+            0,
+        )
+        Clock.schedule_once(
+            self.scroll_to_bottom,
+            0.05,
+        )
 
         if self.realtime_voice_active:
             self.voice_btn.text = "Stop Voice"
@@ -3603,12 +3572,6 @@ class AIScreen(Screen):
                 answer,
                 route="normal",
             )
-
-            # Realtime answers bypass AIRouter.process_ai_stream(), so keep the
-            # router's immediate conversational context synchronized manually.
-            # Contextual local requests such as "show me pictures of these
-            # presidents" can then resolve "these presidents" correctly.
-            self.ai_router.last_assistant_answer = answer
 
         self.realtime_answer_active = False
         self.realtime_answer_text = ""
