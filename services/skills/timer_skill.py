@@ -557,6 +557,48 @@ class TimerSkill(BaseSkill):
                 },
             )
 
+        if action == "stop":
+            screen.stop(None)
+            ActivityContext.instance().set("timer")
+
+            return SkillResult(
+                handled=True,
+                answer="",
+                confidence=1.0,
+                action="stop_timer",
+                data={
+                    "success": True,
+                    "stopped": True,
+                    "remaining_seconds": int(
+                        getattr(screen, "remaining", 0)
+                    ),
+                    "running": bool(
+                        getattr(screen, "running", False)
+                    ),
+                },
+            )
+
+        if action == "reset":
+            screen.reset(None)
+            ActivityContext.instance().clear()
+
+            return SkillResult(
+                handled=True,
+                answer="",
+                confidence=1.0,
+                action="reset_timer",
+                data={
+                    "success": True,
+                    "reset": True,
+                    "remaining_seconds": int(
+                        getattr(screen, "remaining", 0)
+                    ),
+                    "running": bool(
+                        getattr(screen, "running", False)
+                    ),
+                },
+            )
+
         if action != "start":
             return SkillResult(
                 handled=True,

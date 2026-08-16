@@ -1233,7 +1233,7 @@ class RealtimeVoiceService:
                     "name": "control_timer",
                     "description": (
                         "Control the existing M12 Timer. Use this tool when the "
-                        "user asks to start/set, pause, or resume the countdown "
+                        "user asks to start/set, pause, resume, stop/cancel, or reset the countdown "
                         "timer. For start, convert the requested duration to total "
                         "seconds yourself, regardless of the user's language."
                     ),
@@ -1242,7 +1242,7 @@ class RealtimeVoiceService:
                         "properties": {
                             "action": {
                                 "type": "string",
-                                "enum": ["start", "pause", "resume"],
+                                "enum": ["start", "pause", "resume", "stop", "reset"],
                             },
                             "seconds": {
                                 "type": "integer",
@@ -1744,7 +1744,7 @@ class RealtimeVoiceService:
             arguments.get("action", "")
         ).strip().lower()
 
-        if action not in {"start", "pause", "resume"}:
+        if action not in {"start", "pause", "resume", "stop", "reset"}:
             return {
                 "ok": False,
                 "error": "Unsupported timer action.",
