@@ -94,6 +94,94 @@ class AIRouter:
 
         return answer
 
+    def resolve_semantic_route(
+        self,
+        message,
+    ):
+        """
+        Let the language model decide whether the user's natural-language
+        request needs an installed M12OS skill.
+
+        This is intentionally semantic. Python does not maintain lists of
+        pronouns, singular/plural forms, or every sentence a user may invent.
+        """
+        user_message = str(message).strip()
+
+        if not user_message:
+            return {
+                "route": "ai",
+                "skill": "",
+                "command": "",
+                "subjects": [],
+            }
+
+        if self.ai_service is None:
+            self.ai_service = AIService()
+
+        try:
+            skill_names = self.skill_registry.list_names()
+        except Exception:
+            skill_names = []
+
+        return self.ai_service.resolve_m12_action(
+            user_message=user_message,
+            available_skills=skill_names,
+        )
+
+    @staticmethod
+    def semantic_route_command(
+        route,
+    ):
+        """
+        Convert a semantic route into the internal command passed to local
+        skills. Image subjects use a machine-only JSON protocol so ImageSkill
+        never has to understand conversational references itself.
+        """
+        if not isinstance(route, dict):
+            return ""
+
+        skill = str(
+            route.get(
+                "skill",
+                "",
+            )
+        ).strip()
+
+        command = str(
+            route.get(
+                "command",
+                "",
+            )
+        ).strip()
+
+        if skill == "image":
+            subjects = route.get(
+                "subjects",
+                [],
+            )
+
+            if isinstance(subjects, list):
+                subjects = [
+                    str(item).strip()
+                    for item in subjects
+                    if str(item).strip()
+                ][:8]
+            else:
+                subjects = []
+
+            if subjects:
+                import json
+
+                return (
+                    "__M12_IMAGE_SUBJECTS__:"
+                    + json.dumps(
+                        subjects,
+                        ensure_ascii=False,
+                    )
+                )
+
+        return command
+
     def process_ai(
         self,
         message,

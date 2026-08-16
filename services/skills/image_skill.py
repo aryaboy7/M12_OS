@@ -112,263 +112,25 @@ class ImageSkill(BaseSkill):
         "больше деталей",
     }
 
-    CONTEXT_REFERENCE_PHRASES = {
-        "them",
-        "their pictures",
-        "their images",
-        "their photos",
-        "these people",
-        "those people",
-        "these persons",
-        "those persons",
-        "these presidents",
-        "those presidents",
-        "this presidents",
-        "these men",
-        "those men",
-        "these women",
-        "those women",
-        "их фото",
-        "их фотографии",
-        "эти люди",
-        "эти президенты",
-        "этих президентов",
-    }
-
     def __init__(self):
         self.last_query = ""
         self.last_results = []
         self.next_index = 0
-
-        self.last_context_subjects = []
-
-    def _is_context_reference_request(
-        self,
-        text: str,
-    ) -> bool:
-        if any(
-            phrase in text
-            for phrase in self.CONTEXT_REFERENCE_PHRASES
-        ):
-            return True
-
-        return bool(
-            re.search(
-                r"\b(?:pictures|images|photos|photographs)\s+of\s+"
-                r"(?:them|these|those|their|this)\b",
-                text,
-                re.IGNORECASE,
-            )
-        )
-
-    @staticmethod
-    def _extract_context_text(
-        context: Any,
-    ) -> str:
-        """
-        Return only the immediately previous assistant answer.
-
-        Do not scan broad conversation/history data here: doing so can
-        introduce unrelated names into contextual image requests.
-        """
-        if context is None:
-            return ""
-
-        router = getattr(
-            context,
-            "router",
-            None,
-        )
-
-        if router is None and isinstance(context, dict):
-            router = context.get("router")
-
-        if router is None:
-            return ""
-
-        value = getattr(
-            router,
-            "last_assistant_answer",
-            None,
-        )
-
-        if isinstance(value, str):
-            return value.strip()
-
-        return ""
-
-    @classmethod
-    def _extract_subjects_from_context(
-        cls,
-        context: Any,
-    ) -> list[str]:
-        text = cls._extract_context_text(
-            context
-        )
-
-        if not text:
-            return []
-
-        cleaned = re.sub(
-            r"\s+",
-            " ",
-            text,
-        ).strip()
-
-        candidates = []
-
-        numeric = re.findall(
-            (
-                r"(?:^|[.;]\s*|,\s*)"
-                r"\d{1,2}[.)]\s*"
-                r"(.+?)"
-                r"(?=(?:[.;]\s*|,\s*)\d{1,2}[.)]\s*|$)"
-            ),
-            cleaned,
-            flags=re.IGNORECASE,
-        )
-
-        if len(numeric) >= 2:
-            candidates = numeric
-
-        if len(candidates) < 2:
-            ordinal_words = (
-                r"first|second|third|fourth|fifth|sixth|seventh|"
-                r"eighth|ninth|tenth"
-            )
-
-            ordinal = re.findall(
-                (
-                    rf"(?:^|[.;]\s*)"
-                    rf"(?:{ordinal_words})"
-                    r"\s*[,.:)-]\s*"
-                    r"(.+?)"
-                    rf"(?=(?:[.;]\s*)(?:{ordinal_words})"
-                    r"\s*[,.:)-]\s*|$)"
-                ),
-                cleaned,
-                flags=re.IGNORECASE,
-            )
-
-            if len(ordinal) >= 2:
-                candidates = ordinal
-
-        if len(candidates) < 2:
-            number_words = (
-                r"one|two|three|four|five|six|seven|eight|nine|ten"
-            )
-
-            word_numbered = re.findall(
-                (
-                    rf"(?:^|[.;]\s*)"
-                    rf"(?:{number_words})"
-                    r"\s*[,.:)-]\s*"
-                    r"(.+?)"
-                    rf"(?=(?:[.;]\s*)(?:{number_words})"
-                    r"\s*[,.:)-]\s*|$)"
-                ),
-                cleaned,
-                flags=re.IGNORECASE,
-            )
-
-            if len(word_numbered) >= 2:
-                candidates = word_numbered
-
-        if len(candidates) < 2 and ";" in cleaned:
-            candidates = cleaned.split(";")
-
-        if len(candidates) < 2:
-            comma_parts = [
-                part.strip()
-                for part in cleaned.split(",")
-            ]
-
-            if (
-                2 <= len(comma_parts) <= 10
-                and all(
-                    1 <= len(part.split()) <= 5
-                    for part in comma_parts
-                )
-            ):
-                candidates = comma_parts
-
-        subjects = []
-
-        ordinal_prefix = re.compile(
-            r"^\s*(?:"
-            r"\d{1,2}[.)]|"
-            r"first|second|third|fourth|fifth|sixth|seventh|"
-            r"eighth|ninth|tenth|"
-            r"one|two|three|four|five|six|seven|eight|nine|ten"
-            r")\s*[,.:)-]?\s*",
-            flags=re.IGNORECASE,
-        )
-
-        for item in candidates:
-            item = ordinal_prefix.sub(
-                "",
-                str(item),
-            ).strip(" .,:;-")
-
-            item = re.sub(
-                r"^(?:and\s+)?(?:then\s+)?",
-                "",
-                item,
-                flags=re.IGNORECASE,
-            ).strip()
-
-            if ":" in item:
-                left, right = item.split(
-                    ":",
-                    1,
-                )
-                if len(left.split()) > 3:
-                    item = right.strip()
-
-            words = item.split()
-
-            if not (
-                1 <= len(words) <= 5
-            ):
-                continue
-
-            lowered = item.lower()
-
-            if any(
-                token in lowered
-                for token in (
-                    "http://",
-                    "https://",
-                    "here are",
-                    "images of",
-                    "pictures of",
-                    "i can",
-                    "let me",
-                )
-            ):
-                continue
-
-            subjects.append(
-                item
-            )
-
-        unique = []
-        seen = set()
-
-        for item in subjects:
-            key = item.casefold()
-
-            if key not in seen:
-                seen.add(key)
-                unique.append(item)
-
-        return unique[:8]
 
     def can_handle(
         self,
         message: str,
         context: Any,
     ) -> float:
+        original = str(message).strip()
+
+        # Internal semantic-router protocol. This is not a user-language
+        # phrase; it carries already-resolved image subjects from the AI.
+        if original.startswith(
+            "__M12_IMAGE_SUBJECTS__:"
+        ):
+            return 1.0
+
         text = self._normalize(message)
 
         if not text:
@@ -378,9 +140,6 @@ class ImageSkill(BaseSkill):
             self.last_query
             and self._is_follow_up(text)
         ):
-            return 1.0
-
-        if self._is_context_reference_request(text):
             return 1.0
 
         words = set(text.split())
@@ -406,6 +165,56 @@ class ImageSkill(BaseSkill):
         context: Any,
     ) -> SkillResult:
         original = str(message).strip()
+
+        # AI semantic routing resolves conversational references before the
+        # request reaches ImageSkill. Multiple explicit subjects are carried
+        # as JSON so this skill only performs image search/display work.
+        if original.startswith(
+            "__M12_IMAGE_SUBJECTS__:"
+        ):
+            raw_subjects = original.split(
+                ":",
+                1,
+            )[1].strip()
+
+            try:
+                subjects = json.loads(
+                    raw_subjects
+                )
+            except Exception:
+                subjects = []
+
+            if not isinstance(
+                subjects,
+                list,
+            ):
+                subjects = []
+
+            subjects = [
+                str(item).strip()
+                for item in subjects
+                if str(item).strip()
+            ][:8]
+
+            if not subjects:
+                return SkillResult(
+                    handled=True,
+                    answer="I could not determine what images to show.",
+                    confidence=1.0,
+                )
+
+            if len(subjects) > 1:
+                return self._handle_subject_gallery(
+                    subjects
+                )
+
+            # A single resolved subject keeps the original behavior: show a
+            # gallery of several images for that one subject.
+            original = (
+                "show images of "
+                + subjects[0]
+            )
+
         normalized = self._normalize(
             original
         )
@@ -423,24 +232,6 @@ class ImageSkill(BaseSkill):
         detailed = self._is_detail_request(
             normalized
         )
-
-        context_reference = self._is_context_reference_request(
-            normalized
-        )
-
-        if context_reference:
-            subjects = self._extract_subjects_from_context(
-                context
-            )
-        else:
-            subjects = []
-
-        if context_reference and subjects:
-            self.last_context_subjects = subjects
-            return self._handle_subject_gallery(
-                subjects=subjects,
-                russian=russian,
-            )
 
         if follow_up:
             query = self.last_query
@@ -599,24 +390,23 @@ class ImageSkill(BaseSkill):
     def _handle_subject_gallery(
         self,
         subjects: list[str],
-        russian: bool,
     ) -> SkillResult:
+        """
+        Return one strong image per explicit subject.
+
+        Language understanding does not happen here. The subjects were already
+        resolved by the AI semantic router from conversation context.
+        """
         images = []
 
         for subject in subjects:
             try:
-                # Ask Wikimedia for a broader set, then select the best
-                # subject-specific portrait locally instead of trusting
-                # the first search result.
                 results = self._search_commons(
                     subject,
                     limit=20,
                 )
             except Exception:
                 results = []
-
-            if not results:
-                continue
 
             best = self._pick_best_subject_image(
                 subject,
@@ -630,19 +420,20 @@ class ImageSkill(BaseSkill):
             item["subject"] = subject
             images.append(item)
 
+            if len(images) >= 4:
+                break
+
         if not images:
             return SkillResult(
                 handled=True,
-                answer=(
-                    "Не удалось найти подходящие изображения."
-                    if russian
-                    else "I could not find suitable images for those people."
-                ),
+                answer="I could not find suitable images for those subjects.",
                 confidence=1.0,
             )
 
         first = images[0]
-        query_label = ", ".join(subjects)
+        query_label = ", ".join(
+            subjects[:4]
+        )
 
         self.last_query = query_label
         self.last_results = images
@@ -650,21 +441,26 @@ class ImageSkill(BaseSkill):
 
         return SkillResult(
             handled=True,
-            answer=(
-                "Вот изображения этих людей."
-                if russian
-                else "Here are images of those people."
-            ),
+            answer="Here are the requested images.",
             confidence=1.0,
             action="show_image_gallery",
             data={
                 "type": "image_gallery",
                 "query": query_label,
-                "subjects": subjects,
-                "images": images[:4],
-                "image_url": first.get("image_url", ""),
-                "source_url": first.get("source_url", ""),
-                "title": first.get("title", query_label),
+                "subjects": subjects[:4],
+                "images": images,
+                "image_url": first.get(
+                    "image_url",
+                    "",
+                ),
+                "source_url": first.get(
+                    "source_url",
+                    "",
+                ),
+                "title": first.get(
+                    "title",
+                    query_label,
+                ),
                 "provider": "Wikimedia Commons",
             },
         )
@@ -676,12 +472,7 @@ class ImageSkill(BaseSkill):
         results: list[dict],
     ):
         """
-        Choose a portrait-like Commons result that actually matches
-        the requested person/entity.
-
-        This prevents broad search results such as group photos,
-        presidential gatherings, or another president from being used
-        just because Commons ranked them first.
+        Prefer a result that actually identifies the requested subject.
         """
         subject_clean = cls._normalize(
             subject
@@ -690,7 +481,7 @@ class ImageSkill(BaseSkill):
         subject_words = [
             word
             for word in subject_clean.split()
-            if len(word) >= 3
+            if len(word) >= 2
         ]
 
         if not subject_words:
@@ -700,57 +491,29 @@ class ImageSkill(BaseSkill):
                 else None
             )
 
-        surname = subject_words[-1]
-
         reject_terms = {
             "group",
-            "presidents",
-            "presidential",
             "meeting",
             "conference",
             "summit",
-            "inauguration",
             "family",
-            "wives",
-            "wife",
             "cabinet",
             "administration",
-            "white house",
-            "with president",
-            "with presidents",
-            "trump invited",
-            "all presidents",
-            "former presidents",
         }
 
         scored = []
 
         for index, item in enumerate(results):
-            title = str(
-                item.get(
-                    "title",
-                    "",
-                )
-            )
-            description = str(
-                item.get(
-                    "description",
-                    "",
-                )
-            )
-            artist = str(
-                item.get(
-                    "artist",
-                    "",
-                )
-            )
-
             searchable = cls._normalize(
                 " ".join(
-                    (
-                        title,
-                        description,
-                        artist,
+                    str(
+                        item.get(key, "") or ""
+                    )
+                    for key in (
+                        "title",
+                        "description",
+                        "artist",
+                        "credit",
                     )
                 )
             )
@@ -758,16 +521,9 @@ class ImageSkill(BaseSkill):
             if not searchable:
                 continue
 
-            # Require at least the surname. For common surnames this is
-            # strengthened below by matching the full name tokens too.
-            if surname not in searchable:
-                continue
-
-            score = 0
-
-            # Exact full-name phrase is strongest.
-            if subject_clean in searchable:
-                score += 120
+            full_name_match = (
+                subject_clean in searchable
+            )
 
             matched_words = sum(
                 1
@@ -775,68 +531,38 @@ class ImageSkill(BaseSkill):
                 if word in searchable
             )
 
-            score += matched_words * 30
+            if (
+                not full_name_match
+                and matched_words
+                < max(
+                    1,
+                    len(subject_words) - 1,
+                )
+            ):
+                continue
 
-            # Prefer files whose title itself identifies the person.
-            title_norm = cls._normalize(
-                title
+            score = (
+                120
+                if full_name_match
+                else matched_words * 25
             )
 
-            if subject_clean in title_norm:
-                score += 100
-
-            if surname in title_norm:
-                score += 35
-
-            # Portrait/headshot/profile clues.
-            portrait_hints = (
-                "portrait",
-                "official portrait",
-                "painting",
-                "headshot",
-                "photograph",
-                "photo",
-                "profile",
+            title_clean = cls._normalize(
+                item.get(
+                    "title",
+                    "",
+                )
             )
+
+            if subject_clean in title_clean:
+                score += 80
 
             if any(
-                hint in searchable
-                for hint in portrait_hints
+                term in searchable
+                for term in reject_terms
             ):
-                score += 20
+                score -= 100
 
-            # Reject or heavily penalize obvious group/event imagery.
-            rejected = False
-            for term in reject_terms:
-                if term in searchable:
-                    score -= 140
-                    rejected = True
-
-            width = item.get("width")
-            height = item.get("height")
-
-            try:
-                width_value = float(width or 0)
-                height_value = float(height or 0)
-
-                # Vertical/square images are more likely to be portraits.
-                if (
-                    width_value > 0
-                    and height_value > 0
-                ):
-                    ratio = (
-                        height_value
-                        / width_value
-                    )
-
-                    if ratio >= 1.0:
-                        score += 20
-                    elif ratio < 0.72:
-                        score -= 25
-            except Exception:
-                pass
-
-            # Commons relevance order is still useful as a small tie-breaker.
             score += max(
                 0,
                 20 - index,
@@ -845,7 +571,6 @@ class ImageSkill(BaseSkill):
             scored.append(
                 (
                     score,
-                    rejected,
                     item,
                 )
             )
@@ -858,12 +583,9 @@ class ImageSkill(BaseSkill):
             reverse=True,
         )
 
-        best_score, rejected, best_item = (
-            scored[0]
-        )
+        best_score, best_item = scored[0]
 
-        # Do not knowingly return a weak/unrelated result.
-        if best_score < 55:
+        if best_score < 45:
             return None
 
         return best_item

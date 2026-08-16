@@ -216,6 +216,233 @@ class AIService:
             route="normal",
         )
 
+    def resolve_m12_action(
+        self,
+        user_message,
+        available_skills,
+    ):
+        """
+        Ask the model whether the current request needs an M12OS local skill.
+
+        The model receives the same bounded conversation history used by normal
+        chat, so references such as "these presidents", "him", or "the second
+        one" can be resolved by the language model instead of Python phrase
+        matching.
+
+        Returns a dict:
+            {
+                "route": "ai" | "local",
+                "skill": "<registered skill name or empty>",
+                "command": "<standalone canonical command or empty>",
+                "subjects": ["explicit image subject", ...],
+            }
+
+        On any routing error we fail open to normal AI conversation.
+        """
+        message = str(user_message).strip()
+
+        if not message:
+            return {
+                "route": "ai",
+                "skill": "",
+                "command": "",
+                "subjects": [],
+            }
+
+        skill_names = [
+            str(name).strip()
+            for name in (available_skills or [])
+            if str(name).strip()
+        ]
+
+        skill_list = ", ".join(skill_names) if skill_names else "(none)"
+
+        instructions = (
+            "You are the semantic router for M12OS. "
+            "Decide whether the user's newest message requires an installed "
+            "local M12OS capability to execute something on the device/app, "
+            "or whether it should simply be answered by the normal AI.\n\n"
+            f"Installed local skill names: {skill_list}.\n\n"
+            "Rules:\n"
+            "1. route='ai' for ordinary conversation, explanations, facts, "
+            "knowledge questions, writing, translation, and anything that "
+            "does not require M12OS to execute a local capability.\n"
+            "2. route='local' only when one of the installed local skills "
+            "must actually do something for the user.\n"
+            "3. Use the supplied conversation history to resolve pronouns and "
+            "references naturally. Never require Python to know phrases such "
+            "as 'this', 'these', 'them', singular/plural variants, or synonyms.\n"
+            "4. For a local route, choose exactly one installed skill name and "
+            "rewrite the request as a short standalone command with references "
+            "resolved. Do not invent missing facts.\n"
+            "5. For the image skill, put every distinct resolved image subject "
+            "in subjects. Example: after an answer listing four presidents, "
+            "'show me pictures of these presidents' should return skill='image' "
+            "and the four president names in subjects.\n"
+            "6. For non-image skills, subjects must be an empty array.\n"
+            "7. If unsure whether a local action is appropriate, choose route='ai'."
+        )
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "route": {
+                    "type": "string",
+                    "enum": ["ai", "local"],
+                },
+                "skill": {
+                    "type": "string",
+                },
+                "command": {
+                    "type": "string",
+                },
+                "subjects": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                    },
+                    "maxItems": 8,
+                },
+            },
+            "required": [
+                "route",
+                "skill",
+                "command",
+                "subjects",
+            ],
+            "additionalProperties": False,
+        }
+
+        request = {
+            "model": self.model,
+            "instructions": instructions,
+            "input": self._build_input(message),
+            "reasoning": {
+                "effort": "minimal",
+            },
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "m12_semantic_route",
+                    "strict": True,
+                    "schema": schema,
+                },
+            },
+            "max_output_tokens": 220,
+        }
+
+        try:
+            try:
+                response = self.client.responses.create(
+                    **request
+                )
+            except Exception as error:
+                error_text = str(error).lower()
+
+                if (
+                    "reasoning" not in error_text
+                    and "unsupported parameter" not in error_text
+                    and "unknown parameter" not in error_text
+                ):
+                    raise
+
+                retry = dict(request)
+                retry.pop("reasoning", None)
+
+                response = self.client.responses.create(
+                    **retry
+                )
+
+            raw = str(
+                getattr(
+                    response,
+                    "output_text",
+                    "",
+                )
+            ).strip()
+
+            if not raw:
+                return {
+                    "route": "ai",
+                    "skill": "",
+                    "command": "",
+                    "subjects": [],
+                }
+
+            result = json.loads(raw)
+
+            route = str(
+                result.get(
+                    "route",
+                    "ai",
+                )
+            ).strip().lower()
+
+            skill = str(
+                result.get(
+                    "skill",
+                    "",
+                )
+            ).strip()
+
+            command = str(
+                result.get(
+                    "command",
+                    "",
+                )
+            ).strip()
+
+            subjects = result.get(
+                "subjects",
+                [],
+            )
+
+            if not isinstance(subjects, list):
+                subjects = []
+
+            subjects = [
+                str(item).strip()
+                for item in subjects
+                if str(item).strip()
+            ][:8]
+
+            if (
+                route != "local"
+                or skill not in skill_names
+            ):
+                return {
+                    "route": "ai",
+                    "skill": "",
+                    "command": "",
+                    "subjects": [],
+                }
+
+            if skill != "image":
+                subjects = []
+
+            if not command:
+                command = message
+
+            return {
+                "route": "local",
+                "skill": skill,
+                "command": command,
+                "subjects": subjects,
+            }
+
+        except Exception as error:
+            print(
+                "AI semantic routing error: "
+                f"{type(error).__name__}: {error}"
+            )
+
+            return {
+                "route": "ai",
+                "skill": "",
+                "command": "",
+                "subjects": [],
+            }
+
     def stream(
         self,
         user_message,

@@ -154,6 +154,13 @@ class RealtimeVoiceService:
             )
         ).strip()
 
+        self.speaker_echo_protection = bool(
+            settings.get(
+                "speaker_echo_protection",
+                True,
+            )
+        )
+
         self.client = AsyncOpenAI(
             api_key=api_key,
             timeout=45.0,
@@ -196,6 +203,19 @@ class RealtimeVoiceService:
             threading.Event()
         )
 
+        self._microphone_enabled = threading.Event()
+        self._echo_paused_microphone = False
+        self._echo_resume_generation = 0
+        self._echo_resume_lock = threading.Lock()
+
+        # Local TTS can already be buffered at the Realtime server when
+        # microphone capture is muted. Suppress completed transcripts while
+        # local speech is active and briefly after it finishes.
+        self._local_echo_suppress_until = 0.0
+
+        self._speaker_timing_lock = threading.Lock()
+        self._speaker_playback_until = 0.0
+
         self._send_queue = None
         self._microphone_queue = queue.Queue(
             maxsize=200
@@ -209,6 +229,7 @@ class RealtimeVoiceService:
         self._speaker_thread = None
 
         self._android_sdl = None
+        self._android_audio_record = None
         self._android_mic_thread = None
         self._android_mic_device = 0
         self._android_speaker_device = 0
@@ -236,6 +257,7 @@ class RealtimeVoiceService:
             "realtime_model": DEFAULT_MODEL,
             "realtime_voice": DEFAULT_VOICE,
             "voice_language": "en",
+            "speaker_echo_protection": True,
             "realtime_instructions": (
                 "You are Ace, the M12 AI assistant. "
                 "Answer only the exact question asked. "
@@ -346,6 +368,157 @@ class RealtimeVoiceService:
 
         return normalized
 
+    def _refresh_echo_protection_setting(self):
+        """Reload Speaker Echo Protection so Settings changes apply live."""
+        try:
+            settings = self.load_settings()
+            self.speaker_echo_protection = bool(
+                settings.get(
+                    "speaker_echo_protection",
+                    True,
+                )
+            )
+        except Exception:
+            pass
+
+        return bool(
+            self.speaker_echo_protection
+        )
+
+    def _pause_microphone_for_assistant(self):
+        """Mute microphone capture; keep Realtime and speaker active."""
+        if not self._refresh_echo_protection_setting():
+            return False
+
+        with self._echo_resume_lock:
+            self._echo_resume_generation += 1
+
+        if self._echo_paused_microphone:
+            return True
+
+        self._echo_paused_microphone = True
+        self._assistant_speaking.set()
+
+        # Android: keep the SDL capture device open for the whole voice
+        # session. Repeated close/reopen cycles around every assistant
+        # answer can race with the audio thread and destabilize the app.
+        # Muting is therefore implemented by gating captured samples.
+        if IS_ANDROID:
+            self._microphone_enabled.clear()
+        else:
+            self._stop_microphone()
+
+        self._drain_queue(
+            self._microphone_queue
+        )
+        self._user_transcript = ""
+
+        self._emit_status(
+            "Ace speaking — microphone paused."
+        )
+        return True
+
+    def _schedule_microphone_resume_after_speaker(self):
+        """Resume microphone only after queued PCM has actually finished."""
+        if not self._echo_paused_microphone:
+            self._assistant_speaking.clear()
+            return
+
+        with self._echo_resume_lock:
+            self._echo_resume_generation += 1
+            generation = self._echo_resume_generation
+
+        threading.Thread(
+            target=self._resume_microphone_after_speaker_worker,
+            args=(generation,),
+            name="M12EchoProtectionResume",
+            daemon=True,
+        ).start()
+
+    def _resume_microphone_after_speaker_worker(
+        self,
+        generation,
+    ):
+        quiet_started = None
+        deadline = time.monotonic() + 30.0
+
+        while (
+            time.monotonic() < deadline
+            and not self._stop_event.is_set()
+        ):
+            with self._echo_resume_lock:
+                if generation != self._echo_resume_generation:
+                    return
+
+            with self._speaker_timing_lock:
+                playback_until = self._speaker_playback_until
+
+            playback_time_complete = (
+                time.monotonic() >= playback_until
+            )
+            python_queue_empty = self._speaker_queue.empty()
+            device_empty = True
+
+            if IS_ANDROID:
+                with self._android_audio_lock:
+                    device_id = self._android_speaker_device
+
+                if (
+                    device_id
+                    and self._android_sdl is not None
+                ):
+                    try:
+                        device_empty = (
+                            int(
+                                self._android_sdl.SDL_GetQueuedAudioSize(
+                                    device_id
+                                )
+                            )
+                            == 0
+                        )
+                    except Exception:
+                        device_empty = False
+
+            if (
+                playback_time_complete
+                and python_queue_empty
+                and device_empty
+            ):
+                if quiet_started is None:
+                    quiet_started = time.monotonic()
+                elif (
+                    time.monotonic() - quiet_started
+                    >= 0.55
+                ):
+                    break
+            else:
+                quiet_started = None
+
+            time.sleep(0.03)
+
+        with self._echo_resume_lock:
+            if generation != self._echo_resume_generation:
+                return
+
+        self._echo_paused_microphone = False
+        self._assistant_speaking.clear()
+
+        if (
+            self.is_connected
+            and self.is_conversation_active
+            and not self._stop_event.is_set()
+        ):
+            try:
+                self._start_microphone()
+                self._emit_status(
+                    "Realtime voice is listening."
+                )
+            except Exception as error:
+                self._report_error(
+                    "Realtime microphone resume failed",
+                    error,
+                )
+
     def start(
         self,
         wait_until_ready=False,
@@ -425,6 +598,7 @@ class RealtimeVoiceService:
         # The speaker worker checks this flag immediately; starting it
         # first caused the thread to exit before any audio arrived.
         self._conversation_active.set()
+        self._microphone_enabled.set()
 
         try:
             self._start_speaker()
@@ -449,6 +623,7 @@ class RealtimeVoiceService:
         Temporarily pause microphone input while keeping Realtime connected.
         """
         self._conversation_active.clear()
+        self._microphone_enabled.clear()
         self._stop_microphone()
         self._drain_queue(
             self._microphone_queue
@@ -480,6 +655,7 @@ class RealtimeVoiceService:
         )
         self._user_transcript = ""
         self._conversation_active.set()
+        self._microphone_enabled.set()
 
         try:
             self._start_speaker()
@@ -502,7 +678,12 @@ class RealtimeVoiceService:
         Stop microphone and speaker but keep WebSocket connected.
         """
         self._conversation_active.clear()
+        self._microphone_enabled.clear()
         self._assistant_speaking.clear()
+        self._echo_paused_microphone = False
+
+        with self._echo_resume_lock:
+            self._echo_resume_generation += 1
 
         self._stop_microphone()
         self._stop_speaker()
@@ -666,13 +847,24 @@ class RealtimeVoiceService:
     def pause_microphone_for_local_answer(self):
         """Pause microphone capture while a local answer is spoken."""
         self._assistant_speaking.set()
-        self._stop_microphone()
+        self._local_echo_suppress_until = float("inf")
+        self._microphone_enabled.clear()
+
+        # On Android do not close the SDL capture device for a temporary
+        # local-speech pause. The worker remains alive and discards audio
+        # until microphone capture is enabled again.
+        if not IS_ANDROID:
+            self._stop_microphone()
+
         self._drain_queue(
             self._microphone_queue
         )
 
     def resume_microphone_after_local_answer(self):
         """Resume microphone capture after a local answer finishes."""
+        # Realtime transcription can arrive slightly after local TTS audio
+        # physically ends. Ignore that delayed echo for a short grace period.
+        self._local_echo_suppress_until = time.monotonic() + 1.5
         self._assistant_speaking.clear()
 
         if (
@@ -680,6 +872,7 @@ class RealtimeVoiceService:
             and self.is_conversation_active
             and not self._stop_event.is_set()
         ):
+            self._microphone_enabled.set()
             self._start_microphone()
             self._emit_status(
                 "Realtime voice is listening."
@@ -1078,7 +1271,10 @@ class RealtimeVoiceService:
         Transfer microphone callback data to the WebSocket.
         """
         while not self._stop_event.is_set():
-            if not self._conversation_active.is_set():
+            if (
+                not self._conversation_active.is_set()
+                or not self._microphone_enabled.is_set()
+            ):
                 await asyncio.sleep(0.02)
                 continue
 
@@ -1160,6 +1356,16 @@ class RealtimeVoiceService:
                 self._user_transcript = ""
 
                 if transcript:
+                    if (
+                        self._assistant_speaking.is_set()
+                        or time.monotonic() < self._local_echo_suppress_until
+                    ):
+                        print(
+                            "[Realtime] Ignored local-speaker echo transcript: "
+                            + transcript
+                        )
+                        continue
+
                     if self._is_duplicate_transcript(
                         event,
                         transcript,
@@ -1210,7 +1416,14 @@ class RealtimeVoiceService:
                         )
                     )
 
-                    self._assistant_speaking.set()
+                    if (
+                        self._refresh_echo_protection_setting()
+                        and not self._echo_paused_microphone
+                    ):
+                        self._pause_microphone_for_assistant()
+                    else:
+                        self._assistant_speaking.set()
+
                     self._queue_speaker_audio(
                         audio_bytes
                     )
@@ -1218,7 +1431,10 @@ class RealtimeVoiceService:
             elif event_type == (
                 "response.output_audio.done"
             ):
-                self._assistant_speaking.clear()
+                if self._echo_paused_microphone:
+                    self._schedule_microphone_resume_after_speaker()
+                else:
+                    self._assistant_speaking.clear()
 
             elif event_type == (
                 "response.output_audio_transcript.delta"
@@ -1264,7 +1480,12 @@ class RealtimeVoiceService:
                 "response.done"
             ):
                 self._response_in_progress = False
-                self._assistant_speaking.clear()
+
+                if self._echo_paused_microphone:
+                    self._schedule_microphone_resume_after_speaker()
+                else:
+                    self._assistant_speaking.clear()
+
                 self._emit_status(
                     "Realtime ready."
                 )
@@ -1496,74 +1717,241 @@ class RealtimeVoiceService:
     def _android_microphone_worker(
         self,
     ):
-        device_id = 0
+        """
+        Android microphone capture using the platform AudioRecord API.
+
+        Important:
+            The speaker still uses SDL2 on Android. Only microphone capture
+            is moved away from direct SDL2/ctypes calls because repeated
+            native capture-device access has produced intermittent SIGSEGV
+            crashes on Android.
+        """
+        recorder = None
+        recording_started = False
 
         try:
             self._check_android_microphone_permission()
 
-            sdl, device_id = self._open_android_audio_device(
-                capture=True
+            from jnius import autoclass
+
+            AudioRecord = autoclass(
+                "android.media.AudioRecord"
+            )
+            AudioFormat = autoclass(
+                "android.media.AudioFormat"
+            )
+            AudioSource = autoclass(
+                "android.media.MediaRecorder$AudioSource"
             )
 
-            with self._android_audio_lock:
-                self._android_mic_device = device_id
+            channel_config = int(
+                AudioFormat.CHANNEL_IN_MONO
+            )
+            audio_format = int(
+                AudioFormat.ENCODING_PCM_16BIT
+            )
 
-            sdl.SDL_ClearQueuedAudio(device_id)
-            sdl.SDL_PauseAudioDevice(device_id, 0)
+            # Prefer the native 24 kHz rate expected by OpenAI Realtime.
+            # Most modern Android devices support it. If the device reports
+            # that 24 kHz is unavailable, fall back to 48 kHz and downsample
+            # by 2 before placing PCM into the Realtime queue.
+            capture_rate = SAMPLE_RATE
+            min_buffer = int(
+                AudioRecord.getMinBufferSize(
+                    capture_rate,
+                    channel_config,
+                    audio_format,
+                )
+            )
 
-            bytes_per_chunk = (
-                INPUT_FRAMES
+            if min_buffer <= 0:
+                capture_rate = SAMPLE_RATE * 2
+                min_buffer = int(
+                    AudioRecord.getMinBufferSize(
+                        capture_rate,
+                        channel_config,
+                        audio_format,
+                    )
+                )
+
+            if min_buffer <= 0:
+                raise RuntimeError(
+                    "Android AudioRecord does not support "
+                    "24 kHz or 48 kHz mono PCM16 input."
+                )
+
+            output_frames = INPUT_FRAMES
+            capture_frames = (
+                output_frames
+                if capture_rate == SAMPLE_RATE
+                else output_frames * 2
+            )
+
+            read_bytes = (
+                capture_frames
                 * CHANNELS
                 * SAMPLE_WIDTH
+            )
+
+            recorder_buffer_bytes = max(
+                min_buffer * 2,
+                read_bytes * 4,
+            )
+
+            source_candidates = [
+                int(AudioSource.VOICE_RECOGNITION),
+                int(AudioSource.MIC),
+            ]
+
+            last_error = None
+
+            for source in source_candidates:
+                candidate = None
+
+                try:
+                    candidate = AudioRecord(
+                        source,
+                        capture_rate,
+                        channel_config,
+                        audio_format,
+                        recorder_buffer_bytes,
+                    )
+
+                    if int(candidate.getState()) != int(
+                        AudioRecord.STATE_INITIALIZED
+                    ):
+                        try:
+                            candidate.release()
+                        except Exception:
+                            pass
+                        candidate = None
+                        continue
+
+                    recorder = candidate
+                    break
+
+                except Exception as error:
+                    last_error = error
+
+                    if candidate is not None:
+                        try:
+                            candidate.release()
+                        except Exception:
+                            pass
+
+            if recorder is None:
+                raise RuntimeError(
+                    "Unable to initialize Android AudioRecord"
+                    + (
+                        f": {type(last_error).__name__}: {last_error}"
+                        if last_error is not None
+                        else "."
+                    )
+                )
+
+            # Store only for diagnostics. The worker owns start/stop/release.
+            self._android_audio_record = recorder
+
+            recorder.startRecording()
+            recording_started = True
+
+            if int(recorder.getRecordingState()) != int(
+                AudioRecord.RECORDSTATE_RECORDING
+            ):
+                raise RuntimeError(
+                    "Android AudioRecord did not enter recording state."
+                )
+
+            audio_buffer = bytearray(
+                read_bytes
             )
 
             while (
                 not self._stop_event.is_set()
                 and self._conversation_active.is_set()
             ):
-                queued = int(
-                    sdl.SDL_GetQueuedAudioSize(device_id)
-                )
-
-                if queued < bytes_per_chunk:
-                    time.sleep(0.003)
-                    continue
-
-                amount = min(
-                    queued,
-                    bytes_per_chunk * 4,
-                )
-
-                amount -= amount % (
-                    CHANNELS * SAMPLE_WIDTH
-                )
-
-                if amount <= 0:
-                    time.sleep(0.003)
-                    continue
-
-                buffer = ctypes.create_string_buffer(
-                    amount
-                )
-
                 received = int(
-                    sdl.SDL_DequeueAudio(
-                        device_id,
-                        buffer,
-                        amount,
+                    recorder.read(
+                        audio_buffer,
+                        0,
+                        read_bytes,
                     )
                 )
 
                 if received <= 0:
-                    time.sleep(0.003)
+                    if received == int(
+                        AudioRecord.ERROR_DEAD_OBJECT
+                    ):
+                        raise RuntimeError(
+                            "Android AudioRecord device became unavailable."
+                        )
+
+                    if received in {
+                        int(AudioRecord.ERROR_BAD_VALUE),
+                        int(AudioRecord.ERROR_INVALID_OPERATION),
+                        int(AudioRecord.ERROR),
+                    }:
+                        raise RuntimeError(
+                            "Android AudioRecord read failed "
+                            f"with code {received}."
+                        )
+
+                    time.sleep(0.005)
                     continue
 
-                audio_bytes = buffer.raw[:received]
+                # PCM16 frames must end on a complete sample boundary.
+                received -= received % SAMPLE_WIDTH
+
+                if received <= 0:
+                    continue
+
+                audio_bytes = bytes(
+                    audio_buffer[:received]
+                )
+
+                # If 24 kHz capture was unavailable, AudioRecord is running
+                # at 48 kHz. Downsample mono PCM16 by keeping every second
+                # sample, producing the 24 kHz PCM required by Realtime.
+                if capture_rate != SAMPLE_RATE:
+                    samples = memoryview(
+                        audio_bytes
+                    ).cast("h")
+
+                    downsampled = bytearray(
+                        (len(samples) // 2)
+                        * SAMPLE_WIDTH
+                    )
+                    out_samples = memoryview(
+                        downsampled
+                    ).cast("h")
+
+                    output_count = min(
+                        len(out_samples),
+                        len(samples) // 2,
+                    )
+
+                    for index in range(output_count):
+                        out_samples[index] = samples[
+                            index * 2
+                        ]
+
+                    audio_bytes = bytes(
+                        downsampled[
+                            :output_count * SAMPLE_WIDTH
+                        ]
+                    )
+
+                # Speaker/local-TTS echo protection: continue reading from
+                # AudioRecord so Android's input buffer stays healthy, but
+                # discard captured samples while microphone input is muted.
+                if not self._microphone_enabled.is_set():
+                    continue
 
                 try:
                     self._microphone_queue.put_nowait(
                         audio_bytes
                     )
+
                 except queue.Full:
                     try:
                         self._microphone_queue.get_nowait()
@@ -1583,30 +1971,30 @@ class RealtimeVoiceService:
                 and not self._stop_event.is_set()
             ):
                 self._report_error(
-                    "Realtime Android microphone failed",
+                    "Realtime Android AudioRecord microphone failed",
                     error,
                 )
 
         finally:
-            if device_id and self._android_sdl is not None:
+            if recorder is not None:
+                if recording_started:
+                    try:
+                        recorder.stop()
+                    except Exception:
+                        pass
+
                 try:
-                    self._android_sdl.SDL_PauseAudioDevice(
-                        device_id,
-                        1,
-                    )
+                    recorder.release()
                 except Exception:
                     pass
 
-                try:
-                    self._android_sdl.SDL_CloseAudioDevice(
-                        device_id
-                    )
-                except Exception:
-                    pass
+            if getattr(
+                self,
+                "_android_audio_record",
+                None,
+            ) is recorder:
+                self._android_audio_record = None
 
-            with self._android_audio_lock:
-                if self._android_mic_device == device_id:
-                    self._android_mic_device = 0
 
     def _android_speaker_worker(
         self,
@@ -1717,6 +2105,8 @@ class RealtimeVoiceService:
     def _start_microphone(
         self,
     ):
+        self._microphone_enabled.set()
+
         if IS_ANDROID:
             if (
                 self._android_mic_thread is not None
@@ -1770,6 +2160,8 @@ class RealtimeVoiceService:
     def _stop_microphone(
         self,
     ):
+        self._microphone_enabled.clear()
+
         if IS_ANDROID:
             thread = self._android_mic_thread
 
@@ -1811,7 +2203,10 @@ class RealtimeVoiceService:
                 f"Realtime microphone status: {status}"
             )
 
-        if not self._conversation_active.is_set():
+        if (
+            not self._conversation_active.is_set()
+            or not self._microphone_enabled.is_set()
+        ):
             return
 
         audio_bytes = bytes(indata)
@@ -1955,6 +2350,35 @@ class RealtimeVoiceService:
         audio_bytes,
     ):
         try:
+            byte_count = len(
+                audio_bytes or b""
+            )
+        except Exception:
+            byte_count = 0
+
+        if byte_count > 0:
+            bytes_per_second = (
+                SAMPLE_RATE
+                * CHANNELS
+                * SAMPLE_WIDTH
+            )
+            duration = (
+                float(byte_count)
+                / float(bytes_per_second)
+            )
+
+            now = time.monotonic()
+
+            with self._speaker_timing_lock:
+                start_at = max(
+                    now,
+                    self._speaker_playback_until,
+                )
+                self._speaker_playback_until = (
+                    start_at + duration
+                )
+
+        try:
             self._speaker_queue.put_nowait(
                 audio_bytes
             )
@@ -1993,6 +2417,9 @@ class RealtimeVoiceService:
         self._drain_queue(
             self._speaker_queue
         )
+
+        with self._speaker_timing_lock:
+            self._speaker_playback_until = 0.0
 
     @staticmethod
     def _drain_queue(

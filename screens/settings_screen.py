@@ -1,11 +1,13 @@
 # M12 OS Settings Screen - shared UI scale version
 # v0.4.25 - Storage Settings page improved for Android keyboard
 from pathlib import Path
+import json
 import subprocess
 import os
 
 from kivy.utils import platform
 from kivy.core.window import Window
+from kivy.core.clipboard import Clipboard
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -47,6 +49,7 @@ except Exception:
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+AI_SETTINGS_FILE = BASE_DIR / "config" / "ai_settings.json"
 LOG_FILE = BASE_DIR / "logs" / "m12_os.log"
 COPY_FILE = BASE_DIR / "logs" / "copied_log_text.txt"
 
@@ -59,6 +62,37 @@ ORANGE = (0.45, 0.30, 0.10, 1)
 RED = (0.50, 0.15, 0.15, 1)
 DARK = (0.10, 0.15, 0.25, 1)
 WHITE = (1, 1, 1, 1)
+
+
+def settings_button_font():
+    """Smaller Settings text on Android; desktop keeps shared UI scale."""
+    if platform == "android":
+        return max(18, int(button_font() * 0.68))
+    return button_font()
+
+
+def settings_text_font():
+    if platform == "android":
+        return max(16, int(text_font() * 0.72))
+    return text_font()
+
+
+def settings_status_font():
+    if platform == "android":
+        return max(14, int(status_font() * 0.76))
+    return status_font()
+
+
+def settings_button_height():
+    if platform == "android":
+        return max(54, int(button_height() * 0.76))
+    return button_height()
+
+
+def settings_row_height():
+    if platform == "android":
+        return max(48, int(row_height() * 0.76))
+    return row_height()
 
 
 class SettingsScreen(Screen):
@@ -129,7 +163,7 @@ class SettingsScreen(Screen):
     def make_subtitle(self, text):
         return Label(
             text=text,
-            font_size=text_font(),
+            font_size=settings_text_font(),
             color=(0.70, 0.85, 1, 1),
             size_hint=(1, 0.06)
         )
@@ -137,7 +171,7 @@ class SettingsScreen(Screen):
     def make_section_label(self, text):
         return Label(
             text=text,
-            font_size=text_font(),
+            font_size=settings_text_font(),
             bold=True,
             color=(0.80, 0.95, 1, 1),
             size_hint=(1, 0.07)
@@ -146,9 +180,9 @@ class SettingsScreen(Screen):
     def make_button(self, text, color=BLUE):
         return Button(
             text=text,
-            font_size=button_font(),
+            font_size=settings_button_font(),
             size_hint=(1, None),
-            height=button_height(),
+            height=settings_button_height(),
             background_normal="",
             background_color=color,
             color=WHITE,
@@ -158,7 +192,7 @@ class SettingsScreen(Screen):
     def make_small_button(self, text, color=BLUE):
         return Button(
             text=text,
-            font_size=button_font(),
+            font_size=settings_button_font(),
             background_normal="",
             background_color=color,
             color=WHITE,
@@ -169,9 +203,9 @@ class SettingsScreen(Screen):
         return Spinner(
             text=text,
             values=values,
-            font_size=button_font(),
+            font_size=settings_button_font(),
             size_hint=(1, None),
-            height=button_height(),
+            height=settings_button_height(),
             background_normal="",
             background_color=BLUE,
             color=WHITE
@@ -189,8 +223,8 @@ class SettingsScreen(Screen):
             padding=spacing_size(),
             size_hint_y=None,
             height=max(
-                int(button_height() * 2.35),
-                150,
+                int(settings_button_height() * 2.15),
+                112 if platform == "android" else 150,
             ),
         )
 
@@ -216,7 +250,7 @@ class SettingsScreen(Screen):
 
         title_label = Label(
             text=str(title),
-            font_size=button_font(),
+            font_size=settings_button_font(),
             bold=True,
             color=WHITE,
             size_hint=(1, 0.42),
@@ -234,7 +268,7 @@ class SettingsScreen(Screen):
 
         subtitle_label = Label(
             text=str(subtitle),
-            font_size=status_font(),
+            font_size=settings_status_font(),
             color=(0.72, 0.84, 1, 1),
             size_hint=(1, 0.30),
             halign="center",
@@ -260,7 +294,7 @@ class SettingsScreen(Screen):
     ):
         button = Button(
             text=text,
-            font_size=button_font(),
+            font_size=settings_button_font(),
             bold=True,
             background_normal="",
             background_color=color,
@@ -325,7 +359,7 @@ class SettingsScreen(Screen):
                 "F",
             ),
             values=("F", "C"),
-            font_size=button_font(),
+            font_size=settings_button_font(),
             bold=True,
             background_normal="",
             background_color=BLUE,
@@ -434,6 +468,26 @@ class SettingsScreen(Screen):
         )
         dashboard.add_widget(ai_card)
 
+        echo_enabled = self.speaker_echo_protection_enabled()
+
+        echo_card = self.make_dashboard_card(
+            "AI Speaker Mode",
+            (
+                "Mic pauses while Ace speaks"
+                if echo_enabled
+                else "Full-duplex listening"
+            ),
+            CARD_ALT,
+        )
+
+        self.echo_protection_btn = self.add_dashboard_button(
+            echo_card,
+            self.speaker_echo_protection_text(),
+            self.toggle_speaker_echo_protection,
+            GREEN if echo_enabled else ORANGE,
+        )
+        dashboard.add_widget(echo_card)
+
         log_card = self.make_dashboard_card(
             "System Log",
             "Read, copy, or clear the M12OS log",
@@ -454,7 +508,7 @@ class SettingsScreen(Screen):
         )
         info_label = Label(
             text="M12OS",
-            font_size=button_font(),
+            font_size=settings_button_font(),
             bold=True,
             color=(0.72, 0.88, 1, 1),
             size_hint=(1, 0.38),
@@ -487,10 +541,10 @@ class SettingsScreen(Screen):
         # in normal Labels above the fields.
         return TextInput(
             text=str(text),
-            font_size=text_font(),
+            font_size=settings_text_font(),
             multiline=False,
             size_hint=(1, None),
-            height=max(54, int(button_height() * 1.05)),
+            height=max(54, int(settings_button_height() * 1.05)),
             background_normal="",
             background_active="",
             background_color=(0.10, 0.15, 0.25, 1),
@@ -534,7 +588,7 @@ class SettingsScreen(Screen):
                     "Enter a personal OpenAI API key below."
                 )
             ),
-            font_size=text_font(),
+            font_size=settings_text_font(),
             color=(
                 (0.60, 1.00, 0.70, 1)
                 if configured
@@ -561,7 +615,7 @@ class SettingsScreen(Screen):
                 "It is not saved in config/ai_settings.json, "
                 "Git, or the APK source files."
             ),
-            font_size=status_font(),
+            font_size=settings_status_font(),
             color=(0.78, 0.88, 1, 1),
             size_hint=(1, 0.15),
             halign="center",
@@ -614,7 +668,7 @@ class SettingsScreen(Screen):
                 "Linux/macOS may continue using the "
                 "OPENAI_API_KEY environment variable."
             ),
-            font_size=status_font(),
+            font_size=settings_status_font(),
             color=(0.72, 0.82, 0.92, 1),
             size_hint=(1, 0.12),
             halign="center",
@@ -740,10 +794,10 @@ class SettingsScreen(Screen):
     def make_path_row(self, text):
         row = Button(
             text=str(text),
-            font_size=status_font(),
+            font_size=settings_status_font(),
             color=WHITE,
             size_hint=(1, None),
-            height=max(48, int(button_height() * 0.72)),
+            height=max(48, int(settings_button_height() * 0.72)),
             background_normal="",
             background_color=(0.06, 0.11, 0.20, 1),
             halign="left",
@@ -780,7 +834,7 @@ class SettingsScreen(Screen):
 
         root.add_widget(Label(
             text="Internal Storage Root",
-            font_size=text_font(),
+            font_size=settings_text_font(),
             bold=True,
             color=WHITE,
             size_hint=(1, 0.05)
@@ -795,7 +849,7 @@ class SettingsScreen(Screen):
 
         root.add_widget(Label(
             text="External SD Root",
-            font_size=text_font(),
+            font_size=settings_text_font(),
             bold=True,
             color=WHITE,
             size_hint=(1, 0.05)
@@ -810,7 +864,7 @@ class SettingsScreen(Screen):
 
         self.storage_status = Label(
             text="Music screen uses these roots for Internal / External storage.",
-            font_size=status_font(),
+            font_size=settings_status_font(),
             color=WHITE,
             size_hint=(1, 0.12),
             halign="left",
@@ -1081,7 +1135,7 @@ class SettingsScreen(Screen):
 
         root.add_widget(Label(
             text="View only. Use this list to find the real Internal or SD card root.",
-            font_size=status_font(),
+            font_size=settings_status_font(),
             color=WHITE,
             size_hint=(1, 0.08),
             halign="center",
@@ -1092,7 +1146,7 @@ class SettingsScreen(Screen):
             orientation="horizontal",
             spacing=spacing_size(),
             size_hint=(1, None),
-            height=button_height()
+            height=settings_button_height()
         )
 
         refresh_btn = self.make_small_button("Refresh", BLUE)
@@ -1118,9 +1172,9 @@ class SettingsScreen(Screen):
             # Do not disable this button. Disabled buttons can show grey text on Android.
             btn = Button(
                 text=line,
-                font_size=text_font(),
+                font_size=settings_text_font(),
                 size_hint_y=None,
-                height=row_height(),
+                height=settings_row_height(),
                 halign="left",
                 valign="middle",
                 background_normal="",
@@ -1171,7 +1225,7 @@ class SettingsScreen(Screen):
 
         self.log_status = Label(
             text="Tap a line, then Copy Line.",
-            font_size=status_font(),
+            font_size=settings_status_font(),
             color=(0.80, 0.90, 1, 1),
             size_hint=(1, 0.09),
             halign="left",
@@ -1186,7 +1240,7 @@ class SettingsScreen(Screen):
             orientation="horizontal",
             spacing=spacing_size(),
             size_hint=(1, None),
-            height=button_height()
+            height=settings_button_height()
         )
 
         refresh_btn = self.make_small_button("Refresh", BLUE)
@@ -1207,7 +1261,7 @@ class SettingsScreen(Screen):
             orientation="horizontal",
             spacing=spacing_size(),
             size_hint=(1, None),
-            height=button_height()
+            height=settings_button_height()
         )
 
         clear_btn = self.make_small_button("Clear Log", RED)
@@ -1236,6 +1290,127 @@ class SettingsScreen(Screen):
 
         self.clear_log_pending = False
         self.load_log_lines()
+
+    def speaker_echo_protection_enabled(self):
+        """Return the saved Speaker Echo Protection preference."""
+        configured = self.config.get(
+            "speaker_echo_protection",
+            None,
+        )
+
+        if isinstance(configured, bool):
+            return configured
+
+        try:
+            if AI_SETTINGS_FILE.exists():
+                data = json.loads(
+                    AI_SETTINGS_FILE.read_text(
+                        encoding="utf-8"
+                    )
+                )
+
+                if isinstance(data, dict):
+                    value = data.get(
+                        "speaker_echo_protection",
+                        True,
+                    )
+                    return bool(value)
+        except Exception as error:
+            log.error(
+                "Settings: could not read Speaker Echo Protection: "
+                f"{type(error).__name__}: {error}"
+            )
+
+        return True
+
+    def speaker_echo_protection_text(self):
+        enabled = self.speaker_echo_protection_enabled()
+        return (
+            "Speaker Echo Protection: ON"
+            if enabled
+            else "Speaker Echo Protection: OFF"
+        )
+
+    def save_speaker_echo_protection(self, enabled):
+        """Save the preference without overwriting existing AI settings."""
+        value = bool(enabled)
+
+        # Keep the normal M12 Settings copy too. This also lets the setting
+        # survive configurations that move settings storage in the future.
+        self.config.set(
+            "speaker_echo_protection",
+            value,
+        )
+
+        data = {}
+
+        if AI_SETTINGS_FILE.exists():
+            try:
+                loaded = json.loads(
+                    AI_SETTINGS_FILE.read_text(
+                        encoding="utf-8"
+                    )
+                )
+                if isinstance(loaded, dict):
+                    data = loaded
+            except Exception as error:
+                log.error(
+                    "Settings: AI settings read failed while saving "
+                    "Speaker Echo Protection: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        # Never copy an API key into this source configuration file.
+        data.pop("api_key", None)
+        data["speaker_echo_protection"] = value
+
+        AI_SETTINGS_FILE.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        temporary_file = AI_SETTINGS_FILE.with_suffix(
+            ".json.tmp"
+        )
+        temporary_file.write_text(
+            json.dumps(
+                data,
+                ensure_ascii=False,
+                indent=2,
+            ) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(
+            temporary_file,
+            AI_SETTINGS_FILE,
+        )
+
+    def toggle_speaker_echo_protection(self, instance=None):
+        new_value = not self.speaker_echo_protection_enabled()
+
+        try:
+            self.save_speaker_echo_protection(
+                new_value
+            )
+
+            if hasattr(self, "echo_protection_btn"):
+                self.echo_protection_btn.text = (
+                    self.speaker_echo_protection_text()
+                )
+                self.echo_protection_btn.background_color = (
+                    GREEN if new_value else ORANGE
+                )
+
+            log.info(
+                "Settings: speaker_echo_protection="
+                f"{new_value}"
+            )
+
+        except Exception as error:
+            log.error(
+                "Settings: Speaker Echo Protection save failed: "
+                f"{type(error).__name__}: {error}"
+            )
 
     def auto_update_text(self):
         return "Auto Updates: ON" if self.config.get("auto_update", True) else "Auto Updates: OFF"
@@ -1297,9 +1472,9 @@ class SettingsScreen(Screen):
 
         btn = Button(
             text=f"{idx}: {display}",
-            font_size=text_font(),
+            font_size=settings_text_font(),
             size_hint_y=None,
-            height=row_height(),
+            height=settings_row_height(),
             halign="left",
             valign="middle",
             background_normal="",
@@ -1349,7 +1524,14 @@ class SettingsScreen(Screen):
     def safe_copy_text(self, text, success_message):
         copied = False
 
-        if platform == "macosx":
+        if platform == "android":
+            try:
+                Clipboard.copy(str(text))
+                copied = True
+            except Exception as e:
+                log.error(f"Android clipboard failed: {e}")
+
+        elif platform == "macosx":
             try:
                 subprocess.run(
                     ["pbcopy"],
