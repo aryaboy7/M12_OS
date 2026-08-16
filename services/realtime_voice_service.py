@@ -247,6 +247,9 @@ class RealtimeVoiceService:
         self._last_transcript_text = ""
         self._last_transcript_time = 0.0
 
+        # Realtime function-tool state.
+        self._pending_tool_followup = False
+
         self.reconnect_delay = 2.0
         self.max_reconnect_delay = 15.0
 
@@ -1137,6 +1140,37 @@ class RealtimeVoiceService:
                 "audio",
             ],
             "instructions": self._current_instructions(),
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "show_images",
+                    "description": (
+                        "Display pictures in the M12 AI screen. Use this tool "
+                        "when the user wants to see pictures, images, photos, "
+                        "portraits, or other visual examples. Resolve pronouns "
+                        "and references from the conversation in any language "
+                        "before calling the tool. Pass clean subject names only."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "subjects": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 1,
+                                "maxItems": 8,
+                                "description": (
+                                    "Exact subjects whose pictures should be "
+                                    "displayed, one subject per array item."
+                                ),
+                            },
+                        },
+                        "required": ["subjects"],
+                        "additionalProperties": False,
+                    },
+                },
+            ],
+            "tool_choice": "auto",
             "audio": {
                 "input": input_configuration,
                 "output": {
@@ -1386,6 +1420,18 @@ class RealtimeVoiceService:
                         )
                     )
 
+                    # Image display is an AI capability. If the legacy local
+                    # router recognizes an image request, do not execute that
+                    # result here; let Realtime resolve context and call the
+                    # structured show_images tool instead.
+                    if (
+                        handled
+                        and str(answer).strip().startswith(
+                            "__M12_IMAGE_SUBJECTS__:"
+                        )
+                    ):
+                        handled = False
+
                     if handled:
                         self._emit_local_answer(
                             answer
@@ -1397,6 +1443,14 @@ class RealtimeVoiceService:
                         await self._create_response_once(
                             connection
                         )
+
+            elif event_type == (
+                "response.function_call_arguments.done"
+            ):
+                await self._handle_function_call(
+                    connection=connection,
+                    event=event,
+                )
 
             elif event_type == (
                 "response.output_audio.delta"
@@ -1486,9 +1540,18 @@ class RealtimeVoiceService:
                 else:
                     self._assistant_speaking.clear()
 
-                self._emit_status(
-                    "Realtime ready."
-                )
+                if self._pending_tool_followup:
+                    self._pending_tool_followup = False
+                    self._emit_status(
+                        "Realtime answering..."
+                    )
+                    await self._create_response_once(
+                        connection
+                    )
+                else:
+                    self._emit_status(
+                        "Realtime ready."
+                    )
 
             elif event_type == "error":
                 self._response_in_progress = False
@@ -1523,6 +1586,115 @@ class RealtimeVoiceService:
                 self._emit_error(
                     message
                 )
+
+    async def _handle_function_call(
+        self,
+        connection,
+        event,
+    ):
+        """Execute a Realtime function call and return its result."""
+        name = str(getattr(event, "name", "")).strip()
+        call_id = str(getattr(event, "call_id", "")).strip()
+        raw_arguments = getattr(event, "arguments", "{}")
+
+        if not call_id:
+            print(
+                "[Realtime] Function call ignored because call_id is missing."
+            )
+            return
+
+        if name == "show_images":
+            output = self._execute_show_images_tool(
+                raw_arguments
+            )
+        else:
+            output = {
+                "ok": False,
+                "error": "Unsupported M12 tool.",
+            }
+
+        await connection.conversation.item.create(
+            item={
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": json.dumps(
+                    output,
+                    ensure_ascii=False,
+                ),
+            }
+        )
+
+        self._pending_tool_followup = True
+
+    def _execute_show_images_tool(
+        self,
+        raw_arguments,
+    ):
+        """Execute the model-selected image request through M12 ImageSkill."""
+        try:
+            if isinstance(raw_arguments, str):
+                arguments = json.loads(raw_arguments or "{}")
+            elif isinstance(raw_arguments, dict):
+                arguments = raw_arguments
+            else:
+                arguments = {}
+        except json.JSONDecodeError as error:
+            print(
+                "[Realtime] show_images arguments error: "
+                f"{type(error).__name__}: {error}"
+            )
+            return {
+                "ok": False,
+                "error": "Invalid show_images arguments.",
+            }
+
+        raw_subjects = arguments.get("subjects", [])
+        if isinstance(raw_subjects, str):
+            raw_subjects = [raw_subjects]
+
+        subjects = []
+        if isinstance(raw_subjects, (list, tuple)):
+            for subject in raw_subjects:
+                clean = " ".join(str(subject).strip().split())
+                if clean and clean not in subjects:
+                    subjects.append(clean)
+                if len(subjects) >= 8:
+                    break
+
+        if not subjects:
+            return {
+                "ok": False,
+                "error": "No image subjects were supplied.",
+            }
+
+        command = (
+            "__M12_IMAGE_SUBJECTS__:"
+            + json.dumps(subjects, ensure_ascii=False)
+        )
+
+        print(
+            "[Realtime] show_images subjects: "
+            + repr(subjects)
+        )
+
+        handled, answer = self._route_local_request(
+            command
+        )
+
+        if not handled:
+            return {
+                "ok": False,
+                "error": "M12 image display did not accept the request.",
+                "subjects": subjects,
+            }
+
+        if answer:
+            self._emit_local_answer(answer)
+
+        return {
+            "ok": True,
+            "subjects": subjects,
+        }
 
     # -------------------------------------------------------------
     # Android SDL2 audio backend
