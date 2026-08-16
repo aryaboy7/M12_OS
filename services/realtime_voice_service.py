@@ -251,7 +251,14 @@ class RealtimeVoiceService:
         self._pending_tool_followup = False
 
         self.reconnect_delay = 2.0
-        self.max_reconnect_delay = 15.0
+        self.max_reconnect_delay = 30.0
+
+        # Reconnect diagnostics are intentionally throttled. A temporary
+        # Wi-Fi/DNS outage can otherwise produce many identical UI errors
+        # while the background reconnect loop is doing exactly what it should.
+        self._last_connection_error_text = ""
+        self._last_connection_error_time = 0.0
+        self._connection_error_report_interval = 30.0
 
     @staticmethod
     def load_settings():
@@ -925,10 +932,41 @@ class RealtimeVoiceService:
                 self._ready_event.clear()
                 self._connection = None
 
-                self._report_error(
-                    "Realtime connection error",
-                    error,
+                # A failed socket can leave turn/audio state marked active.
+                # Reset only transient Realtime state; keep the user's
+                # conversation/listening preference so reconnect can resume.
+                self._response_in_progress = False
+                self._pending_tool_followup = False
+                self._assistant_speaking.clear()
+                self._echo_paused_microphone = False
+                self._microphone_enabled.clear()
+                self._clear_audio_queues()
+
+                error_text = (
+                    f"{type(error).__name__}: {error}"
+                ).strip()
+                now = time.monotonic()
+
+                should_report = (
+                    error_text != self._last_connection_error_text
+                    or (
+                        now - self._last_connection_error_time
+                        >= self._connection_error_report_interval
+                    )
                 )
+
+                if should_report:
+                    self._last_connection_error_text = error_text
+                    self._last_connection_error_time = now
+                    self._report_error(
+                        "Realtime connection error",
+                        error,
+                    )
+                else:
+                    print(
+                        "[Realtime] Repeated connection error suppressed: "
+                        + error_text
+                    )
 
                 if self._stop_event.is_set():
                     break
@@ -940,9 +978,17 @@ class RealtimeVoiceService:
                     )
                 )
 
-                await asyncio.sleep(
-                    delay
-                )
+                # Sleep in short intervals so Stop/Restart does not have to
+                # wait for the full reconnect backoff.
+                wait_until = time.monotonic() + delay
+                while (
+                    not self._stop_event.is_set()
+                    and time.monotonic() < wait_until
+                ):
+                    await asyncio.sleep(0.2)
+
+                if self._stop_event.is_set():
+                    break
 
                 delay = min(
                     delay * 2.0,
@@ -975,10 +1021,23 @@ class RealtimeVoiceService:
             self._connected_event.set()
             self._ready_event.set()
             self._last_error = ""
+            self._last_connection_error_text = ""
+            self._last_connection_error_time = 0.0
+
+            # If voice conversation was active before a network interruption,
+            # resume microphone streaming automatically on the new socket.
+            if self._conversation_active.is_set():
+                self._microphone_enabled.set()
+                self._drain_queue(self._microphone_queue)
 
             self._emit_status(
                 "Realtime connected."
             )
+
+            if self._conversation_active.is_set():
+                self._emit_status(
+                    "Realtime voice is listening."
+                )
 
             receiver_task = asyncio.create_task(
                 self._receive_events(

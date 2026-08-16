@@ -3122,11 +3122,11 @@ class AIScreen(Screen):
         error_message,
     ):
         message = str(error_message)
+        lower = message.lower()
 
         # A local skill may finish before OpenAI starts a response.
-        # In that case cancelling the nonexistent response is normal and
-        # must not be shown as a Realtime failure.
-        if "response_cancel_not_active" in message:
+        # Cancelling a nonexistent response is normal and not fatal.
+        if "response_cancel_not_active" in lower:
             self.realtime_answer_active = False
             self.realtime_answer_text = ""
 
@@ -3142,7 +3142,58 @@ class AIScreen(Screen):
             self.set_controls_enabled(True)
             return
 
+        # Temporary network/WebSocket failures are recoverable. The
+        # RealtimeVoiceService owns reconnect/backoff and will reconnect in
+        # the background. Keep the UI in active Voice mode so the user does
+        # not have to press Voice again after Wi-Fi/DNS returns.
+        recoverable_markers = (
+            "connectionclosederror",
+            "websocketconnectionclosederror",
+            "connection closed",
+            "no close frame",
+            "gaierror",
+            "name or service not known",
+            "no address associated with hostname",
+            "temporary failure in name resolution",
+            "network is unreachable",
+            "connection reset",
+            "connection aborted",
+            "broken pipe",
+            "timed out",
+            "timeout",
+        )
+
+        if any(
+            marker in lower
+            for marker in recoverable_markers
+        ):
+            self.realtime_answer_active = False
+            self.realtime_answer_text = ""
+
+            # Do NOT set realtime_voice_active=False here.
+            # The service is still running and attempting to reconnect.
+            if self.realtime_voice_active:
+                self.voice_btn.text = "Stop Voice"
+                self.voice_status.text = (
+                    "Realtime disconnected — reconnecting..."
+                )
+            else:
+                # Defensive case: if the callback arrives during startup,
+                # keep the service visibly in a reconnecting state.
+                self.realtime_voice_active = True
+                self.voice_btn.text = "Stop Voice"
+                self.voice_status.text = (
+                    "Realtime disconnected — reconnecting..."
+                )
+
+            self.set_controls_enabled(True)
+            return
+
+        # Non-network errors are treated as fatal and return the UI to the
+        # normal stopped Voice state.
         self.realtime_voice_active = False
+        self.realtime_answer_active = False
+        self.realtime_answer_text = ""
         self.voice_btn.text = "Voice"
         self.voice_status.text = (
             f"Realtime error: {message}"
