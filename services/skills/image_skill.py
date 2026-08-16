@@ -402,9 +402,17 @@ class ImageSkill(BaseSkill):
         for subject in subjects:
             try:
                 results = self._search_commons(
-                    subject,
-                    limit=20,
+                    subject + " portrait",
+                    limit=30,
                 )
+
+                # Commons may rank a generic portrait search poorly for some
+                # historical figures. Fall back to the exact full name.
+                if not results:
+                    results = self._search_commons(
+                        subject,
+                        limit=30,
+                    )
             except Exception:
                 results = []
 
@@ -472,7 +480,14 @@ class ImageSkill(BaseSkill):
         results: list[dict],
     ):
         """
-        Prefer a result that actually identifies the requested subject.
+        Choose one image that identifies the exact requested subject.
+
+        For people, a metadata-only match is not strong enough because
+        Commons descriptions/credits can mention several public figures.
+        Prefer an exact full-name match in the Commons file title.
+
+        Android/Kivy also behaves most reliably with JPEG and PNG thumbnails,
+        so unsupported/less reliable formats are not selected for galleries.
         """
         subject_clean = cls._normalize(
             subject
@@ -485,11 +500,13 @@ class ImageSkill(BaseSkill):
         ]
 
         if not subject_words:
-            return (
-                results[0]
-                if results
-                else None
-            )
+            return None
+
+        safe_mimes = {
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+        }
 
         reject_terms = {
             "group",
@@ -499,15 +516,51 @@ class ImageSkill(BaseSkill):
             "family",
             "cabinet",
             "administration",
+            "presidents together",
+            "former presidents",
+            "all presidents",
         }
 
-        scored = []
+        exact_title_matches = []
+        exact_metadata_matches = []
 
         for index, item in enumerate(results):
+            mime = str(
+                item.get(
+                    "mime",
+                    "",
+                )
+                or ""
+            ).strip().lower()
+
+            if mime and mime not in safe_mimes:
+                continue
+
+            image_url = str(
+                item.get(
+                    "image_url",
+                    "",
+                )
+                or ""
+            ).strip()
+
+            if not image_url.startswith(
+                ("http://", "https://")
+            ):
+                continue
+
+            title_clean = cls._normalize(
+                item.get(
+                    "title",
+                    "",
+                )
+            )
+
             searchable = cls._normalize(
                 " ".join(
                     str(
-                        item.get(key, "") or ""
+                        item.get(key, "")
+                        or ""
                     )
                     for key in (
                         "title",
@@ -521,74 +574,97 @@ class ImageSkill(BaseSkill):
             if not searchable:
                 continue
 
-            full_name_match = (
-                subject_clean in searchable
-            )
-
-            matched_words = sum(
-                1
-                for word in subject_words
-                if word in searchable
-            )
-
-            if (
-                not full_name_match
-                and matched_words
-                < max(
-                    1,
-                    len(subject_words) - 1,
-                )
-            ):
-                continue
-
-            score = (
-                120
-                if full_name_match
-                else matched_words * 25
-            )
-
-            title_clean = cls._normalize(
-                item.get(
-                    "title",
-                    "",
-                )
-            )
-
-            if subject_clean in title_clean:
-                score += 80
-
             if any(
                 term in searchable
                 for term in reject_terms
             ):
-                score -= 100
+                continue
+
+            full_name_in_title = (
+                subject_clean in title_clean
+            )
+
+            all_name_words_in_title = all(
+                word in title_clean
+                for word in subject_words
+            )
+
+            full_name_in_metadata = (
+                subject_clean in searchable
+            )
+
+            if full_name_in_title:
+                score = 300
+            elif all_name_words_in_title:
+                score = 240
+            elif full_name_in_metadata:
+                score = 120
+            else:
+                continue
+
+            try:
+                width = int(
+                    item.get("width")
+                    or 0
+                )
+                height = int(
+                    item.get("height")
+                    or 0
+                )
+            except Exception:
+                width = 0
+                height = 0
+
+            if width > 0 and height > 0:
+                ratio = (
+                    float(height)
+                    / float(width)
+                )
+
+                # Portrait or near-square images are more useful for people.
+                if 0.85 <= ratio <= 2.2:
+                    score += 30
+
+                # Very small thumbnails are less desirable.
+                if min(width, height) >= 500:
+                    score += 15
 
             score += max(
                 0,
                 20 - index,
             )
 
-            scored.append(
-                (
-                    score,
-                    item,
-                )
+            candidate = (
+                score,
+                item,
             )
 
-        if not scored:
+            if (
+                full_name_in_title
+                or all_name_words_in_title
+            ):
+                exact_title_matches.append(
+                    candidate
+                )
+            else:
+                exact_metadata_matches.append(
+                    candidate
+                )
+
+        pool = (
+            exact_title_matches
+            or exact_metadata_matches
+        )
+
+        if not pool:
             return None
 
-        scored.sort(
+        pool.sort(
             key=lambda row: row[0],
             reverse=True,
         )
 
-        best_score, best_item = scored[0]
-
-        if best_score < 45:
-            return None
-
-        return best_item
+        return pool[0][1]
 
     def _next_batch(
         self,

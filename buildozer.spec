@@ -1,5 +1,5 @@
 [app]
-
+android.no-byte-compile-python = True
 p4a.local_recipes = recipes
 
 title = M12 OS
@@ -11,7 +11,7 @@ source.dir = .
 source.include_exts = py,kv,json,png,jpg,jpeg,atlas,wav,mp3,m4a,txt
 
 # Keep local development/build folders out of the APK.
-source.exclude_dirs = .git,.github,.venv,.buildozer,bin,backups,updates,__pycache__
+source.exclude_dirs = .git,.github,.venv,.buildozer,bin,backups,updates,__pycache__,current_phone_snapshot,phone_data_before_restore,recovered_m12_data,restore_payload
 
 version = 0.5.3
 

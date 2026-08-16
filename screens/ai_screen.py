@@ -347,7 +347,10 @@ class AIScreen(Screen):
             )
 
             self.chat_label = Label(
-                text=self.format_chat_links(self.chat_text),
+                # Start empty on Android. The persistent transcript may be
+                # very large, and assigning it here can create an oversized
+                # texture before render_chat_text() gets a chance to trim it.
+                text="",
                 markup=True,
                 font_size=font(chat_size),
                 size_hint_y=None,
@@ -385,6 +388,10 @@ class AIScreen(Screen):
 
             # Compatibility alias used by some older logic.
             self.chat_view = self.chat_label
+
+            # Render only the Android-safe visible tail now that the widget
+            # exists. Never hand the full persistent transcript to one Label.
+            self.render_chat_text()
 
         else:
             # Desktop/Linux/macOS: ScrollView + markup Label allows
@@ -843,17 +850,39 @@ class AIScreen(Screen):
 
     def render_chat_text(self):
         """
-        Render the raw saved conversation into the visible markup Label.
+        Render the conversation into the visible chat widget.
+
+        Android uses a single Kivy Label texture. A very long persistent
+        transcript can create a texture taller than the GPU can render,
+        leaving the Conversation area visually blank. Keep the full transcript
+        in self.chat_text/on disk, but render only the newest portion on Android.
         """
         if not hasattr(self, "chat_view"):
             return
 
+        display_text = self.chat_text
+
+        if platform == "android" and len(display_text) > 3500:
+            display_text = display_text[-3500:]
+
+            # Start at a paragraph boundary when possible.
+            paragraph = display_text.find("\n\n")
+            if paragraph >= 0:
+                display_text = display_text[paragraph + 2:]
+
+            display_text = (
+                "M12 AI:\n"
+                "[Earlier conversation is saved but hidden from this view "
+                "to keep Android rendering stable.]\n\n"
+                + display_text
+            )
+
         if getattr(self.chat_view, "markup", False):
             self.chat_view.text = self.format_chat_links(
-                self.chat_text
+                display_text
             )
         else:
-            self.render_chat_text()
+            self.chat_view.text = display_text
 
     # -------------------------------------------------------------
     # Clickable URLs in Conversation
@@ -2939,6 +2968,22 @@ class AIScreen(Screen):
         *args,
     ):
         self.refresh_status_bar()
+
+        # Always repaint the persistent conversation when the AI screen opens.
+        # This prevents Android's markup Label from remaining visually blank
+        # until Clear Messages forces a redraw.
+        self._chat_auto_follow = True
+        self._chat_refresh_pending = True
+
+        Clock.schedule_once(
+            lambda dt: self.flush_chat_refresh(),
+            0,
+        )
+        Clock.schedule_once(
+            self.scroll_to_bottom,
+            0.05,
+        )
+
         """
         Opening the AI Assistant always activates AI Mode.
 
@@ -3558,6 +3603,12 @@ class AIScreen(Screen):
                 answer,
                 route="normal",
             )
+
+            # Realtime answers bypass AIRouter.process_ai_stream(), so keep the
+            # router's immediate conversational context synchronized manually.
+            # Contextual local requests such as "show me pictures of these
+            # presidents" can then resolve "these presidents" correctly.
+            self.ai_router.last_assistant_answer = answer
 
         self.realtime_answer_active = False
         self.realtime_answer_text = ""

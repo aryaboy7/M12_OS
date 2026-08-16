@@ -123,8 +123,26 @@ class AIRouter:
         except Exception:
             skill_names = []
 
+        semantic_message = user_message
+
+        # Give the semantic resolver only the immediately preceding assistant
+        # answer. This is enough to resolve references such as "these
+        # presidents" without leaking the whole visible transcript into every
+        # local-skill decision.
+        previous_answer = str(
+            self.last_assistant_answer or ""
+        ).strip()
+
+        if previous_answer:
+            semantic_message = (
+                "Previous assistant answer:\n"
+                + previous_answer
+                + "\n\nCurrent user request:\n"
+                + user_message
+            )
+
         return self.ai_service.resolve_m12_action(
-            user_message=user_message,
+            user_message=semantic_message,
             available_skills=skill_names,
         )
 
@@ -1232,6 +1250,57 @@ class AIRouter:
 
         return None
 
+    @classmethod
+    def subjects_from_previous_answer(
+        cls,
+        answer,
+    ):
+        """
+        Deterministically recover named subjects from a numbered/ordinal list
+        in the immediately preceding assistant answer.
+
+        This is intentionally narrow and is used before semantic routing for
+        requests such as "show me pictures of these presidents".
+        """
+        text = str(answer or "").strip()
+
+        if not text:
+            return []
+
+        marker_pattern = (
+            r"(?:^|[.;\n])\s*"
+            r"(?:"
+            r"\d{1,2}\s*[\.\):,-]|"
+            r"one\s*[,.:)-]|two\s*[,.:)-]|three\s*[,.:)-]|four\s*[,.:)-]|"
+            r"five\s*[,.:)-]|six\s*[,.:)-]|seven\s*[,.:)-]|eight\s*[,.:)-]|"
+            r"first\s*[,.:)-]|second\s*[,.:)-]|third\s*[,.:)-]|fourth\s*[,.:)-]|"
+            r"fifth\s*[,.:)-]|sixth\s*[,.:)-]|seventh\s*[,.:)-]|eighth\s*[,.:)-]"
+            r")\s*"
+            r"([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,3})"
+        )
+
+        found = re.findall(
+            marker_pattern,
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        subjects = []
+        seen = set()
+
+        for value in found:
+            cleaned = str(value).strip(" .,:;-")
+            key = cleaned.lower()
+
+            if (
+                cleaned
+                and key not in seen
+            ):
+                seen.add(key)
+                subjects.append(cleaned)
+
+        return subjects[:8]
+
     def process_local(
         self,
         message,
@@ -1247,6 +1316,121 @@ class AIRouter:
             ai_screen=ai_screen,
             router=self,
         )
+
+        # Contextual image requests must be semantically resolved BEFORE the
+        # literal ImageSkill parser sees phrases such as "these presidents".
+        # Otherwise ImageSkill searches Wikimedia for the words "these
+        # presidents" and returns unrelated presidents.
+        normalized_message = self.normalize_text(
+            original_message
+        )
+
+        contextual_image_request = (
+            any(
+                word in normalized_message.split()
+                for word in (
+                    "picture",
+                    "pictures",
+                    "image",
+                    "images",
+                    "photo",
+                    "photos",
+                )
+            )
+            and any(
+                word in normalized_message.split()
+                for word in (
+                    "this",
+                    "that",
+                    "these",
+                    "those",
+                    "them",
+                    "they",
+                    "person",
+                    "persons",
+                    "people",
+                    "president",
+                    "presidents",
+                )
+            )
+            and bool(
+                str(
+                    self.last_assistant_answer
+                    or ""
+                ).strip()
+            )
+        )
+
+        if contextual_image_request:
+            previous_answer = str(
+                self.last_assistant_answer
+                or ""
+            ).strip()
+
+            subjects = self.subjects_from_previous_answer(
+                previous_answer
+            )
+
+            semantic_command = ""
+
+            if subjects:
+                import json
+
+                semantic_command = (
+                    "__M12_IMAGE_SUBJECTS__:"
+                    + json.dumps(
+                        subjects,
+                        ensure_ascii=False,
+                    )
+                )
+
+                print(
+                    "[AIRouter] Deterministic image subjects: "
+                    + repr(subjects)
+                )
+
+            if not semantic_command:
+                try:
+                    semantic_route = self.resolve_semantic_route(
+                        original_message
+                    )
+                    semantic_command = self.semantic_route_command(
+                        semantic_route
+                    )
+
+                    print(
+                        "[AIRouter] Semantic route result: "
+                        + repr(semantic_route)
+                    )
+                except Exception as error:
+                    print(
+                        "[AIRouter] Semantic image routing error: "
+                        f"{type(error).__name__}: {error}"
+                    )
+                    semantic_command = ""
+
+            if semantic_command:
+                print(
+                    "[AIRouter] Final image command: "
+                    + semantic_command
+                )
+
+                skill_result = self.skill_registry.dispatch(
+                    message=semantic_command,
+                    context=context,
+                )
+
+                if skill_result.handled:
+                    self.last_skill_result = skill_result
+                    self.last_local_message = original_message
+                    self.last_local_answer = str(
+                        skill_result.answer or ""
+                    ).strip()
+                    self.last_ai_route = "local"
+                    self.last_assistant_answer = str(
+                        skill_result.answer or ""
+                    ).strip()
+                    return True, skill_result.answer
 
         # Short follow-ups must never be appended to the previous command.
         # Doing that corrupts parsers such as WeatherSkill's city extractor.
