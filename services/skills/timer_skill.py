@@ -486,6 +486,77 @@ class TimerSkill(BaseSkill):
                 data={"success": False, "error": "screen_unavailable"},
             )
 
+        if action == "pause":
+            if not bool(getattr(screen, "running", False)):
+                return SkillResult(
+                    handled=True,
+                    answer="",
+                    confidence=1.0,
+                    action="pause_timer",
+                    data={
+                        "success": False,
+                        "paused": False,
+                        "error": "timer_not_running",
+                        "remaining_seconds": int(
+                            getattr(screen, "remaining", 0)
+                        ),
+                    },
+                )
+
+            screen.stop(None)
+            ActivityContext.instance().set("timer")
+
+            return SkillResult(
+                handled=True,
+                answer="",
+                confidence=1.0,
+                action="pause_timer",
+                data={
+                    "success": True,
+                    "paused": True,
+                    "remaining_seconds": int(
+                        getattr(screen, "remaining", 0)
+                    ),
+                },
+            )
+
+        if action == "resume":
+            remaining = int(getattr(screen, "remaining", 0))
+
+            if remaining <= 0:
+                return SkillResult(
+                    handled=True,
+                    answer="",
+                    confidence=1.0,
+                    action="resume_timer",
+                    data={
+                        "success": False,
+                        "resumed": False,
+                        "error": "timer_not_set",
+                        "remaining_seconds": 0,
+                    },
+                )
+
+            screen.start(None)
+            resumed = bool(getattr(screen, "running", False))
+
+            if resumed:
+                ActivityContext.instance().set("timer")
+
+            return SkillResult(
+                handled=True,
+                answer="",
+                confidence=1.0,
+                action="resume_timer",
+                data={
+                    "success": resumed,
+                    "resumed": resumed,
+                    "remaining_seconds": int(
+                        getattr(screen, "remaining", 0)
+                    ),
+                },
+            )
+
         if action != "start":
             return SkillResult(
                 handled=True,

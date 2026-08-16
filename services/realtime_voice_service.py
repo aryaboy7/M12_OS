@@ -1232,9 +1232,9 @@ class RealtimeVoiceService:
                     "type": "function",
                     "name": "control_timer",
                     "description": (
-                        "Control the existing M12 Timer. For this first version, "
-                        "use this tool only when the user asks to start or set a "
-                        "countdown timer. Convert the requested duration to total "
+                        "Control the existing M12 Timer. Use this tool when the "
+                        "user asks to start/set, pause, or resume the countdown "
+                        "timer. For start, convert the requested duration to total "
                         "seconds yourself, regardless of the user's language."
                     ),
                     "parameters": {
@@ -1242,7 +1242,7 @@ class RealtimeVoiceService:
                         "properties": {
                             "action": {
                                 "type": "string",
-                                "enum": ["start"],
+                                "enum": ["start", "pause", "resume"],
                             },
                             "seconds": {
                                 "type": "integer",
@@ -1253,7 +1253,7 @@ class RealtimeVoiceService:
                                 ),
                             },
                         },
-                        "required": ["action", "seconds"],
+                        "required": ["action"],
                         "additionalProperties": False,
                     },
                 },
@@ -1744,43 +1744,54 @@ class RealtimeVoiceService:
             arguments.get("action", "")
         ).strip().lower()
 
-        if action != "start":
+        if action not in {"start", "pause", "resume"}:
             return {
                 "ok": False,
                 "error": "Unsupported timer action.",
                 "action": action,
             }
 
-        try:
-            seconds = int(
-                arguments.get("seconds", 0)
-            )
-        except (TypeError, ValueError):
-            seconds = 0
+        seconds = 0
 
-        if seconds <= 0 or seconds > 86399:
-            return {
-                "ok": False,
-                "error": "Timer duration must be between 1 and 86399 seconds.",
-                "seconds": seconds,
-            }
+        if action == "start":
+            try:
+                seconds = int(
+                    arguments.get("seconds", 0)
+                )
+            except (TypeError, ValueError):
+                seconds = 0
+
+            if seconds <= 0 or seconds > 86399:
+                return {
+                    "ok": False,
+                    "error": (
+                        "Timer duration must be between "
+                        "1 and 86399 seconds."
+                    ),
+                    "seconds": seconds,
+                }
+
+        payload = {"action": action}
+
+        if action == "start":
+            payload["seconds"] = seconds
 
         # Send a language-independent internal command to TimerSkill.
-        # Natural-language parsing has already been completed by Realtime.
         command = (
             "__M12_TIMER__:"
             + json.dumps(
-                {
-                    "action": "start",
-                    "seconds": seconds,
-                },
+                payload,
                 ensure_ascii=False,
             )
         )
 
         print(
-            "[Realtime] control_timer action=start "
-            f"seconds={seconds}"
+            f"[Realtime] control_timer action={action}"
+            + (
+                f" seconds={seconds}"
+                if action == "start"
+                else ""
+            )
         )
 
         handled, answer = self._route_local_request(
@@ -1795,14 +1806,17 @@ class RealtimeVoiceService:
                 "seconds": seconds,
             }
 
-        # Do not speak the local TimerSkill answer here. The function result
-        # is returned to Realtime, and Ace gives one confirmation in the
-        # currently selected language.
-        return {
+        # TimerSkill intentionally returns no local speech for structured
+        # commands. Realtime gives one confirmation in the selected language.
+        result = {
             "ok": True,
             "action": action,
-            "seconds": seconds,
         }
+
+        if action == "start":
+            result["seconds"] = seconds
+
+        return result
 
     def _execute_show_images_tool(
         self,
