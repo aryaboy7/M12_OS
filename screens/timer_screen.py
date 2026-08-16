@@ -1,23 +1,29 @@
+from pathlib import Path
+
 from kivy.clock import Clock
+from kivy.core.audio import SoundLoader
+from kivy.utils import platform
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from kivy.uix.popup import Popup
 
 from utils.logger import log
 from utils.system_header import create_system_header
 from utils.ui_scale import (
     device_profile,
-    title_font,
     button_font,
     text_font,
     status_font,
     clock_time_font,
-    button_height,
     padding_size,
     spacing_size,
     height,
 )
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 def wheel_title_font():
@@ -171,6 +177,8 @@ class TimerScreen(Screen):
         self.running = False
         self.remaining = 0
         self.original_seconds = 0
+        self._finished_notified = False
+        self._finish_sound = None
 
         root = BoxLayout(
             orientation="vertical",
@@ -253,6 +261,11 @@ class TimerScreen(Screen):
 
         self.add_widget(root)
 
+        # IMPORTANT:
+        # The timer must keep ticking even when the Timer screen is not open.
+        # Schedule it once for the lifetime of this screen object.
+        Clock.schedule_interval(self.tick, 1)
+
     def get_system_status_text(self):
         if (
             self.manager
@@ -272,12 +285,12 @@ class TimerScreen(Screen):
 
     def on_enter(self):
         log.info("Timer: opened")
-        Clock.unschedule(self.tick)
-        Clock.schedule_interval(self.tick, 1)
         self.update_display()
 
     def on_leave(self):
-        Clock.unschedule(self.tick)
+        # Do NOT unschedule tick here.
+        # AI can start a timer while the user is on another screen.
+        pass
 
     def read_seconds_from_wheels(self):
         return (
@@ -296,9 +309,12 @@ class TimerScreen(Screen):
             log.warning("Timer: start pressed with zero time")
             return
 
+        self._finished_notified = False
         self.running = True
         self.status_label.text = "Running"
-        log.info("Timer: started")
+        log.info(
+            f"Timer: started for {int(self.remaining)} seconds"
+        )
         self.update_display()
 
     def stop(self, instance):
@@ -308,7 +324,11 @@ class TimerScreen(Screen):
 
     def reset(self, instance):
         self.running = False
-        self.remaining = self.original_seconds or self.read_seconds_from_wheels()
+        self._finished_notified = False
+        self.remaining = (
+            self.original_seconds
+            or self.read_seconds_from_wheels()
+        )
         self.status_label.text = "Ready"
         log.info("Timer: reset")
         self.update_display()
@@ -327,10 +347,177 @@ class TimerScreen(Screen):
             self.status_label.text = "TIME IS UP!"
             log.info("Timer: time is up")
 
+            if not self._finished_notified:
+                self._finished_notified = True
+                self.notify_time_is_up()
+
         self.update_display()
 
+    def notify_time_is_up(self):
+        """Alert the user even when the Timer screen is not currently open."""
+        self._play_finish_sound()
+
+        content = BoxLayout(
+            orientation="vertical",
+            spacing=height(12),
+            padding=height(12),
+        )
+
+        message = Label(
+            text="TIME IS UP!",
+            font_size=timer_time_font(),
+            bold=True,
+        )
+
+        close_btn = Button(
+            text="OK",
+            font_size=button_font(),
+            size_hint_y=None,
+            height=height(58),
+        )
+
+        content.add_widget(message)
+        content.add_widget(close_btn)
+
+        popup = Popup(
+            title="Timer",
+            content=content,
+            size_hint=(0.82, 0.42),
+            auto_dismiss=False,
+        )
+
+        close_btn.bind(
+            on_press=popup.dismiss
+        )
+
+        popup.open()
+
+    def _play_finish_sound(self):
+        """Play the timer alert without interfering with Realtime SDL audio."""
+        primary = BASE_DIR / "data" / "sounds" / "reminder.wav"
+        secondary = BASE_DIR / "data" / "sounds" / "reminder2.wav"
+
+        sound_path = None
+        for candidate in (primary, secondary):
+            if candidate.exists():
+                sound_path = candidate
+                break
+
+        if platform == "android":
+            # Use Android's native media stack instead of Kivy SoundLoader.
+            # Realtime voice already uses SDL for speaker playback, and a
+            # second SDL/Kivy sound path can be silent on some Android devices.
+            try:
+                from jnius import autoclass
+
+                MediaPlayer = autoclass("android.media.MediaPlayer")
+                AudioManager = autoclass("android.media.AudioManager")
+
+                if sound_path is not None:
+                    player = MediaPlayer()
+                    player.setAudioStreamType(
+                        AudioManager.STREAM_ALARM
+                    )
+                    player.setDataSource(
+                        str(sound_path)
+                    )
+                    player.prepare()
+                    player.start()
+
+                    # Keep a reference alive until completion.
+                    self._android_timer_player = player
+
+                    log.info(
+                        "Timer: Android MediaPlayer started "
+                        f"{sound_path}"
+                    )
+                    return
+
+            except Exception as error:
+                log.warning(
+                    "Timer: Android MediaPlayer failed "
+                    f"{type(error).__name__}: {error}"
+                )
+
+            # Guaranteed native fallback: play the Android alarm tone.
+            try:
+                from jnius import autoclass
+
+                RingtoneManager = autoclass(
+                    "android.media.RingtoneManager"
+                )
+                PythonActivity = autoclass(
+                    "org.kivy.android.PythonActivity"
+                )
+
+                activity = PythonActivity.mActivity
+                uri = RingtoneManager.getDefaultUri(
+                    RingtoneManager.TYPE_ALARM
+                )
+
+                if uri is None:
+                    uri = RingtoneManager.getDefaultUri(
+                        RingtoneManager.TYPE_NOTIFICATION
+                    )
+
+                ringtone = RingtoneManager.getRingtone(
+                    activity,
+                    uri,
+                )
+
+                if ringtone is not None:
+                    self._android_timer_ringtone = ringtone
+                    ringtone.play()
+                    log.info(
+                        "Timer: Android default alarm tone started"
+                    )
+                    return
+
+            except Exception as error:
+                log.warning(
+                    "Timer: Android alarm-tone fallback failed "
+                    f"{type(error).__name__}: {error}"
+                )
+
+            log.warning(
+                "Timer: Android timer alert could not play sound"
+            )
+            return
+
+        # Desktop fallback keeps the existing Kivy audio behavior.
+        if sound_path is not None:
+            try:
+                sound = SoundLoader.load(
+                    str(sound_path)
+                )
+                if sound is not None:
+                    self._finish_sound = sound
+                    sound.play()
+                    log.info(
+                        f"Timer: notification sound {sound_path}"
+                    )
+                    return
+            except Exception as error:
+                log.warning(
+                    "Timer: notification sound failed "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        log.warning(
+            "Timer: reminder sound not available; showing popup only"
+        )
+
     def update_display(self):
-        total = self.remaining if self.remaining > 0 else self.read_seconds_from_wheels()
+        # When the timer has completed, show true 00:00:00 rather than
+        # falling back to the wheel values.
+        if self.original_seconds > 0 and self.remaining <= 0:
+            total = 0
+        else:
+            total = (
+                self.remaining
+                if self.remaining > 0
+                else self.read_seconds_from_wheels()
+            )
 
         h = total // 3600
         m = (total % 3600) // 60

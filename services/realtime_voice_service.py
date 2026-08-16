@@ -1228,6 +1228,35 @@ class RealtimeVoiceService:
                         "additionalProperties": False,
                     },
                 },
+                {
+                    "type": "function",
+                    "name": "control_timer",
+                    "description": (
+                        "Control the existing M12 Timer. For this first version, "
+                        "use this tool only when the user asks to start or set a "
+                        "countdown timer. Convert the requested duration to total "
+                        "seconds yourself, regardless of the user's language."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "action": {
+                                "type": "string",
+                                "enum": ["start"],
+                            },
+                            "seconds": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 86399,
+                                "description": (
+                                    "Total countdown duration in seconds."
+                                ),
+                            },
+                        },
+                        "required": ["action", "seconds"],
+                        "additionalProperties": False,
+                    },
+                },
             ],
             "tool_choice": "auto",
             "audio": {
@@ -1666,6 +1695,10 @@ class RealtimeVoiceService:
             output = self._execute_show_images_tool(
                 raw_arguments
             )
+        elif name == "control_timer":
+            output = self._execute_control_timer_tool(
+                raw_arguments
+            )
         else:
             output = {
                 "ok": False,
@@ -1684,6 +1717,92 @@ class RealtimeVoiceService:
         )
 
         self._pending_tool_followup = True
+
+    def _execute_control_timer_tool(
+        self,
+        raw_arguments,
+    ):
+        """Execute a structured Realtime timer command through M12 TimerSkill."""
+        try:
+            if isinstance(raw_arguments, str):
+                arguments = json.loads(raw_arguments or "{}")
+            elif isinstance(raw_arguments, dict):
+                arguments = raw_arguments
+            else:
+                arguments = {}
+        except json.JSONDecodeError as error:
+            print(
+                "[Realtime] control_timer arguments error: "
+                f"{type(error).__name__}: {error}"
+            )
+            return {
+                "ok": False,
+                "error": "Invalid control_timer arguments.",
+            }
+
+        action = str(
+            arguments.get("action", "")
+        ).strip().lower()
+
+        if action != "start":
+            return {
+                "ok": False,
+                "error": "Unsupported timer action.",
+                "action": action,
+            }
+
+        try:
+            seconds = int(
+                arguments.get("seconds", 0)
+            )
+        except (TypeError, ValueError):
+            seconds = 0
+
+        if seconds <= 0 or seconds > 86399:
+            return {
+                "ok": False,
+                "error": "Timer duration must be between 1 and 86399 seconds.",
+                "seconds": seconds,
+            }
+
+        # Send a language-independent internal command to TimerSkill.
+        # Natural-language parsing has already been completed by Realtime.
+        command = (
+            "__M12_TIMER__:"
+            + json.dumps(
+                {
+                    "action": "start",
+                    "seconds": seconds,
+                },
+                ensure_ascii=False,
+            )
+        )
+
+        print(
+            "[Realtime] control_timer action=start "
+            f"seconds={seconds}"
+        )
+
+        handled, answer = self._route_local_request(
+            command
+        )
+
+        if not handled:
+            return {
+                "ok": False,
+                "error": "M12 TimerSkill did not accept the timer request.",
+                "action": action,
+                "seconds": seconds,
+            }
+
+        # Do not speak the local TimerSkill answer here. The function result
+        # is returned to Realtime, and Ace gives one confirmation in the
+        # currently selected language.
+        return {
+            "ok": True,
+            "action": action,
+            "seconds": seconds,
+        }
 
     def _execute_show_images_tool(
         self,

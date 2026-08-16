@@ -1,3 +1,4 @@
+import json
 import re
 from typing import Any
 
@@ -15,6 +16,8 @@ class TimerSkill(BaseSkill):
 
     name = "timer"
     priority = 2
+
+    STRUCTURED_PREFIX = "__M12_TIMER__:"
 
     OPEN = {
         "open timer",
@@ -155,6 +158,11 @@ class TimerSkill(BaseSkill):
         message: str,
         context: Any,
     ) -> float:
+        raw = str(message).strip()
+
+        if raw.startswith(self.STRUCTURED_PREFIX):
+            return 1.0
+
         text = self._normalize(message)
 
         if not text:
@@ -195,6 +203,14 @@ class TimerSkill(BaseSkill):
         message: str,
         context: Any,
     ) -> SkillResult:
+        raw = str(message).strip()
+
+        if raw.startswith(self.STRUCTURED_PREFIX):
+            return self._handle_structured(
+                raw=raw,
+                context=context,
+            )
+
         text = self._normalize(message)
         russian = self._is_russian(text)
 
@@ -421,6 +437,92 @@ class TimerSkill(BaseSkill):
                         "remaining",
                         0,
                     )
+                ),
+            },
+        )
+
+    @classmethod
+    def _handle_structured(
+        cls,
+        raw: str,
+        context: Any,
+    ) -> SkillResult:
+        """Execute a language-independent command produced by Realtime."""
+        payload_text = raw[len(cls.STRUCTURED_PREFIX):].strip()
+
+        try:
+            payload = json.loads(payload_text)
+        except (TypeError, ValueError, json.JSONDecodeError) as error:
+            print(
+                "TimerSkill structured JSON error: "
+                f"{type(error).__name__}: {error}"
+            )
+            return SkillResult(
+                handled=True,
+                answer="",
+                confidence=1.0,
+                action="timer_error",
+                data={"success": False, "error": "invalid_json"},
+            )
+
+        action = str(payload.get("action", "")).strip().lower()
+
+        try:
+            seconds = int(payload.get("seconds", 0))
+        except (TypeError, ValueError):
+            seconds = 0
+
+        available, screen = cls._get_screen(
+            context=context,
+            open_screen=False,
+        )
+
+        if not available:
+            return SkillResult(
+                handled=True,
+                answer="",
+                confidence=1.0,
+                action="timer_error",
+                data={"success": False, "error": "screen_unavailable"},
+            )
+
+        if action != "start":
+            return SkillResult(
+                handled=True,
+                answer="",
+                confidence=1.0,
+                action="timer_error",
+                data={"success": False, "error": "unsupported_action"},
+            )
+
+        if seconds <= 0 or seconds > 86399:
+            return SkillResult(
+                handled=True,
+                answer="",
+                confidence=1.0,
+                action="timer_error",
+                data={"success": False, "error": "invalid_duration"},
+            )
+
+        started = cls._set_timer(
+            screen=screen,
+            total_seconds=seconds,
+        )
+
+        if started:
+            ActivityContext.instance().set("timer")
+
+        return SkillResult(
+            handled=True,
+            answer="",
+            confidence=1.0,
+            action="start_timer",
+            data={
+                "success": bool(started),
+                "started": bool(started),
+                "seconds": seconds,
+                "remaining_seconds": int(
+                    getattr(screen, "remaining", 0)
                 ),
             },
         )
