@@ -335,54 +335,58 @@ class AIScreen(Screen):
         root.add_widget(conversation_title)
 
         if platform == "android":
-            # Android: use a readonly TextInput for Conversation instead of one
-            # enormous markup Label. A long Label can exceed Android/Kivy
-            # texture limits and render blank until the transcript is cleared.
-            # TextInput renders long text incrementally and does not depend on
-            # one giant texture.
-            self.chat_view = TextInput(
-                text=self.chat_text,
-                readonly=True,
-                multiline=True,
-                cursor_blink=False,
-                font_size=font(chat_size),
+            # Android Conversation:
+            #
+            # Do NOT use one giant markup Label. Long conversations can exceed
+            # Android/Kivy texture limits and render blank.
+            #
+            # Do NOT use TextInput here either, because TextInput cannot render
+            # per-URL markup (blue/underline/[ref]).
+            #
+            # Instead, use one ScrollView containing many small markup Labels.
+            # Each conversation block gets its own texture, preserving long-chat
+            # stability while restoring clickable blue underlined URLs.
+            self.chat_scroll = ScrollView(
                 size_hint=(1, chat_hint),
-                padding=(
-                    height(12),
-                    height(12),
-                ),
-                background_color=(
-                    0.025,
-                    0.03,
-                    0.05,
-                    1,
-                ),
-                foreground_color=(
-                    0.95,
-                    0.95,
-                    0.95,
-                    1,
-                ),
-                selection_color=(
-                    0.20,
-                    0.45,
-                    0.75,
-                    0.65,
-                ),
-                use_bubble=True,
-                use_handles=True,
-                scroll_from_swipe=True,
-                scroll_distance=height(12),
-                scroll_timeout=150,
+                do_scroll_x=False,
+                do_scroll_y=True,
+                bar_width=height(8),
+                scroll_type=["content", "bars"],
             )
 
-            self.chat_view.bind(
+            self.chat_messages = GridLayout(
+                cols=1,
+                size_hint_y=None,
+                spacing=height(4),
+                padding=(
+                    height(6),
+                    height(6),
+                ),
+            )
+            self.chat_messages.bind(
+                minimum_height=self.chat_messages.setter(
+                    "height"
+                )
+            )
+
+            self._android_chat_labels = []
+
+            self.chat_scroll.bind(
                 on_touch_down=self.on_chat_touch_down
             )
 
-            root.add_widget(
-                self.chat_view
+            self.chat_scroll.add_widget(
+                self.chat_messages
             )
+            root.add_widget(
+                self.chat_scroll
+            )
+
+            # Compatibility alias. Existing logic uses chat_scroll first for
+            # Android auto-scroll, while Copy Messages reads self.chat_text.
+            self.chat_view = self.chat_messages
+
+            self.render_chat_text()
 
         else:
             # Desktop/Linux/macOS: ScrollView + markup Label allows
@@ -843,21 +847,124 @@ class AIScreen(Screen):
         """
         Render the complete saved conversation into the visible widget.
 
-        Android uses a readonly TextInput, avoiding the giant-texture failure
-        of a long markup Label. Desktop keeps the markup Label so URLs remain
-        clickable there.
+        Android uses multiple small markup Labels inside one ScrollView.
+        This avoids the giant-texture failure of one long Label while keeping
+        URLs blue, underlined, and clickable.
+
+        Desktop keeps its existing single markup Label.
         """
+        if platform == "android":
+            self._render_android_chat_blocks()
+            return
+
         if not hasattr(self, "chat_view"):
             return
 
-        if getattr(self.chat_view, "markup", False):
-            self.chat_view.text = self.format_chat_links(
-                self.chat_text
+        self.chat_view.text = self.format_chat_links(
+            self.chat_text
+        )
+
+    @staticmethod
+    def _split_chat_blocks(text):
+        """
+        Split the saved transcript into small speaker/message blocks.
+
+        A block begins at "You:" or "M12 AI:". Keeping blocks separate means
+        Android never needs to render the entire transcript as one texture.
+        """
+        raw = str(text or "")
+
+        if not raw:
+            return [""]
+
+        blocks = re.split(
+            r"\n\n(?=(?:You|M12 AI):\n)",
+            raw,
+        )
+
+        return [
+            block
+            for block in blocks
+            if block != ""
+        ]
+
+    def _render_android_chat_blocks(self):
+        """Update Android Conversation labels without rebuilding unnecessarily."""
+        if not hasattr(self, "chat_messages"):
+            return
+
+        blocks = self._split_chat_blocks(
+            self.chat_text
+        )
+
+        labels = getattr(
+            self,
+            "_android_chat_labels",
+            [],
+        )
+
+        # Rebuild only when a new conversation block was added/removed.
+        # During streamed AI output the number of blocks normally stays the
+        # same, so only the last Label's text changes.
+        if len(labels) != len(blocks):
+            self.chat_messages.clear_widgets()
+            labels = []
+
+            for block in blocks:
+                label = Label(
+                    text=self.format_chat_links(
+                        block
+                    ),
+                    markup=True,
+                    font_size=font(
+                        (
+                            22
+                            if device_profile() == "phone"
+                            else 18
+                            if device_profile() == "tablet"
+                            else 17
+                        )
+                    ),
+                    size_hint_y=None,
+                    halign="left",
+                    valign="top",
+                    color=(
+                        0.95,
+                        0.95,
+                        0.95,
+                        1,
+                    ),
+                    padding=(
+                        height(6),
+                        height(6),
+                    ),
+                )
+
+                label.bind(
+                    width=self._update_chat_label_width,
+                    texture_size=self._update_chat_label_height,
+                    on_ref_press=self.open_chat_url,
+                )
+
+                labels.append(label)
+                self.chat_messages.add_widget(
+                    label
+                )
+
+            self._android_chat_labels = labels
+            return
+
+        # Streaming update: reuse existing widgets and update only changed text.
+        for label, block in zip(
+            labels,
+            blocks,
+        ):
+            rendered = self.format_chat_links(
+                block
             )
-        else:
-            self.chat_view.text = str(
-                self.chat_text or ""
-            )
+
+            if label.text != rendered:
+                label.text = rendered
 
     # -------------------------------------------------------------
     # Clickable URLs in Conversation
