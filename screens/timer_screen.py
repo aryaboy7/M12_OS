@@ -1,4 +1,6 @@
 from pathlib import Path
+import math
+import time
 
 from kivy.clock import Clock
 from kivy.core.audio import SoundLoader
@@ -179,6 +181,7 @@ class TimerScreen(Screen):
         self.original_seconds = 0
         self._finished_notified = False
         self._finish_sound = None
+        self._deadline = None
 
         root = BoxLayout(
             orientation="vertical",
@@ -311,6 +314,11 @@ class TimerScreen(Screen):
 
         self._finished_notified = False
         self.running = True
+
+        # Real deadline: Android may pause Kivy Clock while the display is off,
+        # but monotonic time continues to advance.
+        self._deadline = time.monotonic() + float(self.remaining)
+
         self.status_label.text = "Running"
         log.info(
             f"Timer: started for {int(self.remaining)} seconds"
@@ -318,12 +326,24 @@ class TimerScreen(Screen):
         self.update_display()
 
     def stop(self, instance):
+        # Save the true remaining time so Resume continues correctly.
+        if self.running and self._deadline is not None:
+            self.remaining = max(
+                0,
+                int(math.ceil(
+                    self._deadline - time.monotonic()
+                )),
+            )
+
         self.running = False
+        self._deadline = None
         self.status_label.text = "Stopped"
         log.info("Timer: stopped")
+        self.update_display()
 
     def reset(self, instance):
         self.running = False
+        self._deadline = None
         self._finished_notified = False
         self.remaining = (
             self.original_seconds
@@ -338,11 +358,21 @@ class TimerScreen(Screen):
             self.update_display()
             return
 
-        if self.remaining > 0:
-            self.remaining -= 1
+        if self._deadline is None:
+            self._deadline = time.monotonic() + float(
+                max(0, self.remaining)
+            )
+
+        self.remaining = max(
+            0,
+            int(math.ceil(
+                self._deadline - time.monotonic()
+            )),
+        )
 
         if self.remaining <= 0:
             self.running = False
+            self._deadline = None
             self.remaining = 0
             self.status_label.text = "TIME IS UP!"
             log.info("Timer: time is up")
