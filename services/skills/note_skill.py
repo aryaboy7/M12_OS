@@ -97,17 +97,83 @@ class NotesSkill(BaseSkill):
     }
 
     CREATE_PREFIXES = (
+        # English - generic.
+        "create a new note",
+        "create new note",
         "create a note",
         "create note",
         "take a note",
         "new note",
         "write a note",
         "make a note",
+
+        # English - typed notes.
+        "create a personal note",
+        "create personal note",
+        "make a personal note",
+        "new personal note",
+        "create a private note",
+        "create private note",
+
+        "create a work note",
+        "create work note",
+        "make a work note",
+        "new work note",
+
+        "create a project note",
+        "create project note",
+        "make a project note",
+        "new project note",
+
+        "create a shopping note",
+        "create shopping note",
+        "create shopping notes",
+        "create a shoping note",
+        "create shoping note",
+        "create shoping notes",
+        "make a shopping note",
+        "make shopping note",
+        "make a shoping note",
+        "make shoping note",
+        "new shopping note",
+        "new shopping notes",
+        "new shoping note",
+        "new shoping notes",
+
+        "create an idea note",
+        "create idea note",
+        "make an idea note",
+        "new idea note",
+
+        # Russian - generic.
+        "создай новую заметку",
+        "создать новую заметку",
         "создай заметку",
         "создать заметку",
         "новая заметка",
         "запиши заметку",
         "сделай заметку",
+
+        # Russian - typed notes.
+        "создай личную заметку",
+        "создать личную заметку",
+        "новая личная заметка",
+
+        "создай рабочую заметку",
+        "создать рабочую заметку",
+        "новая рабочая заметка",
+
+        "создай проектную заметку",
+        "создать проектную заметку",
+        "новая проектная заметка",
+
+        "создай заметку покупок",
+        "создать заметку покупок",
+        "новая заметка покупок",
+
+        "создай заметку идеи",
+        "создать заметку идеи",
+        "новая заметка идеи",
     )
 
     FIND_PREFIXES = (
@@ -165,6 +231,7 @@ class NotesSkill(BaseSkill):
         "проектные": "Project",
 
         "shopping": "Shopping",
+        "shoping": "Shopping",
         "grocery": "Shopping",
         "groceries": "Shopping",
         "покупки": "Shopping",
@@ -476,7 +543,6 @@ class NotesSkill(BaseSkill):
             pending = dict(
                 self._pending_note or {}
             )
-            self._pending_note = None
 
         title = str(
             pending.get(
@@ -494,20 +560,72 @@ class NotesSkill(BaseSkill):
 
         body = str(body).strip()
 
-        if not body:
+        # Realtime can occasionally emit punctuation-only transcripts
+        # such as "." after a short pause. Never save those as a note.
+        meaningful_body = re.sub(
+            r"[^A-Za-z0-9А-Яа-яЁё]+",
+            "",
+            body,
+        )
+
+        if not meaningful_body:
+            with self._pending_lock:
+                if self._pending_note is not None:
+                    self._pending_note[
+                        "created_at"
+                    ] = time.monotonic()
+
             return SkillResult(
                 handled=True,
                 answer=(
-                    "Текст заметки пуст."
+                    "Что записать в заметку?"
                     if russian
-                    else "The note text is empty."
+                    else "What should I write in the note?"
                 ),
                 confidence=1.0,
                 action="note_needs_body",
+                data={
+                    "title": title,
+                    "type": note_type,
+                },
             )
 
+        # Ignore an accidental repeat of the create command while waiting
+        # for the actual note body.
+        normalized_body = self._normalize(body)
+
+        if normalized_body.startswith(
+            self.CREATE_PREFIXES
+        ):
+            with self._pending_lock:
+                if self._pending_note is not None:
+                    self._pending_note[
+                        "created_at"
+                    ] = time.monotonic()
+
+            return SkillResult(
+                handled=True,
+                answer=(
+                    "Что записать в заметку?"
+                    if russian
+                    else "What should I write in the note?"
+                ),
+                confidence=1.0,
+                action="note_needs_body",
+                data={
+                    "title": title,
+                    "type": note_type,
+                },
+            )
+
+        # We finally have meaningful dictated note content.
+        with self._pending_lock:
+            self._pending_note = None
+
         if not title:
-            title = self._title_from_body(body)
+            title = self._title_from_body(
+                body
+            )
 
         saved = self._save_note(
             title=title,
@@ -515,7 +633,9 @@ class NotesSkill(BaseSkill):
             body=body,
         )
 
-        self._refresh_notes_screen(context)
+        self._refresh_notes_screen(
+            context
+        )
 
         return SkillResult(
             handled=True,
@@ -603,7 +723,16 @@ class NotesSkill(BaseSkill):
         body = self._remove_type_words(
             body,
             note_type=note_type,
-        ).strip(" :,-")
+        ).strip(" .:,-!?;\'\"’")
+
+        # Speech recognition may append possessive debris such as
+        # "note's". Do not use that as note content.
+        if body.lower() in {
+            "s",
+            "'s",
+            "’s",
+        }:
+            body = ""
 
         if not body:
             self._set_pending_note(
@@ -1291,7 +1420,7 @@ class NotesSkill(BaseSkill):
                 # This is safe for the current ASCII/Cyrillic commands:
                 # normalization changes punctuation at the end, not prefix size.
                 return raw[len(prefix):].strip(
-                    " :,-"
+                    " .:,-!?;\'\"’"
                 )
 
         return raw
