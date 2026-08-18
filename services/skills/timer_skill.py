@@ -1,4 +1,3 @@
-import json
 import re
 from typing import Any
 
@@ -16,8 +15,6 @@ class TimerSkill(BaseSkill):
 
     name = "timer"
     priority = 2
-
-    STRUCTURED_PREFIX = "__M12_TIMER__:"
 
     OPEN = {
         "open timer",
@@ -64,16 +61,54 @@ class TimerSkill(BaseSkill):
     STATUS = {
         "how much time is left",
         "how much time left",
+        "how much time is remaining",
+        "how much time remains",
+        "how much time still",
+        "how much still",
+        "how much is left",
+        "how much longer",
+        "how long is left",
+        "how long left",
+        "how long remains",
         "what time is left",
         "what time left",
-        "how much is left",
+        "what is left on the timer",
+        "whats left on the timer",
+        "what's left on the timer",
         "time left",
+        "time remaining",
         "remaining",
+        "remaining time",
         "timer status",
+        "timer remaining",
         "how long",
         "сколько осталось",
         "сколько времени осталось",
+        "сколько еще осталось",
+        "сколько ещё осталось",
+        "сколько еще",
         "сколько ещё",
+        "сколько времени еще",
+        "сколько времени ещё",
+        "сколько осталось на таймере",
+        "сколько на таймере осталось",
+        "сколько еще будет идти таймер",
+        "сколько ещё будет идти таймер",
+    }
+
+    RUNNING_STATUS = {
+        "is timer running",
+        "is the timer running",
+        "is my timer running",
+        "timer running",
+        "is timer paused",
+        "is the timer paused",
+        "таймер работает",
+        "таймер запущен",
+        "работает ли таймер",
+        "запущен ли таймер",
+        "таймер на паузе",
+        "таймер приостановлен",
     }
 
     ACTIVE_PAUSE = {
@@ -158,11 +193,6 @@ class TimerSkill(BaseSkill):
         message: str,
         context: Any,
     ) -> float:
-        raw = str(message).strip()
-
-        if raw.startswith(self.STRUCTURED_PREFIX):
-            return 1.0
-
         text = self._normalize(message)
 
         if not text:
@@ -177,6 +207,7 @@ class TimerSkill(BaseSkill):
                 or text in self.ACTIVE_STOP
                 or text in self.ACTIVE_RESET
                 or text in self.STATUS
+                or text in self.RUNNING_STATUS
             ):
                 return 1.0
 
@@ -187,6 +218,7 @@ class TimerSkill(BaseSkill):
             or text in self.STOP
             or text in self.RESET
             or text in self.STATUS
+            or text in self.RUNNING_STATUS
         ):
             return 1.0
 
@@ -203,14 +235,6 @@ class TimerSkill(BaseSkill):
         message: str,
         context: Any,
     ) -> SkillResult:
-        raw = str(message).strip()
-
-        if raw.startswith(self.STRUCTURED_PREFIX):
-            return self._handle_structured(
-                raw=raw,
-                context=context,
-            )
-
         text = self._normalize(message)
         russian = self._is_russian(text)
 
@@ -343,6 +367,40 @@ class TimerSkill(BaseSkill):
                 },
             )
 
+        if text in self.RUNNING_STATUS:
+            remaining = int(screen.remaining)
+            running = bool(screen.running)
+
+            if running:
+                answer = (
+                    "Таймер работает."
+                    if russian
+                    else "The timer is running."
+                )
+            elif remaining > 0:
+                answer = (
+                    "Таймер на паузе."
+                    if russian
+                    else "The timer is paused."
+                )
+            else:
+                answer = (
+                    "Таймер не запущен."
+                    if russian
+                    else "The timer is not running."
+                )
+
+            return SkillResult(
+                handled=True,
+                answer=answer,
+                confidence=1.0,
+                action="timer_running_status",
+                data={
+                    "remaining_seconds": remaining,
+                    "running": running,
+                },
+            )
+
         if text in self.STATUS:
             remaining = int(screen.remaining)
 
@@ -437,205 +495,6 @@ class TimerSkill(BaseSkill):
                         "remaining",
                         0,
                     )
-                ),
-            },
-        )
-
-    @classmethod
-    def _handle_structured(
-        cls,
-        raw: str,
-        context: Any,
-    ) -> SkillResult:
-        """Execute a language-independent command produced by Realtime."""
-        payload_text = raw[len(cls.STRUCTURED_PREFIX):].strip()
-
-        try:
-            payload = json.loads(payload_text)
-        except (TypeError, ValueError, json.JSONDecodeError) as error:
-            print(
-                "TimerSkill structured JSON error: "
-                f"{type(error).__name__}: {error}"
-            )
-            return SkillResult(
-                handled=True,
-                answer="",
-                confidence=1.0,
-                action="timer_error",
-                data={"success": False, "error": "invalid_json"},
-            )
-
-        action = str(payload.get("action", "")).strip().lower()
-
-        try:
-            seconds = int(payload.get("seconds", 0))
-        except (TypeError, ValueError):
-            seconds = 0
-
-        available, screen = cls._get_screen(
-            context=context,
-            open_screen=False,
-        )
-
-        if not available:
-            return SkillResult(
-                handled=True,
-                answer="",
-                confidence=1.0,
-                action="timer_error",
-                data={"success": False, "error": "screen_unavailable"},
-            )
-
-        if action == "pause":
-            if not bool(getattr(screen, "running", False)):
-                return SkillResult(
-                    handled=True,
-                    answer="",
-                    confidence=1.0,
-                    action="pause_timer",
-                    data={
-                        "success": False,
-                        "paused": False,
-                        "error": "timer_not_running",
-                        "remaining_seconds": int(
-                            getattr(screen, "remaining", 0)
-                        ),
-                    },
-                )
-
-            screen.stop(None)
-            ActivityContext.instance().set("timer")
-
-            return SkillResult(
-                handled=True,
-                answer="",
-                confidence=1.0,
-                action="pause_timer",
-                data={
-                    "success": True,
-                    "paused": True,
-                    "remaining_seconds": int(
-                        getattr(screen, "remaining", 0)
-                    ),
-                },
-            )
-
-        if action == "resume":
-            remaining = int(getattr(screen, "remaining", 0))
-
-            if remaining <= 0:
-                return SkillResult(
-                    handled=True,
-                    answer="",
-                    confidence=1.0,
-                    action="resume_timer",
-                    data={
-                        "success": False,
-                        "resumed": False,
-                        "error": "timer_not_set",
-                        "remaining_seconds": 0,
-                    },
-                )
-
-            screen.start(None)
-            resumed = bool(getattr(screen, "running", False))
-
-            if resumed:
-                ActivityContext.instance().set("timer")
-
-            return SkillResult(
-                handled=True,
-                answer="",
-                confidence=1.0,
-                action="resume_timer",
-                data={
-                    "success": resumed,
-                    "resumed": resumed,
-                    "remaining_seconds": int(
-                        getattr(screen, "remaining", 0)
-                    ),
-                },
-            )
-
-        if action == "stop":
-            screen.stop(None)
-            ActivityContext.instance().set("timer")
-
-            return SkillResult(
-                handled=True,
-                answer="",
-                confidence=1.0,
-                action="stop_timer",
-                data={
-                    "success": True,
-                    "stopped": True,
-                    "remaining_seconds": int(
-                        getattr(screen, "remaining", 0)
-                    ),
-                    "running": bool(
-                        getattr(screen, "running", False)
-                    ),
-                },
-            )
-
-        if action == "reset":
-            screen.reset(None)
-            ActivityContext.instance().clear()
-
-            return SkillResult(
-                handled=True,
-                answer="",
-                confidence=1.0,
-                action="reset_timer",
-                data={
-                    "success": True,
-                    "reset": True,
-                    "remaining_seconds": int(
-                        getattr(screen, "remaining", 0)
-                    ),
-                    "running": bool(
-                        getattr(screen, "running", False)
-                    ),
-                },
-            )
-
-        if action != "start":
-            return SkillResult(
-                handled=True,
-                answer="",
-                confidence=1.0,
-                action="timer_error",
-                data={"success": False, "error": "unsupported_action"},
-            )
-
-        if seconds <= 0 or seconds > 86399:
-            return SkillResult(
-                handled=True,
-                answer="",
-                confidence=1.0,
-                action="timer_error",
-                data={"success": False, "error": "invalid_duration"},
-            )
-
-        started = cls._set_timer(
-            screen=screen,
-            total_seconds=seconds,
-        )
-
-        if started:
-            ActivityContext.instance().set("timer")
-
-        return SkillResult(
-            handled=True,
-            answer="",
-            confidence=1.0,
-            action="start_timer",
-            data={
-                "success": bool(started),
-                "started": bool(started),
-                "seconds": seconds,
-                "remaining_seconds": int(
-                    getattr(screen, "remaining", 0)
                 ),
             },
         )

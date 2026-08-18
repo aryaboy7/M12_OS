@@ -319,6 +319,10 @@ class TimerScreen(Screen):
         # but monotonic time continues to advance.
         self._deadline = time.monotonic() + float(self.remaining)
 
+        # Android owns the wake-up event while the device is asleep.
+        self._cancel_android_alarm()
+        self._schedule_android_alarm()
+
         self.status_label.text = "Running"
         log.info(
             f"Timer: started for {int(self.remaining)} seconds"
@@ -337,6 +341,7 @@ class TimerScreen(Screen):
 
         self.running = False
         self._deadline = None
+        self._cancel_android_alarm()
         self.status_label.text = "Stopped"
         log.info("Timer: stopped")
         self.update_display()
@@ -344,6 +349,7 @@ class TimerScreen(Screen):
     def reset(self, instance):
         self.running = False
         self._deadline = None
+        self._cancel_android_alarm()
         self._finished_notified = False
         self.remaining = (
             self.original_seconds
@@ -536,6 +542,117 @@ class TimerScreen(Screen):
         log.warning(
             "Timer: reminder sound not available; showing popup only"
         )
+
+    def _android_alarm_pending_intent(self):
+        """Return the PendingIntent used by the native TimerAlarmReceiver."""
+        if platform != "android":
+            return None
+
+        from jnius import autoclass
+
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        Intent = autoclass("android.content.Intent")
+        PendingIntent = autoclass("android.app.PendingIntent")
+        Receiver = autoclass("com.m12os.m12os.TimerAlarmReceiver")
+
+        activity = PythonActivity.mActivity
+        intent = Intent(activity, Receiver)
+        intent.setAction("com.m12os.TIMER_TIME_IS_UP")
+
+        flags = PendingIntent.FLAG_UPDATE_CURRENT
+        try:
+            flags |= PendingIntent.FLAG_IMMUTABLE
+        except Exception:
+            pass
+
+        return PendingIntent.getBroadcast(activity, 12053, intent, flags)
+
+    def _schedule_android_alarm(self):
+        """Schedule the native Android alarm for the current remaining time."""
+        if platform != "android" or self.remaining <= 0:
+            return
+
+        try:
+            from jnius import autoclass
+
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            Context = autoclass("android.content.Context")
+            AlarmManager = autoclass("android.app.AlarmManager")
+            SystemClock = autoclass("android.os.SystemClock")
+            BuildVersion = autoclass("android.os.Build$VERSION")
+
+            activity = PythonActivity.mActivity
+            alarm_manager = activity.getSystemService(Context.ALARM_SERVICE)
+            pending_intent = self._android_alarm_pending_intent()
+
+            trigger_at = (
+                SystemClock.elapsedRealtime()
+                + int(max(1, self.remaining) * 1000)
+            )
+
+            # Android 12+ can require the user-granted "Alarms & reminders"
+            # special access before exact alarms are permitted.
+            if BuildVersion.SDK_INT >= 31:
+                try:
+                    if not alarm_manager.canScheduleExactAlarms():
+                        log.warning(
+                            "Timer: exact alarm access is not enabled; "
+                            "using allow-while-idle fallback"
+                        )
+                        alarm_manager.setAndAllowWhileIdle(
+                            AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                            trigger_at,
+                            pending_intent,
+                        )
+                        return
+                except Exception as error:
+                    log.warning(
+                        "Timer: exact alarm access check failed "
+                        f"{type(error).__name__}: {error}"
+                    )
+
+            alarm_manager.setExactAndAllowWhileIdle(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                trigger_at,
+                pending_intent,
+            )
+            log.info(
+                f"Timer: Android native alarm scheduled "
+                f"for {int(self.remaining)} seconds"
+            )
+
+        except Exception as error:
+            log.warning(
+                "Timer: Android native alarm scheduling failed "
+                f"{type(error).__name__}: {error}"
+            )
+
+    def _cancel_android_alarm(self):
+        """Cancel any native Android timer alarm that is still pending."""
+        if platform != "android":
+            return
+
+        try:
+            from jnius import autoclass
+
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            Context = autoclass("android.content.Context")
+
+            activity = PythonActivity.mActivity
+            alarm_manager = activity.getSystemService(Context.ALARM_SERVICE)
+            pending_intent = self._android_alarm_pending_intent()
+
+            if pending_intent is not None:
+                alarm_manager.cancel(pending_intent)
+                pending_intent.cancel()
+
+            log.info("Timer: Android native alarm cancelled")
+
+        except Exception as error:
+            log.warning(
+                "Timer: Android native alarm cancel failed "
+                f"{type(error).__name__}: {error}"
+            )
 
     def update_display(self):
         # When the timer has completed, show true 00:00:00 rather than

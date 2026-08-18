@@ -3434,16 +3434,6 @@ class AIScreen(Screen):
         if not text:
             return False, ""
 
-        # AI Mode: natural-language speech belongs to OpenAI Realtime.
-        # Local skills are executed here only for internal structured commands
-        # produced by Realtime tools. Control Mode keeps the legacy local
-        # command router for direct M12 application control.
-        if (
-            not self.control_mode
-            and not text.startswith("__M12_")
-        ):
-            return False, ""
-
         if self.realtime_local_speech_active:
             if self.is_local_speech_stop_command(text):
                 Clock.schedule_once(
