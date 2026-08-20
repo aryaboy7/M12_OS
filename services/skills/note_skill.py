@@ -211,6 +211,27 @@ class NotesSkill(BaseSkill):
         "забудь",
     }
 
+    SAVE_PHRASES = {
+        "save",
+        "save note",
+        "save the note",
+        "сохрани",
+        "сохрани заметку",
+    }
+
+    FINISH_PHRASES = {
+        "done",
+        "i'm done",
+        "im done",
+        "finish",
+        "finish note",
+        "finish the note",
+        "end note",
+        "готово",
+        "закончить заметку",
+        "закончи заметку",
+    }
+
     TYPE_ALIASES = {
         "personal": "Personal",
         "private": "Personal",
@@ -259,12 +280,9 @@ class NotesSkill(BaseSkill):
             return 0.0
 
         if self._has_pending_note():
-            if text in self.CANCEL_PHRASES:
-                return 1.0
-
-            # A short follow-up is likely the missing note body.
-            if len(text.split()) <= 40:
-                return 1.0
+            # While note dictation is active, every non-empty user turn
+            # belongs to Notes until Save/Done/Finish or Cancel is spoken.
+            return 1.0
 
         if text in self.OPEN_PHRASES:
             return 1.0
@@ -324,9 +342,22 @@ class NotesSkill(BaseSkill):
                     action="note_cancelled",
                 )
 
-            return self._finish_pending_note(
+            if text in self.SAVE_PHRASES:
+                return self._save_pending_note(
+                    context=context,
+                    russian=russian,
+                    finish=False,
+                )
+
+            if text in self.FINISH_PHRASES:
+                return self._save_pending_note(
+                    context=context,
+                    russian=russian,
+                    finish=True,
+                )
+
+            return self._append_pending_note(
                 body=str(message).strip(),
-                context=context,
                 russian=russian,
             )
 
@@ -527,17 +558,88 @@ class NotesSkill(BaseSkill):
                 "title": title,
                 "type": note_type,
                 "created_at": time.monotonic(),
+                "body_parts": [],
+                "path": "",
             }
 
     def _clear_pending_note(self) -> None:
         with self._pending_lock:
             self._pending_note = None
 
-    def _finish_pending_note(
+    def _append_pending_note(
         self,
         body: str,
+        russian: bool,
+    ) -> SkillResult:
+        body = str(body).strip()
+
+        meaningful_body = re.sub(
+            r"[^A-Za-z0-9А-Яа-яЁё]+",
+            "",
+            body,
+        )
+
+        if not meaningful_body:
+            return SkillResult(
+                handled=True,
+                answer="",
+                confidence=1.0,
+                action="note_dictation_waiting",
+            )
+
+        normalized_body = self._normalize(body)
+
+        if normalized_body.startswith(
+            self.CREATE_PREFIXES
+        ):
+            return SkillResult(
+                handled=True,
+                answer="",
+                confidence=1.0,
+                action="note_dictation_waiting",
+            )
+
+        with self._pending_lock:
+            if self._pending_note is None:
+                return SkillResult(
+                    handled=False
+                )
+
+            parts = self._pending_note.setdefault(
+                "body_parts",
+                [],
+            )
+            parts.append(body)
+            self._pending_note[
+                "created_at"
+            ] = time.monotonic()
+
+            count = len(parts)
+            note_type = str(
+                self._pending_note.get(
+                    "type",
+                    "Personal",
+                )
+            )
+
+        return SkillResult(
+            handled=True,
+            # Stay silent during dictation so local TTS does not interrupt
+            # the microphone or trigger echo protection between sentences.
+            answer="",
+            confidence=1.0,
+            action="note_dictation_added",
+            data={
+                "count": count,
+                "type": note_type,
+            },
+        )
+
+    def _save_pending_note(
+        self,
         context: Any,
         russian: bool,
+        finish: bool = False,
     ) -> SkillResult:
         with self._pending_lock:
             pending = dict(
@@ -558,29 +660,24 @@ class NotesSkill(BaseSkill):
             )
         ).strip() or "Personal"
 
-        body = str(body).strip()
+        parts = [
+            str(part).strip()
+            for part in pending.get(
+                "body_parts",
+                []
+            )
+            if str(part).strip()
+        ]
 
-        # Realtime can occasionally emit punctuation-only transcripts
-        # such as "." after a short pause. Never save those as a note.
-        meaningful_body = re.sub(
-            r"[^A-Za-z0-9А-Яа-яЁё]+",
-            "",
-            body,
-        )
+        body = " ".join(parts).strip()
 
-        if not meaningful_body:
-            with self._pending_lock:
-                if self._pending_note is not None:
-                    self._pending_note[
-                        "created_at"
-                    ] = time.monotonic()
-
+        if not body:
             return SkillResult(
                 handled=True,
                 answer=(
-                    "Что записать в заметку?"
+                    "Сначала продиктуйте текст заметки."
                     if russian
-                    else "What should I write in the note?"
+                    else "Please dictate the note first."
                 ),
                 confidence=1.0,
                 action="note_needs_body",
@@ -589,75 +686,114 @@ class NotesSkill(BaseSkill):
                     "type": note_type,
                 },
             )
-
-        # Ignore an accidental repeat of the create command while waiting
-        # for the actual note body.
-        normalized_body = self._normalize(body)
-
-        if normalized_body.startswith(
-            self.CREATE_PREFIXES
-        ):
-            with self._pending_lock:
-                if self._pending_note is not None:
-                    self._pending_note[
-                        "created_at"
-                    ] = time.monotonic()
-
-            return SkillResult(
-                handled=True,
-                answer=(
-                    "Что записать в заметку?"
-                    if russian
-                    else "What should I write in the note?"
-                ),
-                confidence=1.0,
-                action="note_needs_body",
-                data={
-                    "title": title,
-                    "type": note_type,
-                },
-            )
-
-        # We finally have meaningful dictated note content.
-        with self._pending_lock:
-            self._pending_note = None
 
         if not title:
             title = self._title_from_body(
                 body
             )
 
-        saved = self._save_note(
-            title=title,
-            note_type=note_type,
-            body=body,
-        )
+        existing_path = str(
+            pending.get(
+                "path",
+                "",
+            )
+        ).strip()
+
+        if existing_path:
+            path = Path(
+                existing_path
+            )
+        else:
+            path = self._unique_note_path(
+                title
+            )
+
+        data = {
+            "title": title,
+            "type": note_type,
+            "body": body,
+        }
+
+        try:
+            path.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            path.write_text(
+                json.dumps(
+                    data,
+                    ensure_ascii=False,
+                    indent=4,
+                ),
+                encoding="utf-8",
+            )
+            saved = True
+
+        except OSError as error:
+            print(
+                "NotesSkill save error: "
+                f"{type(error).__name__}: {error}"
+            )
+            saved = False
+
+        if saved:
+            with self._pending_lock:
+                if finish:
+                    self._pending_note = None
+                elif self._pending_note is not None:
+                    self._pending_note[
+                        "title"
+                    ] = title
+                    self._pending_note[
+                        "type"
+                    ] = note_type
+                    self._pending_note[
+                        "path"
+                    ] = str(path)
+                    self._pending_note[
+                        "created_at"
+                    ] = time.monotonic()
 
         self._refresh_notes_screen(
             context
         )
 
+        if saved and finish:
+            answer = (
+                f"Заметка «{title}» сохранена и закрыта."
+                if russian
+                else f'Note "{title}" saved and closed.'
+            )
+            action = "note_created"
+
+        elif saved:
+            answer = (
+                "Сохранено. Можете продолжать диктовать."
+                if russian
+                else "Saved. You can keep dictating."
+            )
+            action = "note_saved_continue"
+
+        else:
+            answer = (
+                "Не удалось сохранить заметку."
+                if russian
+                else "I couldn't save the note."
+            )
+            action = "note_save_error"
+
         return SkillResult(
             handled=True,
-            answer=(
-                f"Заметка «{title}» сохранена."
-                if russian and saved
-                else "Не удалось сохранить заметку."
-                if russian
-                else f'Note "{title}" saved.'
-                if saved
-                else "I couldn't save the note."
-            ),
+            answer=answer,
             confidence=1.0,
-            action=(
-                "note_created"
-                if saved
-                else "note_save_error"
-            ),
+            action=action,
             data={
                 "saved": saved,
                 "title": title,
                 "type": note_type,
+                "body": body,
+                "path": str(path),
+                "finish": bool(finish),
             },
         )
 
@@ -743,9 +879,9 @@ class NotesSkill(BaseSkill):
             return SkillResult(
                 handled=True,
                 answer=(
-                    "Что записать в заметку?"
+                    "Диктуйте заметку. Когда закончите, скажите «Сохрани заметку»."
                     if russian
-                    else "What should I write in the note?"
+                    else "Dictate your note. When finished, say Save note."
                 ),
                 confidence=1.0,
                 action="note_needs_body",
