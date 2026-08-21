@@ -32,6 +32,17 @@ from utils.logger import log
 from utils.system_header import create_system_header
 from utils.text_editor_popup import open_text_editor
 
+try:
+    from services.android_event_alarm_scheduler import (
+        schedule_event as schedule_android_event,
+        cancel_event as cancel_android_event,
+        stop_event_sound as stop_android_event_sound,
+    )
+except Exception:
+    schedule_android_event = None
+    cancel_android_event = None
+    stop_android_event_sound = None
+
 
 try:
     if Window is not None:
@@ -478,6 +489,12 @@ class CalendarScreen(Screen):
         return result
 
     def on_enter(self):
+        if callable(stop_android_event_sound):
+            try:
+                stop_android_event_sound()
+            except Exception as error:
+                log.error(f"Calendar: EVENT_STOP failed {error}")
+
         self.events = [self.normalize_event(e) for e in self.load_events()]
         self.sort_events()
         self.build_list_view()
@@ -606,6 +623,13 @@ class CalendarScreen(Screen):
             return
 
         deleted = self.events.pop(self.selected_index)
+
+        if callable(cancel_android_event):
+            try:
+                cancel_android_event(deleted)
+            except Exception as error:
+                log.error(f"Calendar: native event cancel failed {error}")
+
         self.selected_index = None
         self.save_events()
         log.info(f"Calendar: deleted {deleted.get('title')}")
@@ -1157,15 +1181,32 @@ class CalendarScreen(Screen):
             "event_notified": False
         }
 
+        old_event = None
+
         if index is None:
             self.events.append(event)
             log.info(f"Calendar: added {title}")
         else:
+            old_event = dict(self.events[index])
             self.events[index] = event
             log.info(f"Calendar: edited {title}")
 
         self.sort_events()
         self.save_events()
+
+        if callable(cancel_android_event) and old_event is not None:
+            try:
+                cancel_android_event(old_event)
+            except Exception as error:
+                log.error(f"Calendar: native old event cancel failed {error}")
+
+        if callable(schedule_android_event):
+            try:
+                scheduled = schedule_android_event(event)
+                log.info(f"Calendar: native event scheduled={scheduled}")
+            except Exception as error:
+                log.error(f"Calendar: native event schedule failed {error}")
+
         self.selected_index = None
         self.build_list_view()
 

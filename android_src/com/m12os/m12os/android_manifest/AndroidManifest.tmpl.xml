@@ -1,0 +1,20 @@
+<!-- M12 OS native Timer receiver -->
+<receiver
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:name="com.m12os.m12os.TimerAlarmReceiver"
+    android:enabled="true"
+    android:exported="false" />
+
+<!-- M12 OS native Calendar Event receiver -->
+<receiver
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:name="com.m12os.m12os.EventAlarmReceiver"
+    android:enabled="true"
+    android:exported="false" />
+
+<!-- M12 OS native Clock Alarm receiver -->
+<receiver
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:name="com.m12os.m12os.ClockAlarmReceiver"
+    android:enabled="true"
+    android:exported="false" />
