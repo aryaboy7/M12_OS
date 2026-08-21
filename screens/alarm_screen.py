@@ -3,6 +3,8 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from kivy.utils import platform
+
 from kivy.clock import Clock
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
@@ -12,6 +14,9 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 
 from utils.logger import log
+from services.android_clock_alarm_scheduler import (
+    sync_android_clock_alarms,
+)
 from utils.system_header import create_system_header
 from utils.ui_scale import (
     device_profile,
@@ -233,6 +238,50 @@ def alarm_list_font():
 
     return int(text_font() * 0.90)
 
+
+
+def stop_native_clock_alarm():
+    """
+    Stop the native Android Clock alarm ringtone, if it is currently ringing.
+    Safe no-op on desktop/Linux/macOS.
+    """
+    if platform != "android":
+        return
+
+    try:
+        from jnius import autoclass
+
+        PythonActivity = autoclass(
+            "org.kivy.android.PythonActivity"
+        )
+        Intent = autoclass(
+            "android.content.Intent"
+        )
+        ClockAlarmReceiver = autoclass(
+            "com.m12os.m12os.ClockAlarmReceiver"
+        )
+
+        activity = PythonActivity.mActivity
+
+        intent = Intent(
+            activity,
+            ClockAlarmReceiver,
+        )
+        intent.setAction(
+            "com.m12os.CLOCK_ALARM_STOP"
+        )
+
+        activity.sendBroadcast(intent)
+
+        log.info(
+            "Native Clock alarm STOP broadcast sent."
+        )
+
+    except Exception as error:
+        log.error(
+            "Native Clock alarm stop failed: "
+            f"{type(error).__name__}: {error}"
+        )
 
 
 class AlarmScreen(Screen):
@@ -466,7 +515,11 @@ class AlarmScreen(Screen):
             background_normal="",
             background_color=(0.12, 0.20, 0.35, 1)
         )
-        btn.bind(on_press=callback)
+        def wrapped_callback(instance):
+            stop_native_clock_alarm()
+            return callback(instance)
+
+        btn.bind(on_press=wrapped_callback)
         return btn
 
     def get_system_status_text(self):
@@ -487,6 +540,10 @@ class AlarmScreen(Screen):
         return "WiFi"
 
     def on_enter(self):
+        # Opening the Alarm screen should silence any native Clock alarm
+        # that is currently ringing.
+        stop_native_clock_alarm()
+
         self.load_alarms()
 
         if self.alarms and self.selected_index is None:
@@ -766,8 +823,30 @@ class AlarmScreen(Screen):
             self.rebuild_alarm_list()
 
     def save_alarms_file(self):
-        ALARMS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        ALARMS_FILE.write_text(json.dumps(self.alarms, indent=4), encoding="utf-8")
+        ALARMS_FILE.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        ALARMS_FILE.write_text(
+            json.dumps(
+                self.alarms,
+                indent=4,
+            ),
+            encoding="utf-8",
+        )
+
+        # On Android, mirror the saved Clock alarms into AlarmManager.
+        # This lets them fire while Kivy/Python is suspended and the
+        # device screen is locked.
+        try:
+            sync_android_clock_alarms(
+                self.alarms
+            )
+        except Exception as error:
+            log.error(
+                "Clock native alarm sync failed: "
+                f"{type(error).__name__}: {error}"
+            )
 
     def save_alarm(self, instance):
         try:

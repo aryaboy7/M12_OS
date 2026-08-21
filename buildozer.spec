@@ -1,4 +1,5 @@
 [app]
+
 android.no-byte-compile-python = True
 p4a.local_recipes = recipes
 
@@ -18,7 +19,7 @@ version = 0.5.3
 # M12 Android dependencies.
 # sounddevice and numpy are intentionally NOT included:
 # Android voice uses native Android/SDL2 audio.
-requirements = python3,kivy,pyjnius,openai,jiter,websockets
+requirements = python3,kivy,pyjnius,openai==3.0.0,httpx2==2.10.0,jiter,websockets
 
 orientation = portrait
 fullscreen = 0
