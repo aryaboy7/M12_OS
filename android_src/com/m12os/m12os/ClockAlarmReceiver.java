@@ -274,7 +274,7 @@ public class ClockAlarmReceiver extends BroadcastReceiver {
             }
 
             if (Build.VERSION.SDK_INT >= 28) {
-                activeRingtone.setLooping(true);
+                activeRingtone.setLooping(false);
             }
 
             activeRingtone.play();
@@ -285,7 +285,7 @@ public class ClockAlarmReceiver extends BroadcastReceiver {
 
             new Thread(() -> {
                 try {
-                    Thread.sleep(60000);
+                    Thread.sleep(7000);
                 } catch (InterruptedException ignored) {
                 }
 
