@@ -237,7 +237,16 @@ class AlarmNotifier:
         hour = int(alarm.get("hour", 0))
         minute = int(alarm.get("minute", 0))
 
-        message = f"ALARM\n\n{hour:02d}:{minute:02d}"
+        alarm_name = str(
+            alarm.get("name", "")
+        ).strip()
+
+        display_title = alarm_name or "ALARM"
+
+        message = (
+            f"{display_title}\n\n"
+            f"{hour:02d}:{minute:02d}"
+        )
 
         box = BoxLayout(
             orientation="vertical",
@@ -263,7 +272,7 @@ class AlarmNotifier:
         box.add_widget(label)
 
         popup = Popup(
-            title="Alarm Clock",
+            title=alarm_name or "Alarm Clock",
             content=box,
             size_hint=(0.90, 0.70),
             auto_dismiss=False
@@ -285,6 +294,9 @@ class AlarmNotifier:
         box.add_widget(dismiss_btn)
 
         popup.open()
+
         log.info(
-            f"AlarmNotifier: popup shown {hour:02d}:{minute:02d}"
+            "AlarmNotifier: popup shown "
+            f"name={alarm_name or '(none)'} "
+            f"time={hour:02d}:{minute:02d}"
         )

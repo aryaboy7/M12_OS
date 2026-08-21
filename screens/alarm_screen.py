@@ -10,10 +10,12 @@ from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 
 from utils.logger import log
+from utils.text_editor_popup import open_text_editor
 from services.android_clock_alarm_scheduler import (
     sync_android_clock_alarms,
 )
@@ -291,6 +293,7 @@ class AlarmScreen(Screen):
         self.alarms = []
         self.selected_index = None
 
+        self.alarm_name = ""
         self.alarm_hour = 7
         self.alarm_minute = 30
         self.enabled = True
@@ -326,6 +329,24 @@ class AlarmScreen(Screen):
         )
         new_btn.bind(on_press=self.new_alarm)
         top.add_widget(new_btn)
+
+        self.name_input = TextInput(
+            text="",
+            hint_text="Alarm Name",
+            font_size=alarm_control_font(),
+            multiline=False,
+            size_hint=(2.2, 1),
+            use_bubble=False,
+            use_handles=False,
+            readonly=(device_profile() == "m12"),
+        )
+
+        if device_profile() == "m12":
+            self.name_input.bind(
+                on_touch_down=self.name_touched
+            )
+
+        top.add_widget(self.name_input)
 
         root.add_widget(top)
 
@@ -522,6 +543,24 @@ class AlarmScreen(Screen):
         btn.bind(on_press=wrapped_callback)
         return btn
 
+    def name_touched(self, instance, touch):
+        if instance.collide_point(*touch.pos):
+            self.open_name_editor()
+            return True
+
+        return False
+
+    def open_name_editor(self):
+        def save_text(value):
+            self.name_input.text = str(value).strip()
+
+        open_text_editor(
+            title="Alarm Name",
+            text=self.name_input.text,
+            on_save=save_text,
+            multiline=False,
+        )
+
     def get_system_status_text(self):
         if (
             self.manager
@@ -698,6 +737,11 @@ class AlarmScreen(Screen):
             self.until_year_label.text = "----"
 
     def alarm_to_state(self, alarm):
+        self.alarm_name = str(
+            alarm.get("name", "")
+        ).strip()
+        self.name_input.text = self.alarm_name
+
         self.alarm_hour = int(alarm.get("hour", 7))
         self.alarm_minute = int(alarm.get("minute", 30))
         self.enabled = bool(alarm.get("enabled", True))
@@ -711,7 +755,10 @@ class AlarmScreen(Screen):
         self.update_until_label()
 
     def state_to_alarm(self):
+        self.alarm_name = self.name_input.text.strip()
+
         return {
+            "name": self.alarm_name,
             "hour": self.alarm_hour,
             "minute": self.alarm_minute,
             "enabled": self.enabled,
@@ -723,6 +770,9 @@ class AlarmScreen(Screen):
         }
 
     def alarm_summary(self, alarm):
+        name = str(
+            alarm.get("name", "")
+        ).strip()
         hour = int(alarm.get("hour", 0))
         minute = int(alarm.get("minute", 0))
         enabled = bool(alarm.get("enabled", False))
@@ -741,7 +791,12 @@ class AlarmScreen(Screen):
             repeat_text += f" Until {until_date}"
 
         prefix = "ON" if enabled else "OFF"
-        return f"{prefix}  {hour:02d}:{minute:02d}  {repeat_text}"
+        display_name = name or "Alarm"
+
+        return (
+            f"{prefix}  {hour:02d}:{minute:02d}  "
+            f"{display_name}  {repeat_text}"
+        )
 
     def rebuild_alarm_list(self):
         self.alarm_list.clear_widgets()
@@ -783,6 +838,8 @@ class AlarmScreen(Screen):
 
     def new_alarm(self, instance):
         self.selected_index = None
+        self.alarm_name = ""
+        self.name_input.text = ""
         self.alarm_hour = 7
         self.alarm_minute = 30
         self.enabled = True

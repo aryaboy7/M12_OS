@@ -21,7 +21,7 @@ def _next_occurrence(alarm, now=None):
     except (TypeError, ValueError):
         return None
 
-    repeat_mode = str(alarm.get("repeat_mode", "once")).strip()
+    repeat_mode = str(alarm.get("repeat_mode","once")).strip()
     days = list(alarm.get("days", []))
     until_text = str(alarm.get("until_date", "")).strip()
 
@@ -97,6 +97,9 @@ def _android_classes():
         "AlarmManager": autoclass(
             "android.app.AlarmManager"
         ),
+        "Bundle": autoclass(
+            "android.os.Bundle"
+        ),
         "VERSION": autoclass(
             "android.os.Build$VERSION"
         ),
@@ -136,33 +139,42 @@ def _pending_intent(
     )
 
     if alarm is not None:
-        intent.putExtra(
+        Bundle = c["Bundle"]
+        extras = Bundle()
+
+        extras.putInt(
             "request_code",
             int(request_code),
         )
-        intent.putExtra(
+        extras.putInt(
             "alarm_hour",
             int(alarm.get("hour", 0)),
         )
-        intent.putExtra(
+        extras.putInt(
             "alarm_minute",
             int(alarm.get("minute", 0)),
         )
-        intent.putExtra(
+        extras.putString(
+            "alarm_name",
+            str(alarm.get("name", "")),
+        )
+        extras.putString(
             "repeat_mode",
             str(alarm.get("repeat_mode", "once")),
         )
-        intent.putExtra(
+        extras.putString(
             "days",
             ",".join(
                 str(item)
                 for item in alarm.get("days", [])
             ),
         )
-        intent.putExtra(
+        extras.putString(
             "until_date",
             str(alarm.get("until_date", "")),
         )
+
+        intent.putExtras(extras)
 
     flags = PendingIntent.FLAG_UPDATE_CURRENT
     if VERSION.SDK_INT >= 23:
@@ -292,7 +304,7 @@ def sync_android_clock_alarms(alarms):
 
     except Exception as error:
         print(
-            "[ClockAlarmScheduler] Sync error: "
+            "[ClockAlarmScheduler] Sync error:"
             f"{type(error).__name__}: {error}"
         )
         return False
