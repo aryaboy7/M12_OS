@@ -3,6 +3,7 @@ import base64
 import ctypes
 import ctypes.util
 import json
+import logging
 import os
 import queue
 import ssl
@@ -16,6 +17,19 @@ from openai import AsyncOpenAI
 
 from services.memory_manager import get_memory_manager
 from services.api_key_manager import APIKeyManager
+
+
+# Prevent third-party networking libraries from logging sensitive
+# request headers such as the OpenAI Authorization bearer token.
+for logger_name in (
+    "openai",
+    "websockets",
+    "websockets.client",
+    "websockets.server",
+    "httpx",
+    "httpcore",
+):
+    logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
 IS_ANDROID = kivy_platform == "android"
