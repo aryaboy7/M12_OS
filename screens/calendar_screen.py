@@ -222,7 +222,7 @@ class CalendarScreen(Screen):
             reminder = "None"
 
         repeat_mode = event.get("repeat_mode", "once")
-        if repeat_mode not in ("once", "every_day", "days"):
+        if repeat_mode not in ("once", "every_day", "days", "yearly"):
             repeat_mode = "once"
 
         days = event.get("days", [])
@@ -288,6 +288,11 @@ class CalendarScreen(Screen):
                 return None
             return datetime.combine(today, base_dt.time())
 
+        if repeat_mode == "yearly":
+            if (today.month, today.day) != (base_dt.month, base_dt.day):
+                return None
+            return datetime.combine(today, base_dt.time())
+
         return base_dt
 
     def next_occurrence(self, event):
@@ -311,6 +316,25 @@ class CalendarScreen(Screen):
                 until = datetime.strptime(until_date, "%Y-%m-%d").date()
             except Exception:
                 until = None
+
+        if repeat_mode == "yearly":
+            start_year = max(base_dt.year, now.year)
+            for year in range(start_year, start_year + 200):
+                try:
+                    candidate = base_dt.replace(year=year)
+                except ValueError:
+                    # Feb 29 yearly events occur only in leap years.
+                    continue
+
+                if candidate < base_dt or candidate < now:
+                    continue
+
+                if until and candidate.date() > until:
+                    return None
+
+                return candidate
+
+            return None
 
         for offset in range(0, 370):
             day = today + timedelta(days=offset)
@@ -400,6 +424,8 @@ class CalendarScreen(Screen):
         elif mode == "days":
             days = event.get("days", [])
             text = "Repeat: " + (", ".join(days) if days else "Days")
+        elif mode == "yearly":
+            text = "Repeat: Yearly"
         else:
             text = "Repeat: Once"
 
@@ -748,10 +774,12 @@ class CalendarScreen(Screen):
         self.once_btn = self.make_btn("Once", self.set_once, fs=12)
         self.every_btn = self.make_btn("Every Day", self.set_every_day, fs=12)
         self.days_btn = self.make_btn("Days", self.set_days_mode, fs=12)
+        self.yearly_btn = self.make_btn("Yearly", self.set_yearly, fs=12)
 
         repeat_row.add_widget(self.once_btn)
         repeat_row.add_widget(self.every_btn)
         repeat_row.add_widget(self.days_btn)
+        repeat_row.add_widget(self.yearly_btn)
         self.root_box.add_widget(repeat_row)
 
         days_row = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.07))
@@ -827,6 +855,11 @@ class CalendarScreen(Screen):
         self.repeat_mode = "days"
         self.update_repeat_buttons()
 
+    def set_yearly(self, instance):
+        self.repeat_mode = "yearly"
+        self.days = []
+        self.update_repeat_buttons()
+
     def toggle_day(self, day):
         self.repeat_mode = "days"
 
@@ -844,6 +877,7 @@ class CalendarScreen(Screen):
         self.once_btn.background_color = on if self.repeat_mode == "once" else off
         self.every_btn.background_color = on if self.repeat_mode == "every_day" else off
         self.days_btn.background_color = on if self.repeat_mode == "days" else off
+        self.yearly_btn.background_color = on if self.repeat_mode == "yearly" else off
 
         for day, btn in self.day_buttons.items():
             btn.background_color = on if day in self.days else off

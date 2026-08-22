@@ -76,6 +76,8 @@ class NoteEditorScreen(Screen):
 
         self.current_path = None
         self.saved_popup = None
+        self.unsaved_popup = None
+        self._saved_snapshot = ("", "Personal", "")
 
         root = BoxLayout(
             orientation="vertical",
@@ -179,6 +181,19 @@ class NoteEditorScreen(Screen):
 
         self.add_widget(root)
 
+    def _current_snapshot(self):
+        return (
+            str(self.title_input.text),
+            str(self.type_spinner.text),
+            str(self.body_input.text),
+        )
+
+    def _remember_saved_state(self):
+        self._saved_snapshot = self._current_snapshot()
+
+    def has_unsaved_changes(self):
+        return self._current_snapshot() != self._saved_snapshot
+
     def on_body_focus(self, instance, focused):
         if focused:
             self.scroll.scroll_y = 0.0
@@ -265,6 +280,7 @@ class NoteEditorScreen(Screen):
             else "Personal"
         )
         self.body_input.text = ""
+        self._remember_saved_state()
 
         log.info("Editor: new note")
 
@@ -294,6 +310,8 @@ class NoteEditorScreen(Screen):
                 "",
             )
 
+            self._remember_saved_state()
+
             log.info(
                 f"Editor: loaded {self.current_path.name}"
             )
@@ -320,6 +338,8 @@ class NoteEditorScreen(Screen):
                 )
             except Exception:
                 self.body_input.text = ""
+
+            self._remember_saved_state()
 
     def show_saved_then_back(self):
         box = BoxLayout(
@@ -365,7 +385,8 @@ class NoteEditorScreen(Screen):
             pass
 
         self.saved_popup = None
-        self.go_back(None)
+        self._remember_saved_state()
+        self._return_to_notes()
 
     def save_note(self, instance):
         title = (
@@ -406,6 +427,7 @@ class NoteEditorScreen(Screen):
                 encoding="utf-8",
             )
             self.current_path = path
+            self._remember_saved_state()
             log.info(
                 f"Editor: saved {path.name}"
             )
@@ -416,6 +438,111 @@ class NoteEditorScreen(Screen):
                 f"Editor: failed to save note: {e}"
             )
 
+    def _return_to_notes(self):
+        log.info("Editor: returning to Notes")
+        self.manager.current = "notes"
+
+    def _dismiss_unsaved_popup(self):
+        try:
+            if self.unsaved_popup:
+                self.unsaved_popup.dismiss()
+        except Exception:
+            pass
+
+        self.unsaved_popup = None
+
+    def _save_from_unsaved_popup(self, instance=None):
+        self._dismiss_unsaved_popup()
+        self.save_note(None)
+
+    def _discard_from_unsaved_popup(self, instance=None):
+        self._dismiss_unsaved_popup()
+        self._remember_saved_state()
+        self._return_to_notes()
+
+    def _cancel_unsaved_popup(self, instance=None):
+        self._dismiss_unsaved_popup()
+
+    def show_unsaved_changes_popup(self):
+        if self.unsaved_popup is not None:
+            return
+
+        box = BoxLayout(
+            orientation="vertical",
+            padding=padding_size(),
+            spacing=spacing_size(),
+        )
+
+        message = Label(
+            text="This note has unsaved changes.",
+            font_size=popup_font(),
+            halign="center",
+            valign="middle",
+            size_hint=(1, 0.55),
+        )
+        message.bind(
+            size=lambda inst, val: setattr(
+                inst,
+                "text_size",
+                val,
+            )
+        )
+        box.add_widget(message)
+
+        buttons = BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint=(1, 0.45),
+        )
+
+        save_btn = Button(
+            text="Save",
+            font_size=button_font(),
+            background_normal="",
+            background_color=(0.10, 0.45, 0.20, 1),
+        )
+        save_btn.bind(
+            on_press=self._save_from_unsaved_popup
+        )
+
+        discard_btn = Button(
+            text="Discard",
+            font_size=button_font(),
+            background_normal="",
+            background_color=(0.50, 0.15, 0.15, 1),
+        )
+        discard_btn.bind(
+            on_press=self._discard_from_unsaved_popup
+        )
+
+        cancel_btn = Button(
+            text="Cancel",
+            font_size=button_font(),
+            background_normal="",
+            background_color=(0.12, 0.20, 0.35, 1),
+        )
+        cancel_btn.bind(
+            on_press=self._cancel_unsaved_popup
+        )
+
+        buttons.add_widget(save_btn)
+        buttons.add_widget(discard_btn)
+        buttons.add_widget(cancel_btn)
+        box.add_widget(buttons)
+
+        self.unsaved_popup = Popup(
+            title="Unsaved Note",
+            content=box,
+            size_hint=(0.92, 0.46),
+            auto_dismiss=False,
+        )
+        self.unsaved_popup.open()
+
     def go_back(self, instance=None):
         log.info("Editor: Back pressed")
-        self.manager.current = "notes"
+
+        if self.has_unsaved_changes():
+            self.show_unsaved_changes_popup()
+            return
+
+        self._return_to_notes()

@@ -1,23 +1,18 @@
-from datetime import datetime, timedelta
 import zlib
+from datetime import datetime, timedelta
 
 from kivy.utils import platform
 
 
-ACTION_EVENT_REMINDER = "com.m12os.EVENT_REMINDER"
-ACTION_EVENT_TIME = "com.m12os.EVENT_TIME"
-ACTION_EVENT_STOP = "com.m12os.EVENT_STOP"
-
 REMINDER_MINUTES = {
     "None": None,
     "Event Time": 0,
-    "At event time": 0,
-    "At time": 0,
     "5m": 5,
     "15m": 15,
     "30m": 30,
     "1h": 60,
     "1 day": 1440,
+    "At event time": 0,
     "5 minutes before": 5,
     "15 minutes before": 15,
     "30 minutes before": 30,
@@ -25,587 +20,424 @@ REMINDER_MINUTES = {
     "1 day before": 1440,
 }
 
-REPEAT_ONCE = 0
-REPEAT_EVERY_DAY = 1
-REPEAT_DAYS = 2
+DAY_NAMES = (
+    "Mon",
+    "Tue",
+    "Wed",
+    "Thu",
+    "Fri",
+    "Sat",
+    "Sun",
+)
 
-DAY_BITS = {
-    "Mon": 1 << 0,
-    "Tue": 1 << 1,
-    "Wed": 1 << 2,
-    "Thu": 1 << 3,
-    "Fri": 1 << 4,
-    "Sat": 1 << 5,
-    "Sun": 1 << 6,
-}
+ACTION_EVENT_REMINDER = "com.m12os.EVENT_REMINDER"
+ACTION_EVENT_TIME = "com.m12os.EVENT_TIME"
+ACTION_EVENT_STOP = "com.m12os.EVENT_STOP"
+RECEIVER_CLASS = "com.m12os.m12os.EventAlarmReceiver"
 
-
-def _base_datetime(event):
-    return datetime.strptime(
-        f"{event['date']} {event.get('time', '00:00') or '00:00'}",
-        "%Y-%m-%d %H:%M",
-    )
+REQUEST_BASE = 220000
+MAX_EVENT_SLOTS = 1000
 
 
-def _repeat_type(event):
-    mode = str(event.get("repeat_mode", "once")).strip()
+def _android_classes():
+    from jnius import autoclass
 
-    if mode == "every_day":
-        return REPEAT_EVERY_DAY
-
-    if mode == "days":
-        return REPEAT_DAYS
-
-    return REPEAT_ONCE
-
-
-def _days_mask(event):
-    mask = 0
-
-    days = event.get("days", [])
-    if not isinstance(days, list):
-        return 0
-
-    for day in days:
-        mask |= DAY_BITS.get(str(day).strip(), 0)
-
-    return int(mask)
+    return {
+        "PythonActivity": autoclass("org.kivy.android.PythonActivity"),
+        "Context": autoclass("android.content.Context"),
+        "Intent": autoclass("android.content.Intent"),
+        "ComponentName": autoclass("android.content.ComponentName"),
+        "PendingIntent": autoclass("android.app.PendingIntent"),
+        "AlarmManager": autoclass("android.app.AlarmManager"),
+        "VERSION": autoclass("android.os.Build$VERSION"),
+    }
 
 
-def _until_ymd(event):
-    value = str(event.get("until_date", "")).strip()
-
-    if not value:
-        return 0
-
+def _parse_event_datetime(event):
     try:
-        dt = datetime.strptime(value, "%Y-%m-%d")
-        return dt.year * 10000 + dt.month * 100 + dt.day
+        date_text = str(event.get("date", "")).strip()
+        time_text = str(event.get("time", "")).strip() or "00:00"
+        return datetime.strptime(
+            f"{date_text} {time_text}",
+            "%Y-%m-%d %H:%M",
+        )
     except Exception:
-        return 0
+        return None
+
+
+def _until_date(event):
+    text = str(event.get("until_date", "")).strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").date()
+    except Exception:
+        return None
 
 
 def _next_occurrence(event, now=None):
     if now is None:
         now = datetime.now()
 
-    base = _base_datetime(event)
-    repeat_type = _repeat_type(event)
-    until_ymd = _until_ymd(event)
+    base_dt = _parse_event_datetime(event)
+    if base_dt is None:
+        return None
 
-    if repeat_type == REPEAT_ONCE:
-        return base if base > now else None
+    repeat_mode = str(event.get("repeat_mode", "once")).strip() or "once"
 
-    start_date = max(base.date(), now.date())
-    days_mask = _days_mask(event)
+    if repeat_mode == "once":
+        return base_dt if base_dt > now else None
 
-    for offset in range(0, 371):
-        candidate_date = start_date + timedelta(days=offset)
+    until = _until_date(event)
+    start_date = max(now.date(), base_dt.date())
 
-        candidate_ymd = (
-            candidate_date.year * 10000
-            + candidate_date.month * 100
-            + candidate_date.day
-        )
+    for offset in range(0, 370):
+        day = start_date + timedelta(days=offset)
 
-        if until_ymd and candidate_ymd > until_ymd:
+        if until is not None and day > until:
             return None
 
-        if repeat_type == REPEAT_DAYS:
-            bit = 1 << candidate_date.weekday()
+        candidate = datetime.combine(day, base_dt.time())
 
-            if not (days_mask & bit):
-                continue
+        if candidate <= now:
+            continue
 
-        candidate = datetime.combine(
-            candidate_date,
-            base.time(),
-        )
-
-        if candidate > now:
+        if repeat_mode == "every_day":
             return candidate
+
+        if repeat_mode == "days":
+            allowed = event.get("days", [])
+            if not isinstance(allowed, list):
+                allowed = []
+
+            if DAY_NAMES[candidate.weekday()] in allowed:
+                return candidate
 
     return None
 
 
-def _base_request_code(event):
-    key = (
-        f"{event.get('title', '')}|"
-        f"{event.get('date', '')}|"
-        f"{event.get('time', '')}"
-    )
+def _normalize_reminder(value):
+    text = str(value or "None").strip() or "None"
 
-    return (
-        zlib.crc32(key.encode("utf-8"))
-        & 0x1FFFFFFF
-    ) * 4
+    aliases = {
+        "At event time": "Event Time",
+        "At time": "Event Time",
+        "5 minutes before": "5m",
+        "15 minutes before": "15m",
+        "30 minutes before": "30m",
+        "1 hour before": "1h",
+        "1 day before": "1 day",
+    }
+
+    return aliases.get(text, text)
 
 
-def _android_objects():
-    from jnius import autoclass
+def _request_codes(index):
+    base = REQUEST_BASE + (int(index) * 2)
+    return base, base + 1
 
-    PythonActivity = autoclass(
-        "org.kivy.android.PythonActivity"
-    )
-    Context = autoclass(
-        "android.content.Context"
-    )
-    Intent = autoclass(
-        "android.content.Intent"
-    )
-    ComponentName = autoclass(
-        "android.content.ComponentName"
-    )
-    PendingIntent = autoclass(
-        "android.app.PendingIntent"
-    )
-    AlarmManager = autoclass(
-        "android.app.AlarmManager"
-    )
-    Bundle = autoclass(
-        "android.os.Bundle"
-    )
-    VERSION = autoclass(
-        "android.os.Build$VERSION"
-    )
 
-    activity = PythonActivity.mActivity
-
-    manager = activity.getSystemService(
-        Context.ALARM_SERVICE
-    )
+def _pending_intent(
+    activity,
+    classes,
+    event,
+    action,
+    request_code,
+):
+    Intent = classes["Intent"]
+    ComponentName = classes["ComponentName"]
+    PendingIntent = classes["PendingIntent"]
+    VERSION = classes["VERSION"]
 
     component = ComponentName(
         activity.getPackageName(),
-        "com.m12os.m12os.EventAlarmReceiver",
+        RECEIVER_CLASS,
     )
-
-    return (
-        activity,
-        manager,
-        component,
-        Intent,
-        PendingIntent,
-        AlarmManager,
-        Bundle,
-        VERSION,
-    )
-
-
-def _put_common_extras(
-    intent,
-    event,
-    occurrence_dt,
-    reminder_minutes,
-    base_request_code,
-    Bundle,
-):
-    """
-    Put extras into a real Android Bundle using explicit Java types.
-
-    This avoids PyJNIus choosing Intent.putExtra overloads such as
-    Short or char[] instead of int/String.
-    """
-    bundle = Bundle()
-
-    bundle.putString(
-        "event_title",
-        str(event.get("title", "M12 Event")),
-    )
-
-    bundle.putString(
-        "event_notes",
-        str(event.get("notes", "")),
-    )
-
-    bundle.putString(
-        "event_datetime",
-        occurrence_dt.strftime(
-            "%Y-%m-%d %H:%M"
-        ),
-    )
-
-    bundle.putLong(
-        "event_occurrence_ms",
-        int(
-            occurrence_dt.timestamp()
-            * 1000
-        ),
-    )
-
-    bundle.putInt(
-        "event_reminder_minutes",
-        int(reminder_minutes),
-    )
-
-    bundle.putInt(
-        "event_repeat_type",
-        int(_repeat_type(event)),
-    )
-
-    bundle.putInt(
-        "event_days_mask",
-        int(_days_mask(event)),
-    )
-
-    bundle.putInt(
-        "event_until_ymd",
-        int(_until_ymd(event)),
-    )
-
-    bundle.putInt(
-        "event_hour",
-        int(occurrence_dt.hour),
-    )
-
-    bundle.putInt(
-        "event_minute",
-        int(occurrence_dt.minute),
-    )
-
-    bundle.putInt(
-        "event_request_code_base",
-        int(base_request_code),
-    )
-
-    intent.putExtras(bundle)
-
-
-def _schedule_one(
-    event,
-    occurrence_dt,
-    trigger_dt,
-    action,
-    request_code,
-    reminder_minutes,
-    base_request_code,
-):
-    (
-        activity,
-        manager,
-        component,
-        Intent,
-        PendingIntent,
-        AlarmManager,
-        Bundle,
-        VERSION,
-    ) = _android_objects()
-
-    if manager is None:
-        print(
-            "[EventAlarmScheduler] "
-            "AlarmManager unavailable."
-        )
-        return False
-
-    if (
-        VERSION.SDK_INT >= 31
-        and not manager.canScheduleExactAlarms()
-    ):
-        print(
-            "[EventAlarmScheduler] "
-            "Exact alarms are not permitted."
-        )
-        return False
-
-    trigger_ms = int(
-        trigger_dt.timestamp()
-        * 1000
-    )
-
-    now_ms = int(
-        datetime.now().timestamp()
-        * 1000
-    )
-
-    if trigger_ms <= now_ms:
-        print(
-            "[EventAlarmScheduler] "
-            f"Skipping past {action}: "
-            f"{trigger_dt.isoformat()}"
-        )
-        return False
 
     intent = Intent()
     intent.setComponent(component)
     intent.setAction(action)
 
-    _put_common_extras(
-        intent,
-        event,
-        occurrence_dt,
-        reminder_minutes,
-        base_request_code,
-        Bundle,
+    intent.putExtra(
+        "event_title",
+        str(event.get("title", "M12 Event")),
+    )
+    intent.putExtra(
+        "event_notes",
+        str(event.get("notes", "")),
+    )
+    intent.putExtra(
+        "event_datetime",
+        f"{event.get('date', '')} {event.get('time', '')}",
+    )
+    intent.putExtra(
+        "event_reminder",
+        _normalize_reminder(event.get("reminder", "None")),
     )
 
     flags = PendingIntent.FLAG_UPDATE_CURRENT
-
     if VERSION.SDK_INT >= 23:
         flags |= PendingIntent.FLAG_IMMUTABLE
 
-    pi = PendingIntent.getBroadcast(
+    return PendingIntent.getBroadcast(
         activity,
         int(request_code),
         intent,
         flags,
     )
 
+
+def _schedule_exact(manager, classes, trigger_dt, pending_intent):
+    AlarmManager = classes["AlarmManager"]
+    VERSION = classes["VERSION"]
+
+    trigger_ms = int(trigger_dt.timestamp() * 1000)
+
     if VERSION.SDK_INT >= 23:
         manager.setExactAndAllowWhileIdle(
             AlarmManager.RTC_WAKEUP,
             trigger_ms,
-            pi,
+            pending_intent,
         )
     else:
         manager.setExact(
             AlarmManager.RTC_WAKEUP,
             trigger_ms,
-            pi,
+            pending_intent,
         )
 
-    print(
-        "[EventAlarmScheduler] "
-        f"Scheduled {action} for "
-        f"{trigger_dt.isoformat()} "
-        f"repeat_type={_repeat_type(event)} "
-        f"days_mask={_days_mask(event)} "
-        f"until={_until_ymd(event)}"
-    )
 
-    return True
+def _cancel_pending(manager, classes, activity, event, action, request_code):
+    try:
+        pi = _pending_intent(
+            activity,
+            classes,
+            event,
+            action,
+            request_code,
+        )
+        manager.cancel(pi)
+        pi.cancel()
+    except Exception:
+        pass
 
 
-def schedule_event(event):
+def schedule_android_event(event, index=0):
+    """
+    Schedule the next native Android occurrence for one event.
+
+    Every event gets EVENT_TIME at the exact event time.
+
+    When the event reminder is N minutes before, EVENT_REMINDER is also
+    scheduled at event time minus N minutes.
+
+    Reminder == Event Time -> only EVENT_TIME.
+    Reminder == None       -> only EVENT_TIME.
+    """
     if platform != "android":
         return False
 
     try:
-        occurrence_dt = _next_occurrence(
-            event
-        )
+        classes = _android_classes()
+        PythonActivity = classes["PythonActivity"]
+        Context = classes["Context"]
+        VERSION = classes["VERSION"]
 
-        if occurrence_dt is None:
-            print(
-                "[EventAlarmScheduler] "
-                "No future occurrence."
-            )
+        activity = PythonActivity.mActivity
+        manager = activity.getSystemService(Context.ALARM_SERVICE)
+
+        if manager is None:
+            print("[EventAlarmScheduler] AlarmManager unavailable.")
             return False
 
-        base_request_code = (
-            _base_request_code(event)
-        )
+        if VERSION.SDK_INT >= 31 and not manager.canScheduleExactAlarms():
+            print("[EventAlarmScheduler] Exact alarms are not permitted.")
+            return False
 
-        reminder = str(
-            event.get(
-                "reminder",
-                "None",
-            )
-        ).strip() or "None"
+        occurrence = _next_occurrence(event)
+        if occurrence is None:
+            return False
 
-        minutes = REMINDER_MINUTES.get(
-            reminder
-        )
+        reminder_code, time_code = _request_codes(index)
 
-        if minutes is None:
-            reminder_minutes = 0
-            schedule_early = False
-        else:
-            reminder_minutes = int(minutes)
-            schedule_early = (
-                reminder_minutes > 0
-            )
-
-        event_time_scheduled = (
-            _schedule_one(
-                event=event,
-                occurrence_dt=occurrence_dt,
-                trigger_dt=occurrence_dt,
-                action=ACTION_EVENT_TIME,
-                request_code=(
-                    base_request_code + 1
-                ),
-                reminder_minutes=(
-                    reminder_minutes
-                ),
-                base_request_code=(
-                    base_request_code
-                ),
-            )
-        )
-
-        reminder_scheduled = False
-
-        if schedule_early:
-            reminder_dt = (
-                occurrence_dt
-                - timedelta(
-                    minutes=(
-                        reminder_minutes
-                    )
-                )
-            )
-
-            reminder_scheduled = (
-                _schedule_one(
-                    event=event,
-                    occurrence_dt=(
-                        occurrence_dt
-                    ),
-                    trigger_dt=(
-                        reminder_dt
-                    ),
-                    action=(
-                        ACTION_EVENT_REMINDER
-                    ),
-                    request_code=(
-                        base_request_code
-                        + 2
-                    ),
-                    reminder_minutes=(
-                        reminder_minutes
-                    ),
-                    base_request_code=(
-                        base_request_code
-                    ),
-                )
-            )
-
-        return (
-            event_time_scheduled
-            or reminder_scheduled
-        )
-
-    except Exception as error:
-        print(
-            "[EventAlarmScheduler] "
-            "Schedule error: "
-            f"{type(error).__name__}: "
-            f"{error}"
-        )
-        return False
-
-
-def cancel_event(event):
-    if platform != "android":
-        return False
-
-    try:
-        (
+        # Exact event-time alert is always scheduled.
+        event_time_pi = _pending_intent(
             activity,
+            classes,
+            event,
+            ACTION_EVENT_TIME,
+            time_code,
+        )
+        _schedule_exact(
             manager,
-            component,
-            Intent,
-            PendingIntent,
-            _AlarmManager,
-            _Bundle,
-            VERSION,
-        ) = _android_objects()
-
-        base = _base_request_code(
-            event
+            classes,
+            occurrence,
+            event_time_pi,
         )
-
-        flags = (
-            PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        if VERSION.SDK_INT >= 23:
-            flags |= (
-                PendingIntent.FLAG_IMMUTABLE
-            )
-
-        for action, request_code in (
-            (
-                ACTION_EVENT_TIME,
-                base + 1,
-            ),
-            (
-                ACTION_EVENT_REMINDER,
-                base + 2,
-            ),
-        ):
-            intent = Intent()
-            intent.setComponent(component)
-            intent.setAction(action)
-
-            pi = PendingIntent.getBroadcast(
-                activity,
-                int(request_code),
-                intent,
-                flags,
-            )
-
-            manager.cancel(pi)
-            pi.cancel()
 
         print(
-            "[EventAlarmScheduler] "
-            "Event alarms cancelled."
+            "[EventAlarmScheduler] Scheduled EVENT_TIME "
+            f"for {occurrence.isoformat()} request={time_code}"
         )
+
+        reminder = _normalize_reminder(
+            event.get("reminder", "None")
+        )
+        minutes = REMINDER_MINUTES.get(reminder)
+
+        if (
+            reminder not in ("None", "Event Time")
+            and minutes is not None
+            and int(minutes) > 0
+        ):
+            reminder_dt = occurrence - timedelta(minutes=int(minutes))
+
+            if reminder_dt > datetime.now():
+                reminder_pi = _pending_intent(
+                    activity,
+                    classes,
+                    event,
+                    ACTION_EVENT_REMINDER,
+                    reminder_code,
+                )
+                _schedule_exact(
+                    manager,
+                    classes,
+                    reminder_dt,
+                    reminder_pi,
+                )
+
+                print(
+                    "[EventAlarmScheduler] Scheduled EVENT_REMINDER "
+                    f"for {reminder_dt.isoformat()} "
+                    f"({reminder}) request={reminder_code}"
+                )
+
         return True
 
     except Exception as error:
         print(
-            "[EventAlarmScheduler] "
-            "Cancel error: "
-            f"{type(error).__name__}: "
-            f"{error}"
+            "[EventAlarmScheduler] Schedule error: "
+            f"{type(error).__name__}: {error}"
         )
         return False
 
 
-def stop_event_sound():
+def sync_android_event_alarms(events):
+    """
+    Rebuild native Android Calendar alarms from the complete events list.
+
+    The stable request-code scheme is index based, so edits/deletes are
+    handled by canceling the supported slots before rescheduling.
+    """
     if platform != "android":
         return False
 
     try:
-        (
-            activity,
-            _manager,
-            component,
-            Intent,
-            PendingIntent,
-            _AlarmManager,
-            _Bundle,
-            VERSION,
-        ) = _android_objects()
+        classes = _android_classes()
+        PythonActivity = classes["PythonActivity"]
+        Context = classes["Context"]
+        PendingIntent = classes["PendingIntent"]
+        Intent = classes["Intent"]
+        ComponentName = classes["ComponentName"]
+        VERSION = classes["VERSION"]
+
+        activity = PythonActivity.mActivity
+        manager = activity.getSystemService(Context.ALARM_SERVICE)
+
+        if manager is None:
+            return False
+
+        component = ComponentName(
+            activity.getPackageName(),
+            RECEIVER_CLASS,
+        )
+
+        flags = PendingIntent.FLAG_NO_CREATE
+        if VERSION.SDK_INT >= 23:
+            flags |= PendingIntent.FLAG_IMMUTABLE
+
+        # Cancel only PendingIntents that already exist; this does not create
+        # hundreds of new PendingIntents while cleaning stale event slots.
+        for index in range(MAX_EVENT_SLOTS):
+            reminder_code, time_code = _request_codes(index)
+
+            for action, code in (
+                (ACTION_EVENT_REMINDER, reminder_code),
+                (ACTION_EVENT_TIME, time_code),
+            ):
+                intent = Intent()
+                intent.setComponent(component)
+                intent.setAction(action)
+
+                pi = PendingIntent.getBroadcast(
+                    activity,
+                    int(code),
+                    intent,
+                    flags,
+                )
+
+                if pi is not None:
+                    try:
+                        manager.cancel(pi)
+                        pi.cancel()
+                    except Exception:
+                        pass
+
+        scheduled = 0
+
+        for index, event in enumerate(list(events or [])):
+            if index >= MAX_EVENT_SLOTS:
+                break
+
+            if schedule_android_event(event, index=index):
+                scheduled += 1
+
+        print(
+            "[EventAlarmScheduler] Ready: "
+            f"{scheduled} event(s) scheduled natively."
+        )
+
+        return True
+
+    except Exception as error:
+        print(
+            "[EventAlarmScheduler] Sync error: "
+            f"{type(error).__name__}: {error}"
+        )
+        return False
+
+
+def stop_native_event_sound():
+    """Stop native EventAlarmReceiver sound when Calendar is opened."""
+    if platform != "android":
+        return False
+
+    try:
+        classes = _android_classes()
+        PythonActivity = classes["PythonActivity"]
+        Intent = classes["Intent"]
+        ComponentName = classes["ComponentName"]
+
+        activity = PythonActivity.mActivity
+
+        component = ComponentName(
+            activity.getPackageName(),
+            RECEIVER_CLASS,
+        )
 
         intent = Intent()
         intent.setComponent(component)
-        intent.setAction(
-            ACTION_EVENT_STOP
-        )
+        intent.setAction(ACTION_EVENT_STOP)
 
-        flags = (
-            PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        activity.sendBroadcast(intent)
 
-        if VERSION.SDK_INT >= 23:
-            flags |= (
-                PendingIntent.FLAG_IMMUTABLE
-            )
-
-        pi = PendingIntent.getBroadcast(
-            activity,
-            22999,
-            intent,
-            flags,
-        )
-
-        pi.send()
-
-        print(
-            "[EventAlarmScheduler] "
-            "EVENT_STOP sent."
-        )
+        print("[EventAlarmScheduler] EVENT_STOP sent.")
         return True
 
     except Exception as error:
         print(
-            "[EventAlarmScheduler] "
-            "Stop error: "
-            f"{type(error).__name__}: "
-            f"{error}"
+            "[EventAlarmScheduler] Stop error: "
+            f"{type(error).__name__}: {error}"
         )
         return False
