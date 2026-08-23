@@ -35,7 +35,7 @@ from services.ai_session_memory import get_ai_session_memory
 from services.realtime_voice_service import RealtimeVoiceService
 from services.voice_service import VoiceService
 from utils.system_header import create_system_header
-from utils.ui_scale import font, height, device_profile
+from utils.ui_scale import font, height, ai_layout
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AI_SETTINGS_FILE = BASE_DIR / "config" / "ai_settings.json"
@@ -109,128 +109,22 @@ class AIScreen(Screen):
         self.current_image_items = []
         self.current_image_query = ""
 
-        profile = device_profile()
-
         # ---------------------------------------------------------
         # Responsive AI layout
         # ---------------------------------------------------------
-        # Keep all AI/voice logic identical; only widget sizing changes here.
-        # These values are deliberately denser than the original AI screen so
-        # Conversation remains the main area and controls never overlap.
-        if profile == "phone":
-            screen_padding = 12
-            screen_spacing = 7
-            title_hint = 0.055
-            mode_hint = 0.065
-            section_title_hint = 0.030
-            chat_hint = 0.365
-            input_hint = 0.105
-            message_buttons_hint = 0.070
-            log_hint = 0.105
-            log_buttons_hint = 0.060
-            back_hint = 0.055
+        # All device/profile-specific AI sizing lives in utils/ui_scale.py.
+        ai_ui = ai_layout()
 
-            title_size = 26
-            mode_size = 16
-            section_size = 14
-            chat_size = 22
-            input_size = 18
-            message_button_size = 14
-            log_size = 16
-            log_button_size = 13
-            back_size = 16
-
-        elif profile == "tablet":
-            screen_padding = 12
-            screen_spacing = 8
-            title_hint = 0.060
-            mode_hint = 0.070
-            section_title_hint = 0.032
-            chat_hint = 0.355
-            input_hint = 0.110
-            message_buttons_hint = 0.072
-            log_hint = 0.110
-            log_buttons_hint = 0.060
-            back_hint = 0.055
-
-            title_size = 24
-            mode_size = 16
-            section_size = 14
-            chat_size = 18
-            input_size = 18
-            message_button_size = 14
-            log_size = 12
-            log_button_size = 13
-            back_size = 16
-
-        elif profile == "m12":
-            screen_padding = 10
-            screen_spacing = 7
-            title_hint = 0.060
-            mode_hint = 0.070
-            section_title_hint = 0.032
-            chat_hint = 0.350
-            input_hint = 0.115
-            message_buttons_hint = 0.075
-            log_hint = 0.105
-            log_buttons_hint = 0.060
-            back_hint = 0.055
-
-            title_size = 22
-            mode_size = 15
-            section_size = 13
-            chat_size = 17
-            input_size = 17
-            message_button_size = 13
-            log_size = 11
-            log_button_size = 12
-            back_size = 15
-
-        elif profile == "linux":
-            screen_padding = 10
-            screen_spacing = 7
-            title_hint = 0.055
-            mode_hint = 0.065
-            section_title_hint = 0.032
-            chat_hint = 0.370
-            input_hint = 0.115
-            message_buttons_hint = 0.070
-            log_hint = 0.105
-            log_buttons_hint = 0.060
-            back_hint = 0.055
-
-            title_size = 25
-            mode_size = 16
-            section_size = 14
-            chat_size = 17
-            input_size = 17
-            message_button_size = 14
-            log_size = 11
-            log_button_size = 13
-            back_size = 16
-
-        else:
-            screen_padding = 10
-            screen_spacing = 7
-            title_hint = 0.060
-            mode_hint = 0.070
-            section_title_hint = 0.032
-            chat_hint = 0.355
-            input_hint = 0.110
-            message_buttons_hint = 0.072
-            log_hint = 0.110
-            log_buttons_hint = 0.060
-            back_hint = 0.055
-
-            title_size = 24
-            mode_size = 16
-            section_size = 14
-            chat_size = 17
-            input_size = 17
-            message_button_size = 14
-            log_size = 11
-            log_button_size = 13
-            back_size = 16
+        screen_padding = ai_ui["screen_padding"]
+        screen_spacing = ai_ui["screen_spacing"]
+        mode_hint = ai_ui["mode_hint"]
+        section_title_hint = ai_ui["section_title_hint"]
+        chat_hint = ai_ui["chat_hint"]
+        input_hint = ai_ui["input_hint"]
+        message_buttons_hint = ai_ui["message_buttons_hint"]
+        log_hint = ai_ui["log_hint"]
+        log_buttons_hint = ai_ui["log_buttons_hint"]
+        back_hint = ai_ui["back_hint"]
 
         root = BoxLayout(
             orientation="vertical",
@@ -282,7 +176,7 @@ class AIScreen(Screen):
 
         self.mode_btn = Button(
             text="Mode: AI",
-            font_size=font(mode_size),
+            font_size=ai_ui["mode_font"],
             background_normal="",
         )
         self.mode_btn.bind(
@@ -294,7 +188,7 @@ class AIScreen(Screen):
 
         self.language_btn = Button(
             text="Language: English",
-            font_size=font(mode_size),
+            font_size=ai_ui["mode_font"],
             background_normal="",
             background_color=(
                 0.25,
@@ -319,7 +213,7 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         conversation_title = Label(
             text="Conversation",
-            font_size=font(section_size),
+            font_size=ai_ui["section_font"],
             bold=True,
             size_hint=(1, section_title_hint),
             halign="left",
@@ -402,7 +296,7 @@ class AIScreen(Screen):
             self.chat_label = Label(
                 text=self.format_chat_links(self.chat_text),
                 markup=True,
-                font_size=font(chat_size),
+                font_size=ai_ui["chat_font"],
                 size_hint_y=None,
                 halign="left",
                 valign="top",
@@ -431,7 +325,7 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         self.message_input = TextInput(
             hint_text="Type a message or press Voice...",
-            font_size=font(input_size),
+            font_size=ai_ui["input_font"],
             multiline=True,
             size_hint=(1, input_hint),
             padding=(
@@ -462,7 +356,7 @@ class AIScreen(Screen):
 
         self.voice_btn = Button(
             text="Voice",
-            font_size=font(message_button_size),
+            font_size=ai_ui["message_button_font"],
             size_hint_x=0.18,
             background_normal="",
             background_color=(
@@ -481,7 +375,7 @@ class AIScreen(Screen):
 
         self.clear_btn = Button(
             text="Clear Messages",
-            font_size=font(message_button_size),
+            font_size=ai_ui["message_button_font"],
             size_hint_x=0.32,
             background_normal="",
             background_color=(
@@ -500,7 +394,7 @@ class AIScreen(Screen):
 
         self.copy_btn = Button(
             text="Copy Messages",
-            font_size=font(message_button_size),
+            font_size=ai_ui["message_button_font"],
             size_hint_x=0.32,
             background_normal="",
             background_color=(
@@ -519,7 +413,7 @@ class AIScreen(Screen):
 
         self.send_btn = Button(
             text="Send",
-            font_size=font(message_button_size),
+            font_size=ai_ui["message_button_font"],
             size_hint_x=0.18,
             background_normal="",
             background_color=(
@@ -543,7 +437,7 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         system_log_title = Label(
             text="System Log",
-            font_size=font(section_size),
+            font_size=ai_ui["section_font"],
             bold=True,
             size_hint=(1, section_title_hint),
             halign="left",
@@ -569,7 +463,7 @@ class AIScreen(Screen):
 
             self.system_log_label = Label(
                 text="",
-                font_size=font(log_size),
+                font_size=ai_ui["log_font"],
                 size_hint_y=None,
                 halign="left",
                 valign="top",
@@ -610,7 +504,7 @@ class AIScreen(Screen):
                 readonly=True,
                 multiline=True,
                 cursor_blink=False,
-                font_size=font(log_size),
+                font_size=ai_ui["log_font"],
                 size_hint=(1, log_hint),
                 padding=(
                     height(10),
@@ -658,7 +552,7 @@ class AIScreen(Screen):
 
         self.copy_log_btn = Button(
             text="Copy Log",
-            font_size=font(log_button_size),
+            font_size=ai_ui["log_button_font"],
             background_normal="",
             background_color=(
                 0.22,
@@ -676,7 +570,7 @@ class AIScreen(Screen):
 
         self.save_log_btn = Button(
             text="Save Log",
-            font_size=font(log_button_size),
+            font_size=ai_ui["log_button_font"],
             background_normal="",
             background_color=(
                 0.20,
@@ -694,7 +588,7 @@ class AIScreen(Screen):
 
         self.clear_log_btn = Button(
             text="Clear Log",
-            font_size=font(log_button_size),
+            font_size=ai_ui["log_button_font"],
             background_normal="",
             background_color=(
                 0.42,
@@ -717,7 +611,7 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         self.back_btn = Button(
             text="< Back",
-            font_size=font(back_size),
+            font_size=ai_ui["back_font"],
             size_hint=(1, back_hint),
             background_normal="",
             background_color=(
@@ -916,15 +810,7 @@ class AIScreen(Screen):
                         block
                     ),
                     markup=True,
-                    font_size=font(
-                        (
-                            22
-                            if device_profile() == "phone"
-                            else 18
-                            if device_profile() == "tablet"
-                            else 17
-                        )
-                    ),
+                    font_size=ai_layout()["android_chat_font"],
                     size_hint_y=None,
                     halign="left",
                     valign="top",
