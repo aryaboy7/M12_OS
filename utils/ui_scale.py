@@ -16,8 +16,6 @@ def device_profile():
     w = Window.width
     h = Window.height
 
-    # Linux gets its own desktop profile so it is never mistaken
-    # for an Android tablet or phone when the window is large.
     if platform == "linux":
         return "linux"
 
@@ -58,12 +56,6 @@ def is_linux():
 # ------------------------------------------------------------
 
 def font(base):
-    """
-    General font scaling.
-
-    Linux uses near-desktop sizing. The earlier 2.00 scale caused
-    labels and button text to overflow a normal laptop window.
-    """
     profile = device_profile()
 
     if profile == "phone":
@@ -81,12 +73,6 @@ def font(base):
 
 
 def height(base):
-    """
-    General height scaling.
-
-    Linux stays close to standard desktop sizing so vertical
-    layouts fit correctly in a 900x650 to 1000x700 window.
-    """
     profile = device_profile()
 
     if profile == "phone":
@@ -349,3 +335,130 @@ def spacing_size():
         return 8
 
     return 8
+
+
+# ------------------------------------------------------------
+# AI screen sizing
+# ------------------------------------------------------------
+
+def ai_layout():
+    """
+    Central sizing source for screens/ai_screen.py.
+
+    All AI-screen device/profile sizes live here.
+    """
+    profile = device_profile()
+
+    if profile == "phone":
+        return {
+            "screen_padding": 12,
+            "screen_spacing": 7,
+            "mode_hint": 0.065,
+            "section_title_hint": 0.030,
+            "chat_hint": 0.365,
+            "input_hint": 0.105,
+            "message_buttons_hint": 0.070,
+            "log_hint": 0.105,
+            "log_buttons_hint": 0.060,
+            "back_hint": 0.055,
+            "mode_font": font(16),
+            "section_font": font(14),
+            "chat_font": font(22),
+            "input_font": font(18),
+            "message_button_font": font(14),
+            "log_font": font(16),
+            "log_button_font": font(13),
+            "back_font": font(16),
+            "android_chat_font": font(22),
+        }
+
+    if profile == "tablet":
+        return {
+            "screen_padding": 12,
+            "screen_spacing": 8,
+            "mode_hint": 0.070,
+            "section_title_hint": 0.032,
+            "chat_hint": 0.355,
+            "input_hint": 0.110,
+            "message_buttons_hint": 0.072,
+            "log_hint": 0.110,
+            "log_buttons_hint": 0.060,
+            "back_hint": 0.055,
+            "mode_font": font(16),
+            "section_font": font(14),
+            "chat_font": font(18),
+            "input_font": font(18),
+            "message_button_font": font(14),
+            "log_font": font(12),
+            "log_button_font": font(13),
+            "back_font": font(16),
+            "android_chat_font": font(18),
+        }
+
+    if profile == "m12":
+        return {
+            "screen_padding": 10,
+            "screen_spacing": 7,
+            "mode_hint": 0.070,
+            "section_title_hint": 0.032,
+            "chat_hint": 0.350,
+            "input_hint": 0.115,
+            "message_buttons_hint": 0.075,
+            "log_hint": 0.105,
+            "log_buttons_hint": 0.060,
+            "back_hint": 0.055,
+            "mode_font": font(15),
+            "section_font": font(13),
+            "chat_font": font(17),
+            "input_font": font(17),
+            "message_button_font": font(13),
+            "log_font": font(11),
+            "log_button_font": font(12),
+            "back_font": font(15),
+            "android_chat_font": font(17),
+        }
+
+    if profile == "linux":
+        return {
+            "screen_padding": 8,
+            "screen_spacing": 5,
+            "mode_hint": 0.060,
+            "section_title_hint": 0.036,
+            "chat_hint": 0.390,
+            "input_hint": 0.100,
+            "message_buttons_hint": 0.060,
+            "log_hint": 0.120,
+            "log_buttons_hint": 0.052,
+            "back_hint": 0.048,
+            "mode_font": 22,
+            "section_font": 24,
+            "chat_font": 30,
+            "input_font": 25,
+            "message_button_font": 21,
+            "log_font": 23,
+            "log_button_font": 20,
+            "back_font": 21,
+            "android_chat_font": 30,
+        }
+
+    return {
+        "screen_padding": 10,
+        "screen_spacing": 7,
+        "mode_hint": 0.070,
+        "section_title_hint": 0.032,
+        "chat_hint": 0.355,
+        "input_hint": 0.110,
+        "message_buttons_hint": 0.072,
+        "log_hint": 0.110,
+        "log_buttons_hint": 0.060,
+        "back_hint": 0.055,
+        "mode_font": font(16),
+        "section_font": font(14),
+        "chat_font": font(17),
+        "input_font": font(17),
+        "message_button_font": font(14),
+        "log_font": font(11),
+        "log_button_font": font(13),
+        "back_font": font(16),
+        "android_chat_font": font(17),
+    }

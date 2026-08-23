@@ -26,7 +26,7 @@ fullscreen = 0
 
 # Core permissions needed by M12 voice/network.
 # Timer permissions support notifications, vibration and exact alarms.
-android.permissions = INTERNET,RECORD_AUDIO,READ_MEDIA_AUDIO,READ_MEDIA_VIDEO,READ_MEDIA_IMAGES,POST_NOTIFICATIONS,SCHEDULE_EXACT_ALARM,VIBRATE,WAKE_LOCK
+android.permissions = INTERNET,RECORD_AUDIO,READ_MEDIA_AUDIO,READ_MEDIA_VIDEO,READ_MEDIA_IMAGES,READ_CONTACTS,POST_NOTIFICATIONS,SCHEDULE_EXACT_ALARM,VIBRATE,WAKE_LOCK
 
 android.api = 35
 android.minapi = 24

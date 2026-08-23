@@ -1,6 +1,7 @@
 from services.skills.alarm_skill import AlarmSkill
 from services.skills.calculator_skill import CalculatorSkill
 from services.skills.calendar_skill import CalendarSkill
+from services.skills.contacts_skill import ContactsSkill
 from services.skills.context_skill import ContextSkill
 from services.skills.image_skill import ImageSkill
 from services.skills.music_skill import MusicSkill
@@ -28,6 +29,7 @@ def register_default_skills():
         AlarmSkill,
         CalculatorSkill,
         CalendarSkill,
+        ContactsSkill,
         ContextSkill,
         ImageSkill,
         MusicSkill,
