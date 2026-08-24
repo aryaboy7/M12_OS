@@ -13,6 +13,7 @@ from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.uix.spinner import Spinner
+from kivy.uix.checkbox import CheckBox
 
 from utils.ui_scale import (
     device_profile,
@@ -229,10 +230,22 @@ class CalendarScreen(Screen):
         if not isinstance(days, list):
             days = []
 
+        date_text = str(event.get("date", "")).strip()
+        time_text = str(event.get("time", "")).strip()
+        all_day = bool(event.get("all_day", False))
+
+        # Backward compatibility for events created before duration support.
+        # Old events ended at their original start date/time.
+        end_date = str(event.get("end_date", "")).strip() or date_text
+        end_time = str(event.get("end_time", "")).strip() or time_text
+
         return {
             "title": str(event.get("title", "")).strip() or "Untitled Event",
-            "date": str(event.get("date", "")).strip(),
-            "time": str(event.get("time", "")).strip(),
+            "date": date_text,
+            "time": time_text,
+            "all_day": all_day,
+            "end_date": end_date,
+            "end_time": end_time,
             "notes": str(event.get("notes", "")).strip(),
             "reminder": reminder,
             "repeat_mode": repeat_mode,
@@ -246,11 +259,69 @@ class CalendarScreen(Screen):
 
     def parse_event_datetime(self, event):
         try:
-            date_text = event.get("date", "").strip()
-            time_text = event.get("time", "").strip() or "00:00"
+            date_text = str(event.get("date", "")).strip()
+            time_text = str(event.get("time", "")).strip() or "00:00"
+            if event.get("all_day", False):
+                time_text = "00:00"
             return datetime.strptime(f"{date_text} {time_text}", "%Y-%m-%d %H:%M")
         except Exception:
             return None
+
+    def parse_event_end_datetime(self, event, occurrence_start=None):
+        """Return the exclusive end datetime for an event occurrence.
+
+        Timed events end at end_date/end_time. All-day events remain active
+        through the complete end date, so their exclusive end is midnight at
+        the beginning of the following day.
+        """
+        base_start = self.parse_event_datetime(event)
+        if not base_start:
+            return None
+
+        try:
+            end_date_text = str(event.get("end_date", "")).strip() or str(event.get("date", "")).strip()
+
+            if event.get("all_day", False):
+                base_end_date = datetime.strptime(end_date_text, "%Y-%m-%d").date()
+                duration_days = max(0, (base_end_date - base_start.date()).days)
+                start = occurrence_start or base_start
+                return datetime.combine(
+                    start.date() + timedelta(days=duration_days + 1),
+                    datetime.min.time(),
+                )
+
+            end_time_text = str(event.get("end_time", "")).strip() or str(event.get("time", "")).strip() or "00:00"
+            base_end = datetime.strptime(
+                f"{end_date_text} {end_time_text}",
+                "%Y-%m-%d %H:%M",
+            )
+
+            if occurrence_start is None or event.get("repeat_mode", "once") == "once":
+                return base_end
+
+            duration = max(timedelta(0), base_end - base_start)
+            return occurrence_start + duration
+
+        except Exception:
+            return None
+
+    def event_is_past(self, event, now=None):
+        if now is None:
+            now = datetime.now()
+
+        if event.get("repeat_mode", "once") != "once":
+            return False
+
+        end_dt = self.parse_event_end_datetime(event)
+        return bool(end_dt and end_dt <= now)
+
+    def occurrence_is_active(self, event, occurrence_start, now=None):
+        if now is None:
+            now = datetime.now()
+        if not occurrence_start:
+            return False
+        end_dt = self.parse_event_end_datetime(event, occurrence_start)
+        return bool(end_dt and occurrence_start <= now < end_dt)
 
     def get_today_occurrence(self, event, now=None):
         if now is None:
@@ -326,7 +397,11 @@ class CalendarScreen(Screen):
                     # Feb 29 yearly events occur only in leap years.
                     continue
 
-                if candidate < base_dt or candidate < now:
+                if candidate < base_dt:
+                    continue
+
+                candidate_end = self.parse_event_end_datetime(event, candidate)
+                if candidate_end and candidate_end <= now:
                     continue
 
                 if until and candidate.date() > until:
@@ -355,7 +430,8 @@ class CalendarScreen(Screen):
             else:
                 return base_dt
 
-            if candidate >= now:
+            candidate_end = self.parse_event_end_datetime(event, candidate)
+            if candidate >= now or (candidate_end and candidate_end > now):
                 return candidate
 
         return None
@@ -367,14 +443,22 @@ class CalendarScreen(Screen):
         )
 
     def countdown_text(self, event):
+        now = datetime.now()
         dt = self.next_occurrence(event)
 
         if not dt:
-            return "No upcoming occurrence"
+            return "Past event" if self.event_is_past(event, now) else "No upcoming occurrence"
 
-        diff = dt - datetime.now()
-        if diff.total_seconds() < 0:
+        end_dt = self.parse_event_end_datetime(event, dt)
+        if end_dt and dt <= now < end_dt:
+            return "All day" if event.get("all_day", False) else "In progress"
+
+        if end_dt and end_dt <= now and event.get("repeat_mode", "once") == "once":
             return "Past event"
+
+        diff = dt - now
+        if diff.total_seconds() < 0:
+            return "In progress"
 
         days = diff.days
         seconds = diff.seconds
@@ -442,7 +526,27 @@ class CalendarScreen(Screen):
     def event_display_text(self, event):
         title = event.get("title", "Untitled Event")
         dt = self.next_occurrence(event) or self.parse_event_datetime(event)
-        when = dt.strftime("%Y-%m-%d %H:%M") if dt else f"{event.get('date', '')} {event.get('time', '')}"
+        end_dt = self.parse_event_end_datetime(event, dt) if dt else None
+
+        if event.get("all_day", False):
+            start_text = dt.strftime("%Y-%m-%d") if dt else event.get("date", "")
+            if end_dt:
+                inclusive_end = (end_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+            else:
+                inclusive_end = event.get("end_date", start_text)
+            when = (
+                f"All Day  {start_text}"
+                if inclusive_end == start_text
+                else f"All Day  {start_text} -> {inclusive_end}"
+            )
+        elif dt and end_dt:
+            if dt.date() == end_dt.date():
+                when = f"{dt.strftime('%Y-%m-%d %H:%M')} -> {end_dt.strftime('%H:%M')}"
+            else:
+                when = f"{dt.strftime('%Y-%m-%d %H:%M')} -> {end_dt.strftime('%Y-%m-%d %H:%M')}"
+        else:
+            when = f"{event.get('date', '')} {event.get('time', '')}"
+
         reminder_line = self.reminder_display_text(event)
         repeat_line = self.repeat_display_text(event)
 
@@ -452,13 +556,20 @@ class CalendarScreen(Screen):
         if selected:
             return (0.25, 0.45, 0.75, 1)
 
+        now = datetime.now()
         dt = self.next_occurrence(event) or self.parse_event_datetime(event)
         if not dt:
             return (0.10, 0.15, 0.25, 1)
 
-        seconds = (dt - datetime.now()).total_seconds()
-        if seconds < 0:
+        end_dt = self.parse_event_end_datetime(event, dt)
+        if end_dt and end_dt <= now and event.get("repeat_mode", "once") == "once":
             return (0.28, 0.28, 0.28, 1)
+
+        if end_dt and dt <= now < end_dt:
+            # Active right now: yellow.
+            return (0.75, 0.60, 0.08, 1)
+
+        seconds = (dt - now).total_seconds()
         if seconds <= 3600:
             return (0.55, 0.12, 0.12, 1)
         if seconds <= 86400:
@@ -479,28 +590,34 @@ class CalendarScreen(Screen):
             if not dt:
                 continue
 
+            occurrence_end = self.parse_event_end_datetime(event, dt)
+
             if self.active_filter == "upcoming":
-                if dt >= now:
+                if occurrence_end and occurrence_end > now:
                     result.append((index, event))
 
             elif self.active_filter == "today":
                 occurrence = self.get_today_occurrence(event, now)
+                occurrence_end = (
+                    self.parse_event_end_datetime(event, occurrence)
+                    if occurrence
+                    else None
+                )
 
-                if occurrence and occurrence.date() == today and occurrence >= now:
+                if occurrence and occurrence.date() == today and occurrence_end and occurrence_end > now:
                     result.append((index, event))
 
             elif self.active_filter == "tomorrow":
-                if dt >= now and (dt.date() - today).days == 1:
+                if occurrence_end and occurrence_end > now and (dt.date() - today).days == 1:
                     result.append((index, event))
 
             elif self.active_filter == "week":
                 days = (dt.date() - today).days
-                if dt >= now and 0 <= days <= 7:
+                if occurrence_end and occurrence_end > now and 0 <= days <= 7:
                     result.append((index, event))
 
             elif self.active_filter == "past":
-                base_dt = self.parse_event_datetime(event)
-                if base_dt and base_dt < now and event.get("repeat_mode", "once") == "once":
+                if self.event_is_past(event, now):
                     result.append((index, event))
 
             elif self.active_filter == "all":
@@ -509,7 +626,7 @@ class CalendarScreen(Screen):
             # Past events: newest first
         if self.active_filter == "past":
             result.sort(
-                key=lambda item: self.parse_event_datetime(item[1]) or datetime.min,
+                key=lambda item: self.parse_event_end_datetime(item[1]) or datetime.min,
                 reverse=True
             )
         return result
@@ -669,10 +786,16 @@ class CalendarScreen(Screen):
         now = datetime.now()
         default_hour = min(now.hour + 1, 23)
 
+        start_dt = now.replace(hour=default_hour, minute=0, second=0, microsecond=0)
+        end_dt = start_dt + timedelta(hours=1)
+
         event = {
             "title": "",
-            "date": now.strftime("%Y-%m-%d"),
-            "time": f"{default_hour:02}:00",
+            "date": start_dt.strftime("%Y-%m-%d"),
+            "time": start_dt.strftime("%H:%M"),
+            "all_day": False,
+            "end_date": end_dt.strftime("%Y-%m-%d"),
+            "end_time": end_dt.strftime("%H:%M"),
             "notes": "",
             "reminder": "None",
             "repeat_mode": "once",
@@ -707,27 +830,51 @@ class CalendarScreen(Screen):
 
         self.root_box.add_widget(self.title_input)
 
+        all_day_row = BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint=(1, 0.065),
+        )
+        self.all_day_checkbox = CheckBox(
+            active=bool(event.get("all_day", False)),
+            size_hint=(0.22, 1),
+        )
+        self.all_day_toggle_btn = Button(
+            text="All Day Event",
+            font_size=input_font(),
+            size_hint=(0.78, 1),
+            background_normal="",
+            background_color=(0.10, 0.15, 0.25, 1),
+        )
+        self.all_day_toggle_btn.bind(on_press=self.toggle_all_day)
+        all_day_row.add_widget(self.all_day_checkbox)
+        all_day_row.add_widget(self.all_day_toggle_btn)
+        self.root_box.add_widget(all_day_row)
+
         date_time_row = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.075))
+        date_time_row.add_widget(Label(text="Start", font_size=compact_button_font(), size_hint_x=0.18))
 
         self.date_input = TextInput(
             text=event.get("date", ""),
-            hint_text="Tap date",
+            hint_text="Start date",
             font_size=input_font(),
             multiline=False,
             readonly=True,
             use_bubble=False,
-            use_handles=False
+            use_handles=False,
+            size_hint_x=0.48,
         )
         self.date_input.bind(on_touch_down=self.date_field_touched)
 
         self.time_input = TextInput(
             text=event.get("time", ""),
-            hint_text="Tap time",
+            hint_text="Start time",
             font_size=input_font(),
             multiline=False,
             readonly=True,
             use_bubble=False,
-            use_handles=False
+            use_handles=False,
+            size_hint_x=0.34,
         )
         self.time_input.bind(on_touch_down=self.time_field_touched)
 
@@ -735,12 +882,46 @@ class CalendarScreen(Screen):
         date_time_row.add_widget(self.time_input)
         self.root_box.add_widget(date_time_row)
 
+        end_date_time_row = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.075))
+        end_date_time_row.add_widget(Label(text="End", font_size=compact_button_font(), size_hint_x=0.18))
+
+        self.end_date_input = TextInput(
+            text=event.get("end_date", event.get("date", "")),
+            hint_text="End date",
+            font_size=input_font(),
+            multiline=False,
+            readonly=True,
+            use_bubble=False,
+            use_handles=False,
+            size_hint_x=0.48,
+        )
+        self.end_date_input.bind(on_touch_down=self.end_date_field_touched)
+
+        self.end_time_input = TextInput(
+            text=event.get("end_time", event.get("time", "")),
+            hint_text="End time",
+            font_size=input_font(),
+            multiline=False,
+            readonly=True,
+            use_bubble=False,
+            use_handles=False,
+            size_hint_x=0.34,
+        )
+        self.end_time_input.bind(on_touch_down=self.end_time_field_touched)
+
+        end_date_time_row.add_widget(self.end_date_input)
+        end_date_time_row.add_widget(self.end_time_input)
+        self.root_box.add_widget(end_date_time_row)
+
+        self.all_day_checkbox.bind(active=self.on_all_day_changed)
+        self.update_all_day_fields(self.all_day_checkbox.active)
+
         self.notes_input = TextInput(
             text=event.get("notes", ""),
             hint_text="Notes",
             font_size=list_font(),
             multiline=True,
-            size_hint=(1, 0.14),
+            size_hint=(1, 0.10),
             use_bubble=False,
             use_handles=False,
             readonly=(device_profile() == "m12")
@@ -841,6 +1022,72 @@ class CalendarScreen(Screen):
         buttons.add_widget(self.make_btn("Save", lambda inst: self.save_event(index), (0.12, 0.20, 0.35, 1)))
         buttons.add_widget(self.make_btn("Cancel", self.build_list_view))
         self.root_box.add_widget(buttons)
+
+    def toggle_all_day(self, *args):
+        if hasattr(self, "all_day_checkbox"):
+            self.all_day_checkbox.active = not self.all_day_checkbox.active
+
+    def on_all_day_changed(self, checkbox, active):
+        self.update_all_day_fields(active)
+
+    def update_all_day_fields(self, active):
+        active = bool(active)
+
+        if hasattr(self, "all_day_toggle_btn"):
+            self.all_day_toggle_btn.text = (
+                "☑ All Day Event" if active else "☐ All Day Event"
+            )
+            self.all_day_toggle_btn.background_color = (
+                (0.10, 0.45, 0.20, 1)
+                if active
+                else (0.10, 0.15, 0.25, 1)
+            )
+
+        if active:
+            if hasattr(self, "time_input"):
+                self._timed_start_time = self.time_input.text.strip()
+            if hasattr(self, "end_time_input"):
+                self._timed_end_time = self.end_time_input.text.strip()
+
+        for name in ("time_input", "end_time_input"):
+            widget = getattr(self, name, None)
+            if widget is not None:
+                widget.disabled = active
+                widget.opacity = 0.35 if active else 1.0
+
+        if active:
+            if hasattr(self, "time_input"):
+                self.time_input.text = ""
+                self.time_input.hint_text = "All Day"
+            if hasattr(self, "end_time_input"):
+                self.end_time_input.text = ""
+                self.end_time_input.hint_text = "All Day"
+        else:
+            if hasattr(self, "time_input"):
+                if not self.time_input.text.strip():
+                    self.time_input.text = getattr(
+                        self,
+                        "_timed_start_time",
+                        "",
+                    ) or datetime.now().strftime("%H:00")
+                self.time_input.hint_text = "Start time"
+            if hasattr(self, "end_time_input"):
+                if not self.end_time_input.text.strip():
+                    restored = getattr(self, "_timed_end_time", "")
+                    if restored:
+                        self.end_time_input.text = restored
+                    else:
+                        try:
+                            start_dt = datetime.strptime(
+                                f"{self.date_input.text.strip()} {self.time_input.text.strip()}",
+                                "%Y-%m-%d %H:%M",
+                            )
+                            self.end_time_input.text = (
+                                start_dt + timedelta(hours=1)
+                            ).strftime("%H:%M")
+                        except Exception:
+                            self.end_time_input.text = self.time_input.text
+                self.end_time_input.hint_text = "End time"
 
     def set_once(self, instance):
         self.repeat_mode = "once"
@@ -987,7 +1234,14 @@ class CalendarScreen(Screen):
         )
 
     def hide_keyboard(self, *args):
-        for name in ("title_input", "notes_input", "date_input", "time_input"):
+        for name in (
+            "title_input",
+            "notes_input",
+            "date_input",
+            "time_input",
+            "end_date_input",
+            "end_time_input",
+        ):
             try:
                 getattr(self, name).focus = False
             except Exception:
@@ -1001,20 +1255,35 @@ class CalendarScreen(Screen):
     def date_field_touched(self, instance, touch):
         if instance.collide_point(*touch.pos):
             self.hide_keyboard()
-            self.open_date_picker()
+            self.open_date_picker(self.date_input, "Pick Start Date")
             return True
         return False
 
     def time_field_touched(self, instance, touch):
-        if instance.collide_point(*touch.pos):
+        if instance.collide_point(*touch.pos) and not instance.disabled:
             self.hide_keyboard()
-            self.open_time_picker()
+            self.open_time_picker(self.time_input, "Pick Start Time")
             return True
         return False
 
-    def open_date_picker(self):
+    def end_date_field_touched(self, instance, touch):
+        if instance.collide_point(*touch.pos):
+            self.hide_keyboard()
+            self.open_date_picker(self.end_date_input, "Pick End Date")
+            return True
+        return False
+
+    def end_time_field_touched(self, instance, touch):
+        if instance.collide_point(*touch.pos) and not instance.disabled:
+            self.hide_keyboard()
+            self.open_time_picker(self.end_time_input, "Pick End Time")
+            return True
+        return False
+
+    def open_date_picker(self, target_input=None, popup_title="Pick Date"):
+        target_input = target_input or self.date_input
         try:
-            current = datetime.strptime(self.date_input.text.strip(), "%Y-%m-%d")
+            current = datetime.strptime(target_input.text.strip(), "%Y-%m-%d")
         except Exception:
             current = datetime.now()
 
@@ -1063,7 +1332,7 @@ class CalendarScreen(Screen):
         add_row("Month", "month")
         add_row("Day", "day")
 
-        pop = Popup(title="Pick Date", content=box, size_hint=(0.90, 0.80))
+        pop = Popup(title=popup_title, content=box, size_hint=(0.90, 0.80))
 
         buttons = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.16))
 
@@ -1074,7 +1343,19 @@ class CalendarScreen(Screen):
 
         def ok(instance):
             self.clamp_day(values)
-            self.date_input.text = f"{values['year']:04}-{values['month']:02}-{values['day']:02}"
+            target_input.text = f"{values['year']:04}-{values['month']:02}-{values['day']:02}"
+
+            # Keep a new/edited event range valid when the start date moves
+            # beyond the current end date.
+            if target_input is self.date_input and hasattr(self, "end_date_input"):
+                try:
+                    start_date = datetime.strptime(self.date_input.text, "%Y-%m-%d").date()
+                    end_date = datetime.strptime(self.end_date_input.text, "%Y-%m-%d").date()
+                    if end_date < start_date:
+                        self.end_date_input.text = self.date_input.text
+                except Exception:
+                    pass
+
             pop.dismiss()
 
         buttons.add_widget(self.make_btn("Today", today, fs=20))
@@ -1083,9 +1364,10 @@ class CalendarScreen(Screen):
         box.add_widget(buttons)
         pop.open()
 
-    def open_time_picker(self):
+    def open_time_picker(self, target_input=None, popup_title="Pick Time"):
+        target_input = target_input or self.time_input
         try:
-            current = datetime.strptime(self.time_input.text.strip(), "%H:%M")
+            current = datetime.strptime(target_input.text.strip(), "%H:%M")
             values = {"hour": current.hour, "minute": current.minute}
         except Exception:
             n = datetime.now()
@@ -1126,7 +1408,7 @@ class CalendarScreen(Screen):
         add_row("Hour", "hour", 1, 23)
         add_row("Minute", "minute", 5, 55)
 
-        pop = Popup(title="Pick Time", content=box, size_hint=(0.90, 0.72))
+        pop = Popup(title=popup_title, content=box, size_hint=(0.90, 0.72))
         buttons = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.16))
 
         def now_btn(instance):
@@ -1136,7 +1418,7 @@ class CalendarScreen(Screen):
             refresh()
 
         def ok(instance):
-            self.time_input.text = f"{values['hour']:02}:{values['minute']:02}"
+            target_input.text = f"{values['hour']:02}:{values['minute']:02}"
             pop.dismiss()
 
         buttons.add_widget(self.make_btn("Now", now_btn, fs=20))
@@ -1181,7 +1463,10 @@ class CalendarScreen(Screen):
 
         title = self.title_input.text.strip() or "Untitled Event"
         date_text = self.date_input.text.strip()
-        time_text = self.time_input.text.strip() or "00:00"
+        all_day = bool(self.all_day_checkbox.active)
+        time_text = self.time_input.text.strip() or ("" if all_day else "00:00")
+        end_date_text = self.end_date_input.text.strip() or date_text
+        end_time_text = self.end_time_input.text.strip() or ("" if all_day else time_text)
         notes = self.notes_input.text.strip()
         reminder = self.reminder_spinner.text.strip() if hasattr(self, "reminder_spinner") else "None"
 
@@ -1196,14 +1481,40 @@ class CalendarScreen(Screen):
             self.status_label.text = "Date is required."
             return
 
-        if not self.validate_date_time(date_text, time_text):
-            self.status_label.text = "Invalid date/time."
-            return
+        if all_day:
+            try:
+                start_date = datetime.strptime(date_text, "%Y-%m-%d").date()
+                end_date = datetime.strptime(end_date_text, "%Y-%m-%d").date()
+            except Exception:
+                self.status_label.text = "Invalid start/end date."
+                return
+
+            if end_date < start_date:
+                self.status_label.text = "End date cannot be before start date."
+                return
+        else:
+            if not self.validate_date_time(date_text, time_text):
+                self.status_label.text = "Invalid start date/time."
+                return
+
+            if not self.validate_date_time(end_date_text, end_time_text):
+                self.status_label.text = "Invalid end date/time."
+                return
+
+            start_dt = datetime.strptime(f"{date_text} {time_text}", "%Y-%m-%d %H:%M")
+            end_dt = datetime.strptime(f"{end_date_text} {end_time_text}", "%Y-%m-%d %H:%M")
+
+            if end_dt < start_dt:
+                self.status_label.text = "End date/time cannot be before start."
+                return
 
         event = {
             "title": title,
             "date": date_text,
             "time": time_text,
+            "all_day": all_day,
+            "end_date": end_date_text,
+            "end_time": end_time_text,
             "notes": notes,
             "reminder": reminder,
             "repeat_mode": self.repeat_mode,
