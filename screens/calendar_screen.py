@@ -558,35 +558,28 @@ class CalendarScreen(Screen):
 
         now = datetime.now()
         dt = self.next_occurrence(event) or self.parse_event_datetime(event)
-
         if not dt:
             return (0.10, 0.15, 0.25, 1)
 
         end_dt = self.parse_event_end_datetime(event, dt)
-
-        # GRAY = event has ended
-        if (
-            end_dt
-            and end_dt <= now
-            and event.get("repeat_mode", "once") == "once"
-        ):
+        if end_dt and end_dt <= now and event.get("repeat_mode", "once") == "once":
             return (0.28, 0.28, 0.28, 1)
 
-        # YELLOW = event is active right now
         if end_dt and dt <= now < end_dt:
+            # Active right now: yellow.
             return (0.75, 0.60, 0.08, 1)
 
         seconds = (dt - now).total_seconds()
 
-        # RED = event starts within 1 hour
+        # RED = starts within 1 hour.
         if 0 <= seconds <= 3600:
             return (0.55, 0.12, 0.12, 1)
 
-        # GREEN = event is later today
+        # GREEN = later today, more than 1 hour away.
         if dt.date() == now.date():
             return (0.10, 0.45, 0.20, 1)
 
-        # BLUE = tomorrow or any later upcoming date
+        # BLUE = tomorrow or later.
         return (0.12, 0.20, 0.35, 1)
 
     def filtered_events_with_indexes(self):
@@ -1265,6 +1258,62 @@ class CalendarScreen(Screen):
         except Exception:
             pass
 
+    def ensure_end_after_start(self):
+        """
+        Keep the event end after the start when the user edits
+        the start date or start time.
+
+        If the current end is missing, invalid, or not later than
+        the new start, automatically set End = Start + 1 hour.
+        """
+        try:
+            if not hasattr(self, "date_input") or not hasattr(self, "end_date_input"):
+                return
+
+            start_date_text = self.date_input.text.strip()
+            end_date_text = self.end_date_input.text.strip()
+
+            # All-day events use dates only.
+            if hasattr(self, "all_day_checkbox") and self.all_day_checkbox.active:
+                start_date = datetime.strptime(start_date_text, "%Y-%m-%d").date()
+
+                try:
+                    end_date = datetime.strptime(end_date_text, "%Y-%m-%d").date()
+                except Exception:
+                    end_date = start_date
+
+                if end_date < start_date:
+                    self.end_date_input.text = start_date_text
+                return
+
+            if not hasattr(self, "time_input") or not hasattr(self, "end_time_input"):
+                return
+
+            start_time_text = self.time_input.text.strip()
+            if not start_time_text:
+                return
+
+            start_dt = datetime.strptime(
+                f"{start_date_text} {start_time_text}",
+                "%Y-%m-%d %H:%M",
+            )
+
+            try:
+                end_dt = datetime.strptime(
+                    f"{end_date_text} {self.end_time_input.text.strip()}",
+                    "%Y-%m-%d %H:%M",
+                )
+            except Exception:
+                end_dt = start_dt
+
+            if end_dt <= start_dt:
+                end_dt = start_dt + timedelta(hours=1)
+                self.end_date_input.text = end_dt.strftime("%Y-%m-%d")
+                self.end_time_input.text = end_dt.strftime("%H:%M")
+
+        except Exception:
+            pass
+
     def date_field_touched(self, instance, touch):
         if instance.collide_point(*touch.pos):
             self.hide_keyboard()
@@ -1358,16 +1407,10 @@ class CalendarScreen(Screen):
             self.clamp_day(values)
             target_input.text = f"{values['year']:04}-{values['month']:02}-{values['day']:02}"
 
-            # Keep a new/edited event range valid when the start date moves
-            # beyond the current end date.
-            if target_input is self.date_input and hasattr(self, "end_date_input"):
-                try:
-                    start_date = datetime.strptime(self.date_input.text, "%Y-%m-%d").date()
-                    end_date = datetime.strptime(self.end_date_input.text, "%Y-%m-%d").date()
-                    if end_date < start_date:
-                        self.end_date_input.text = self.date_input.text
-                except Exception:
-                    pass
+            # If the user changed the START date, make sure the
+            # end still occurs after the new start.
+            if target_input is self.date_input:
+                self.ensure_end_after_start()
 
             pop.dismiss()
 
@@ -1432,6 +1475,12 @@ class CalendarScreen(Screen):
 
         def ok(instance):
             target_input.text = f"{values['hour']:02}:{values['minute']:02}"
+
+            # If the user changed the START time, make sure the
+            # end still occurs after the new start.
+            if target_input is self.time_input:
+                self.ensure_end_after_start()
+
             pop.dismiss()
 
         buttons.add_widget(self.make_btn("Now", now_btn, fs=20))
