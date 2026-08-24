@@ -8,6 +8,7 @@ title = M12 OS
 package.name = m12os
 package.domain = com.m12os
 
+
 source.dir = .
 source.include_exts = py,kv,json,png,jpg,jpeg,atlas,wav,mp3,m4a,txt
 
@@ -35,6 +36,7 @@ android.archs = arm64-v8a
 # SDL2 is the normal Kivy Android bootstrap and is also used by
 # the Android Realtime PCM audio backend.
 p4a.bootstrap = sdl2
+p4a.branch = develop
 
 # Compile M12 native Android Java sources.
 android.add_src = android_src
