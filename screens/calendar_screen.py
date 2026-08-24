@@ -558,22 +558,35 @@ class CalendarScreen(Screen):
 
         now = datetime.now()
         dt = self.next_occurrence(event) or self.parse_event_datetime(event)
+
         if not dt:
             return (0.10, 0.15, 0.25, 1)
 
         end_dt = self.parse_event_end_datetime(event, dt)
-        if end_dt and end_dt <= now and event.get("repeat_mode", "once") == "once":
+
+        # GRAY = event has ended
+        if (
+            end_dt
+            and end_dt <= now
+            and event.get("repeat_mode", "once") == "once"
+        ):
             return (0.28, 0.28, 0.28, 1)
 
+        # YELLOW = event is active right now
         if end_dt and dt <= now < end_dt:
-            # Active right now: yellow.
             return (0.75, 0.60, 0.08, 1)
 
         seconds = (dt - now).total_seconds()
-        if seconds <= 3600:
+
+        # RED = event starts within 1 hour
+        if 0 <= seconds <= 3600:
             return (0.55, 0.12, 0.12, 1)
-        if seconds <= 86400:
-            return (0.55, 0.45, 0.10, 1)
+
+        # GREEN = event is later today
+        if dt.date() == now.date():
+            return (0.10, 0.45, 0.20, 1)
+
+        # BLUE = tomorrow or any later upcoming date
         return (0.12, 0.20, 0.35, 1)
 
     def filtered_events_with_indexes(self):
