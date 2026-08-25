@@ -175,7 +175,7 @@ class AIScreen(Screen):
         )
 
         self.mode_btn = Button(
-            text="Mode: AI",
+            text="Voice Route: AI",
             font_size=ai_ui["mode_font"],
             background_normal="",
         )
@@ -2590,7 +2590,17 @@ class AIScreen(Screen):
         self,
         instance=None,
     ):
-        """Switch between AI Mode and Control Mode."""
+        """
+        Switch the single Realtime voice pipeline between:
+
+            AI:
+                Realtime transcription -> OpenAI Realtime reasoning -> Realtime voice
+
+            LOCAL:
+                Realtime transcription -> M12 SkillRegistry -> Realtime voice
+
+        Recognition and speech output stay on the same Realtime engine.
+        """
         self.set_mode(
             control_mode=not self.control_mode,
             announce=False,
@@ -2602,31 +2612,31 @@ class AIScreen(Screen):
         announce=True,
     ):
         """
-        Set the active mode and synchronize both voice engines.
+        Select the destination for Realtime transcripts.
+
+        control_mode=True means LOCAL route.
+        control_mode=False means AI route.
+
+        The active Realtime microphone/speaker session is not replaced
+        when the route changes.
         """
-        target_control = bool(
-            control_mode
-        )
-
-        if target_control and self.realtime_voice_active:
-            self.stop_realtime_voice()
-
-        self.control_mode = target_control
+        self.control_mode = bool(control_mode)
         self.continuous_voice = False
 
-        if self.voice_service is not None:
-            self.voice_service.stop_speaking()
-
-        self.voice_btn.text = "Voice"
         self.update_mode_button()
+
+        if self.realtime_voice_active:
+            self.voice_btn.text = "Stop Voice"
+        else:
+            self.voice_btn.text = "Voice"
 
         if not announce:
             return None
 
         if self.control_mode:
-            return "Control Mode activated."
+            return "Local voice route activated."
 
-        return "AI Mode activated."
+        return "AI voice route activated."
 
     @staticmethod
     def get_mode_command(
@@ -2882,29 +2892,31 @@ class AIScreen(Screen):
         self,
     ):
         """
-        Update the one visible mode switch.
+        Update the explicit single-voice routing switch.
         """
         if self.control_mode:
-            self.mode_btn.text = "Mode: Control"
+            self.mode_btn.text = "Voice Route: LOCAL"
             self.mode_btn.background_color = (
                 0.72,
                 0.34,
                 0.16,
                 1,
             )
-            self.voice_status.text = "Control Mode"
+            if not self.realtime_voice_active:
+                self.voice_status.text = "Local Voice Route"
             self.message_input.hint_text = (
-                "Enter an M12 command..."
+                "Local M12 command..."
             )
         else:
-            self.mode_btn.text = "Mode: AI"
+            self.mode_btn.text = "Voice Route: AI"
             self.mode_btn.background_color = (
                 0.20,
                 0.48,
                 0.76,
                 1,
             )
-            self.voice_status.text = "AI Mode"
+            if not self.realtime_voice_active:
+                self.voice_status.text = "AI Voice Route"
             self.message_input.hint_text = (
                 "Ask M12 AI anything..."
             )
@@ -2937,12 +2949,8 @@ class AIScreen(Screen):
     ):
         self.refresh_status_bar()
         """
-        Opening the AI Assistant always activates AI Mode.
-
-        This ensures an application command such as "Open AI Assistant"
-        changes both the visible screen and the operating mode.
+        Keep the user's selected Voice Route when the AI screen is reopened.
         """
-        self.control_mode = False
         self.update_mode_button()
 
         self.render_chat_text()
@@ -2972,15 +2980,9 @@ class AIScreen(Screen):
         instance=None,
     ):
         """
-        AI Mode uses Realtime speech-to-speech.
-        Control Mode uses the existing command recorder.
+        Both AI and LOCAL routes use the same Realtime microphone,
+        transcription, echo protection, and speaker.
         """
-        if self.control_mode:
-            self.start_control_voice_input(
-                instance
-            )
-            return
-
         if self.realtime_voice_active:
             self.stop_realtime_voice()
             return
@@ -3359,23 +3361,25 @@ class AIScreen(Screen):
         self,
         transcript,
     ):
-        """Run local skills on Kivy's main thread and return their result."""
+        """
+        Route one Realtime transcript.
+
+        AI route:
+            Do not run local skills. Returning handled=False lets the
+            Realtime service create the normal AI response.
+
+        LOCAL route:
+            Run only the M12 local router. If no skill accepts the request,
+            return a local-route message as handled=True so OpenAI reasoning
+            is never used as a fallback.
+        """
         text = str(transcript).strip()
 
         if not text:
             return False, ""
 
-        if self.realtime_local_speech_active:
-            if self.is_local_speech_stop_command(text):
-                Clock.schedule_once(
-                    self.stop_realtime_local_speech,
-                    0,
-                )
-
-            # Swallow everything heard while local TTS is active. Most of
-            # it is the device hearing its own speaker. Returning handled
-            # prevents OpenAI Realtime from creating a second response.
-            return True, ""
+        if not self.control_mode:
+            return False, ""
 
         completed = threading.Event()
         result_holder = {
@@ -3404,7 +3408,7 @@ class AIScreen(Screen):
 
             except Exception as error:
                 print(
-                    "Realtime local routing error: "
+                    "Realtime LOCAL routing error: "
                     f"{type(error).__name__}: {error}"
                 )
 
@@ -3418,13 +3422,22 @@ class AIScreen(Screen):
 
         if not completed.wait(timeout=5.0):
             print(
-                "Realtime local routing timed out."
+                "Realtime LOCAL routing timed out."
             )
-            return False, ""
+            return (
+                True,
+                "The local command timed out.",
+            )
+
+        if result_holder["handled"]:
+            return (
+                True,
+                result_holder["answer"],
+            )
 
         return (
-            result_holder["handled"],
-            result_holder["answer"],
+            True,
+            "That command is not available in Local Voice Route.",
         )
 
     def on_realtime_local_answer(
@@ -3442,28 +3455,16 @@ class AIScreen(Screen):
         self,
         answer,
     ):
+        """
+        Display a local skill result and speak it through the SAME
+        OpenAI Realtime voice used for AI answers.
+
+        VoiceService is intentionally not used here.
+        """
         text = str(answer or "").strip()
 
         if not text:
             return
-
-        # Cancel any Realtime assistant response that may have started for
-        # this turn. A handled local skill must be the only speaking path.
-        service = self.realtime_voice_service
-
-        if service is not None:
-            try:
-                service.cancel_response()
-            except Exception as error:
-                print(
-                    "Realtime cancel before local answer error: "
-                    f"{type(error).__name__}: {error}"
-                )
-
-        # Keep the Realtime microphone active while a local answer is
-        # spoken so Stop/Стоп can interrupt it. Echo transcripts are
-        # suppressed by the guards above.
-        self.realtime_local_speech_active = True
 
         self.append_message(
             speaker="M12 AI",
@@ -3475,73 +3476,29 @@ class AIScreen(Screen):
             route="local",
         )
 
-        self.voice_status.text = (
-            "Answering with local skill..."
-        )
-
-        threading.Thread(
-            target=self._speak_realtime_local_answer,
-            args=(text,),
-            daemon=True,
-        ).start()
-
-    def _speak_realtime_local_answer(
-        self,
-        answer,
-    ):
-        error_message = ""
-
-        try:
-            if self.voice_service is None:
-                self.voice_service = VoiceService()
-                self.voice_service.set_transcription_language(
-                    self.voice_language,
-                    save=False,
-                )
-
-            self.voice_service.speak_text(
-                answer
-            )
-
-        except Exception as error:
-            error_message = (
-                f"{type(error).__name__}: {error}"
-            )
-            print(
-                "Realtime local-answer speech error: "
-                f"{error_message}"
-            )
-
-        Clock.schedule_once(
-            lambda dt: self._finish_realtime_local_answer(
-                error_message
-            ),
-            0,
-        )
-
-    def _finish_realtime_local_answer(
-        self,
-        error_message="",
-    ):
-        self.realtime_local_speech_active = False
         service = self.realtime_voice_service
 
-        if service is not None:
-            try:
-                service.resume_microphone_after_local_answer()
-            except Exception as error:
-                print(
-                    "Realtime microphone resume error: "
-                    f"{type(error).__name__}: {error}"
-                )
-
-        if error_message:
+        if service is None:
             self.voice_status.text = (
-                "Local answer speech failed"
+                "Local result ready"
             )
-        elif self.realtime_voice_active:
+            return
+
+        self.voice_status.text = (
+            "Speaking local result..."
+        )
+
+        try:
+            service.speak_local_answer(
+                text
+            )
+        except Exception as error:
+            print(
+                "Realtime local speech error: "
+                f"{type(error).__name__}: {error}"
+            )
             self.voice_status.text = (
-                "Realtime connected — listening"
+                "Local result speech failed"
             )
 
     def on_realtime_text_delta(
@@ -4102,11 +4059,10 @@ class AIScreen(Screen):
             )
             return
 
-        # AI MODE:
-        # Typed requests check M12 local skills first. This lets Weather,
-        # Notes, Calendar, and other local capabilities answer with live
-        # device/app data before falling back to OpenAI.
-        if source == "typed":
+        # SINGLE-VOICE ROUTING:
+        # LOCAL route uses only M12 local skills.
+        # AI route goes directly to OpenAI.
+        if self.control_mode:
             try:
                 local_handled, local_answer = (
                     self.ai_router.process_local(
@@ -4118,25 +4074,37 @@ class AIScreen(Screen):
                 local_handled = False
                 local_answer = ""
                 print(
-                    "Typed local routing error: "
+                    "LOCAL routing error: "
                     f"{type(error).__name__}: {error}"
                 )
 
-            if local_handled:
-                self.append_message(
-                    speaker="M12 AI",
-                    message=str(local_answer or "").strip(),
+            if not local_handled:
+                local_answer = (
+                    "That command is not available "
+                    "in Local Voice Route."
                 )
 
+            self.append_message(
+                speaker="M12 AI",
+                message=str(local_answer or "").strip(),
+            )
+
+            if local_handled:
                 self.handle_structured_skill_result()
 
-                self.ai_is_busy = False
-                self.set_controls_enabled(True)
-                self.voice_btn.text = "Voice"
-                self.voice_status.text = "AI Mode"
-                return
+            self.ai_is_busy = False
+            self.set_controls_enabled(True)
+            self.voice_btn.text = (
+                "Stop Voice"
+                if self.realtime_voice_active
+                else "Voice"
+            )
+            self.voice_status.text = (
+                "Local Voice Route"
+            )
+            return
 
-        # Not handled locally: send the request to OpenAI.
+        # AI route: send the request directly to OpenAI.
         self.show_ai_screen_for_question()
 
         # Create an empty answer immediately. Text will appear

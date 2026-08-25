@@ -17,6 +17,7 @@ from openai import AsyncOpenAI
 
 from services.memory_manager import get_memory_manager
 from services.api_key_manager import APIKeyManager
+from utils.config_manager import ConfigManager
 
 
 # Prevent third-party networking libraries from logging sensitive
@@ -175,6 +176,19 @@ class RealtimeVoiceService:
             )
         )
 
+        # Use the exact same persistent settings source as SettingsScreen.
+        # On Android, ConfigManager resolves to private app storage.
+        try:
+            user_config = ConfigManager()
+            self.speaker_echo_protection = bool(
+                user_config.get(
+                    "speaker_echo_protection",
+                    self.speaker_echo_protection,
+                )
+            )
+        except Exception:
+            pass
+
         self.client = AsyncOpenAI(
             api_key=api_key,
             timeout=45.0,
@@ -263,6 +277,11 @@ class RealtimeVoiceService:
 
         # Realtime function-tool state.
         self._pending_tool_followup = False
+
+        # True only while Realtime is vocalizing an exact local-skill result.
+        # Local result text is already rendered by AIScreen, so the generated
+        # audio transcript must not create a duplicate AI message.
+        self._local_speech_response = False
 
         self.reconnect_delay = 2.0
         self.max_reconnect_delay = 30.0
@@ -393,61 +412,131 @@ class RealtimeVoiceService:
         return normalized
 
     def _refresh_echo_protection_setting(self):
-        """Reload Speaker Echo Protection so Settings changes apply live."""
+        """
+        Reload Speaker Echo Protection from the exact same ConfigManager
+        used by SettingsScreen.
+
+        On Android, ConfigManager reads/writes the private app storage
+        settings.json file, so the live Realtime service sees the same value
+        as the Settings button.
+        """
         try:
-            settings = self.load_settings()
+            user_config = ConfigManager()
             self.speaker_echo_protection = bool(
-                settings.get(
+                user_config.get(
                     "speaker_echo_protection",
                     True,
                 )
             )
-        except Exception:
-            pass
+        except Exception as error:
+            print(
+                "Realtime echo setting reload error: "
+                f"{type(error).__name__}: {error}"
+            )
 
         return bool(
             self.speaker_echo_protection
         )
 
-    def _pause_microphone_for_assistant(self):
-        """Mute microphone capture; keep Realtime and speaker active."""
-        if not self._refresh_echo_protection_setting():
+    def _should_microphone_be_enabled(self):
+        """
+        Return the single authoritative microphone decision.
+
+        Rules:
+            - Voice conversation inactive -> microphone OFF.
+            - LOCAL result speaking -> microphone OFF.
+            - AI speaking + Echo Protection ON -> microphone OFF.
+            - AI speaking + Echo Protection OFF -> microphone ON (barge-in).
+            - Otherwise -> microphone ON.
+        """
+        if (
+            not self.is_connected
+            or not self.is_conversation_active
+            or self._stop_event.is_set()
+        ):
             return False
 
-        with self._echo_resume_lock:
-            self._echo_resume_generation += 1
+        if self._local_speech_response:
+            return False
 
-        if self._echo_paused_microphone:
+        if (
+            self._assistant_speaking.is_set()
+            and self._refresh_echo_protection_setting()
+        ):
+            return False
+
+        return True
+
+    def _apply_microphone_policy(
+        self,
+        emit_status=False,
+    ):
+        """
+        Apply the single authoritative microphone policy.
+
+        No other code path should independently decide whether normal
+        Realtime microphone capture is enabled.
+        """
+        should_enable = self._should_microphone_be_enabled()
+        currently_enabled = self._microphone_enabled.is_set()
+
+        if should_enable:
+            self._echo_paused_microphone = False
+
+            try:
+                self._start_microphone()
+            except Exception as error:
+                self._report_error(
+                    "Realtime microphone start failed",
+                    error,
+                )
+                return False
+
+            if emit_status and not currently_enabled:
+                self._emit_status(
+                    "Realtime voice is listening."
+                )
+
             return True
 
         self._echo_paused_microphone = True
+
+        if currently_enabled:
+            # Android AudioRecord remains alive; captured samples are gated
+            # by _microphone_enabled. Desktop capture is closed while muted.
+            if IS_ANDROID:
+                self._microphone_enabled.clear()
+            else:
+                self._stop_microphone()
+
+            self._drain_queue(
+                self._microphone_queue
+            )
+            self._user_transcript = ""
+
+        return False
+
+    def _pause_microphone_for_assistant(self):
+        """
+        Compatibility wrapper.
+
+        The actual microphone decision is owned by _apply_microphone_policy().
+        """
         self._assistant_speaking.set()
+        paused = not self._apply_microphone_policy()
 
-        # Android: keep the SDL capture device open for the whole voice
-        # session. Repeated close/reopen cycles around every assistant
-        # answer can race with the audio thread and destabilize the app.
-        # Muting is therefore implemented by gating captured samples.
-        if IS_ANDROID:
-            self._microphone_enabled.clear()
-        else:
-            self._stop_microphone()
+        if paused:
+            self._emit_status(
+                "Ace speaking — microphone paused."
+            )
 
-        self._drain_queue(
-            self._microphone_queue
-        )
-        self._user_transcript = ""
-
-        self._emit_status(
-            "Ace speaking — microphone paused."
-        )
-        return True
+        return paused
 
     def _schedule_microphone_resume_after_speaker(self):
-        """Resume microphone only after queued PCM has actually finished."""
-        if not self._echo_paused_microphone:
-            self._assistant_speaking.clear()
-            return
-
+        """
+        Wait until speaker PCM is physically drained, then clear speaking
+        state and re-apply the single microphone policy.
+        """
         with self._echo_resume_lock:
             self._echo_resume_generation += 1
             generation = self._echo_resume_generation
@@ -455,7 +544,7 @@ class RealtimeVoiceService:
         threading.Thread(
             target=self._resume_microphone_after_speaker_worker,
             args=(generation,),
-            name="M12EchoProtectionResume",
+            name="M12VoicePlaybackFinish",
             daemon=True,
         ).start()
 
@@ -486,15 +575,13 @@ class RealtimeVoiceService:
             if IS_ANDROID:
                 with self._android_audio_lock:
                     device_id = self._android_speaker_device
+                    sdl = self._android_sdl
 
-                if (
-                    device_id
-                    and self._android_sdl is not None
-                ):
+                if device_id and sdl is not None:
                     try:
                         device_empty = (
                             int(
-                                self._android_sdl.SDL_GetQueuedAudioSize(
+                                sdl.SDL_GetQueuedAudioSize(
                                     device_id
                                 )
                             )
@@ -512,7 +599,7 @@ class RealtimeVoiceService:
                     quiet_started = time.monotonic()
                 elif (
                     time.monotonic() - quiet_started
-                    >= 0.55
+                    >= 0.35
                 ):
                     break
             else:
@@ -524,24 +611,19 @@ class RealtimeVoiceService:
             if generation != self._echo_resume_generation:
                 return
 
-        self._echo_paused_microphone = False
-        self._assistant_speaking.clear()
+        was_local = self._local_speech_response
 
-        if (
-            self.is_connected
-            and self.is_conversation_active
-            and not self._stop_event.is_set()
-        ):
-            try:
-                self._start_microphone()
-                self._emit_status(
-                    "Realtime voice is listening."
-                )
-            except Exception as error:
-                self._report_error(
-                    "Realtime microphone resume failed",
-                    error,
-                )
+        self._assistant_speaking.clear()
+        self._local_speech_response = False
+
+        if was_local:
+            self._local_echo_suppress_until = (
+                time.monotonic() + 1.0
+            )
+
+        self._apply_microphone_policy(
+            emit_status=True,
+        )
 
     def start(
         self,
@@ -573,7 +655,9 @@ class RealtimeVoiceService:
         self._user_transcript = ""
         self._response_in_progress = False
         self._pending_tool_followup = False
+        self._local_speech_response = False
         self._assistant_speaking.clear()
+        self._echo_paused_microphone = False
         self._local_echo_suppress_until = 0.0
         self._processed_transcript_ids.clear()
         self._last_transcript_text = ""
@@ -635,11 +719,10 @@ class RealtimeVoiceService:
         # The speaker worker checks this flag immediately; starting it
         # first caused the thread to exit before any audio arrived.
         self._conversation_active.set()
-        self._microphone_enabled.set()
 
         try:
             self._start_speaker()
-            self._start_microphone()
+            self._apply_microphone_policy()
 
         except Exception:
             self._conversation_active.clear()
@@ -692,11 +775,10 @@ class RealtimeVoiceService:
         )
         self._user_transcript = ""
         self._conversation_active.set()
-        self._microphone_enabled.set()
 
         try:
             self._start_speaker()
-            self._start_microphone()
+            self._apply_microphone_policy()
 
         except Exception:
             self._conversation_active.clear()
@@ -715,12 +797,14 @@ class RealtimeVoiceService:
         Stop microphone and speaker but keep WebSocket connected.
         """
         self._conversation_active.clear()
-        self._microphone_enabled.clear()
         self._assistant_speaking.clear()
+        self._local_speech_response = False
         self._echo_paused_microphone = False
 
         with self._echo_resume_lock:
             self._echo_resume_generation += 1
+
+        self._microphone_enabled.clear()
 
         self._stop_microphone()
         self._stop_speaker()
@@ -733,6 +817,7 @@ class RealtimeVoiceService:
         self._user_transcript = ""
         self._response_in_progress = False
         self._pending_tool_followup = False
+        self._local_speech_response = False
         self._local_echo_suppress_until = 0.0
         self._processed_transcript_ids.clear()
         self._last_transcript_text = ""
@@ -855,6 +940,67 @@ class RealtimeVoiceService:
 
         return True
 
+    def speak_local_answer(
+        self,
+        text,
+        timeout=10.0,
+    ):
+        """
+        Speak a local-skill result through the existing Realtime voice.
+
+        No VoiceService/TTS engine is used. The response is created outside
+        the normal AI conversation so local text does not become a new user
+        prompt or alter conversational reasoning context.
+        """
+        message = str(text or "").strip()
+
+        if not message:
+            return False
+
+        if not self.is_running:
+            self.start(
+                wait_until_ready=True,
+                timeout=timeout,
+            )
+
+        if not self.wait_until_ready(
+            timeout=timeout
+        ):
+            raise RuntimeError(
+                "Realtime connection is not ready. "
+                f"{self._last_error}"
+            )
+
+        loop = self._loop
+
+        if (
+            loop is None
+            or not loop.is_running()
+            or self._send_queue is None
+        ):
+            raise RuntimeError(
+                "Realtime event loop is not available."
+            )
+
+        future = asyncio.run_coroutine_threadsafe(
+            self._send_queue.put(
+                {
+                    "type": "local_speech",
+                    "text": message,
+                }
+            ),
+            loop,
+        )
+
+        future.result(
+            timeout=max(
+                1.0,
+                float(timeout),
+            )
+        )
+
+        return True
+
     def cancel_response(
         self,
     ):
@@ -927,38 +1073,30 @@ class RealtimeVoiceService:
             return False
 
     def pause_microphone_for_local_answer(self):
-        """Pause microphone capture while a local answer is spoken."""
+        """
+        Mark LOCAL speech active and apply the common microphone policy.
+        LOCAL speech always disables microphone routing to prevent self-loop.
+        """
+        self._local_speech_response = True
         self._assistant_speaking.set()
         self._local_echo_suppress_until = float("inf")
-        self._microphone_enabled.clear()
 
-        # On Android do not close the SDL capture device for a temporary
-        # local-speech pause. The worker remains alive and discards audio
-        # until microphone capture is enabled again.
-        if not IS_ANDROID:
-            self._stop_microphone()
-
-        self._drain_queue(
-            self._microphone_queue
-        )
+        self._apply_microphone_policy()
 
     def resume_microphone_after_local_answer(self):
-        """Resume microphone capture after a local answer finishes."""
-        # Realtime transcription can arrive slightly after local TTS audio
-        # physically ends. Ignore that delayed echo for a short grace period.
-        self._local_echo_suppress_until = time.monotonic() + 1.5
+        """
+        Compatibility wrapper for callers that explicitly finish LOCAL speech.
+        Normal Realtime output now resumes through the playback-drain worker.
+        """
+        self._local_speech_response = False
         self._assistant_speaking.clear()
+        self._local_echo_suppress_until = (
+            time.monotonic() + 1.0
+        )
 
-        if (
-            self.is_connected
-            and self.is_conversation_active
-            and not self._stop_event.is_set()
-        ):
-            self._microphone_enabled.set()
-            self._start_microphone()
-            self._emit_status(
-                "Realtime voice is listening."
-            )
+        self._apply_microphone_policy(
+            emit_status=True,
+        )
 
     def _thread_main(
         self,
@@ -1099,8 +1237,10 @@ class RealtimeVoiceService:
             # If voice conversation was active before a network interruption,
             # resume microphone streaming automatically on the new socket.
             if self._conversation_active.is_set():
-                self._microphone_enabled.set()
-                self._drain_queue(self._microphone_queue)
+                self._drain_queue(
+                    self._microphone_queue
+                )
+                self._apply_microphone_policy()
 
             self._emit_status(
                 "Realtime connected."
@@ -1363,6 +1503,15 @@ class RealtimeVoiceService:
                     ),
                 )
 
+            elif request.get("type") == "local_speech":
+                await self._send_local_speech_request(
+                    connection=connection,
+                    text=request.get(
+                        "text",
+                        "",
+                    ),
+                )
+
     async def _send_text_request(
         self,
         connection,
@@ -1393,6 +1542,58 @@ class RealtimeVoiceService:
         await self._create_response_once(
             connection
         )
+
+    async def _send_local_speech_request(
+        self,
+        connection,
+        text,
+    ):
+        """
+        Ask the current Realtime voice to read local result text exactly.
+
+        conversation='none' keeps this vocalization outside the normal
+        conversational history. The local result itself is already stored
+        and displayed by AIScreen.
+        """
+        message = str(text or "").strip()
+
+        if not message:
+            return
+
+        instructions = (
+            "Read the following M12 local result aloud exactly as written. "
+            "Do not answer it, explain it, summarize it, translate it, or add "
+            "any words before or after it. Preserve the language and numbers.\n\n"
+            "M12 LOCAL RESULT:\n"
+            + message
+        )
+
+        self._local_speech_response = True
+        self._response_in_progress = True
+        self._response_transcript = ""
+
+        # Enter LOCAL protected state before requesting audio. This closes the
+        # small gap where the microphone could otherwise remain live until the
+        # first speaker chunk arrived.
+        self.pause_microphone_for_local_answer()
+
+        try:
+            await connection.send(
+                {
+                    "type": "response.create",
+                    "response": {
+                        "conversation": "none",
+                        "output_modalities": [
+                            "audio",
+                        ],
+                        "instructions": instructions,
+                    },
+                }
+            )
+        except Exception:
+            self._local_speech_response = False
+            self._response_in_progress = False
+            raise
 
     async def _create_response_once(
         self,
@@ -1507,9 +1708,68 @@ class RealtimeVoiceService:
             if event_type == (
                 "input_audio_buffer.speech_started"
             ):
-                # A new user turn interrupts the previous response.
+                # A new user turn can interrupt an AI response only when
+                # Echo Protection is OFF. With protection ON the microphone
+                # is paused, so this branch will normally not fire.
+                echo_protection_on = (
+                    self._refresh_echo_protection_setting()
+                )
+
+                if (
+                    not echo_protection_on
+                    and not self._local_speech_response
+                ):
+                    # Stop Python-side queued speaker PCM immediately.
+                    self._drain_queue(
+                        self._speaker_queue
+                    )
+
+                    with self._speaker_timing_lock:
+                        self._speaker_playback_until = 0.0
+
+                    # Stop Android-native queued PCM too, otherwise already
+                    # buffered audio keeps playing even after response.cancel.
+                    if IS_ANDROID:
+                        try:
+                            with self._android_audio_lock:
+                                device_id = (
+                                    self._android_speaker_device
+                                )
+                                sdl = self._android_sdl
+
+                            if (
+                                device_id
+                                and sdl is not None
+                            ):
+                                sdl.SDL_ClearQueuedAudio(
+                                    device_id
+                                )
+
+                        except Exception as error:
+                            print(
+                                "[Realtime] Barge-in speaker clear error: "
+                                f"{type(error).__name__}: {error}"
+                            )
+
+                    # Cancel the server-side response so no more audio deltas
+                    # are generated for the interrupted answer.
+                    try:
+                        await connection.send(
+                            {
+                                "type": "response.cancel",
+                            }
+                        )
+                    except Exception:
+                        # If no response is active, cancellation is harmless.
+                        pass
+
                 self._response_in_progress = False
                 self._response_transcript = ""
+                self._assistant_speaking.clear()
+
+                # The user is now the active speaker. Re-apply policy so
+                # full-duplex AI mode remains listening after cancellation.
+                self._apply_microphone_policy()
                 self._emit_speech_started()
 
             elif event_type == (
@@ -1550,12 +1810,27 @@ class RealtimeVoiceService:
                 self._user_transcript = ""
 
                 if transcript:
+                    echo_protection_on = (
+                        self._refresh_echo_protection_setting()
+                    )
+
+                    suppress_for_assistant = (
+                        echo_protection_on
+                        and self._assistant_speaking.is_set()
+                    )
+
+                    suppress_for_local = (
+                        self._local_speech_response
+                        or time.monotonic()
+                        < self._local_echo_suppress_until
+                    )
+
                     if (
-                        self._assistant_speaking.is_set()
-                        or time.monotonic() < self._local_echo_suppress_until
+                        suppress_for_assistant
+                        or suppress_for_local
                     ):
                         print(
-                            "[Realtime] Ignored local-speaker echo transcript: "
+                            "[Realtime] Ignored speaker echo transcript: "
                             + transcript
                         )
                         continue
@@ -1630,13 +1905,24 @@ class RealtimeVoiceService:
                         )
                     )
 
+                    # Any output audio means the assistant is physically
+                    # speaking. The common microphone policy decides whether
+                    # this must mute input or remain full-duplex for barge-in.
+                    first_audio_chunk = (
+                        not self._assistant_speaking.is_set()
+                    )
+                    self._assistant_speaking.set()
+
+                    mic_enabled = self._apply_microphone_policy()
+
                     if (
-                        self._refresh_echo_protection_setting()
-                        and not self._echo_paused_microphone
+                        first_audio_chunk
+                        and not mic_enabled
+                        and not self._local_speech_response
                     ):
-                        self._pause_microphone_for_assistant()
-                    else:
-                        self._assistant_speaking.set()
+                        self._emit_status(
+                            "Ace speaking — microphone paused."
+                        )
 
                     self._queue_speaker_audio(
                         audio_bytes
@@ -1645,10 +1931,9 @@ class RealtimeVoiceService:
             elif event_type == (
                 "response.output_audio.done"
             ):
-                if self._echo_paused_microphone:
-                    self._schedule_microphone_resume_after_speaker()
-                else:
-                    self._assistant_speaking.clear()
+                # Server finished generating audio. Keep speaking state until
+                # the local/native speaker queues are physically drained.
+                self._schedule_microphone_resume_after_speaker()
 
             elif event_type == (
                 "response.output_audio_transcript.delta"
@@ -1663,9 +1948,11 @@ class RealtimeVoiceService:
 
                 if delta:
                     self._response_transcript += delta
-                    self._emit_text_delta(
-                        delta
-                    )
+
+                    if not self._local_speech_response:
+                        self._emit_text_delta(
+                            delta
+                        )
 
             elif event_type == (
                 "response.output_audio_transcript.done"
@@ -1685,7 +1972,10 @@ class RealtimeVoiceService:
 
                 self._response_transcript = ""
 
-                if transcript:
+                if (
+                    transcript
+                    and not self._local_speech_response
+                ):
                     self._emit_text_done(
                         transcript
                     )
@@ -1695,10 +1985,13 @@ class RealtimeVoiceService:
             ):
                 self._response_in_progress = False
 
-                if self._echo_paused_microphone:
+                if self._assistant_speaking.is_set():
                     self._schedule_microphone_resume_after_speaker()
                 else:
-                    self._assistant_speaking.clear()
+                    self._local_speech_response = False
+                    self._apply_microphone_policy(
+                        emit_status=True,
+                    )
 
                 if self._pending_tool_followup:
                     self._pending_tool_followup = False
@@ -2164,6 +2457,7 @@ class RealtimeVoiceService:
         """
         recorder = None
         recording_started = False
+        acoustic_echo_canceler = None
 
         try:
             self._check_android_microphone_permission()
@@ -2179,6 +2473,13 @@ class RealtimeVoiceService:
             AudioSource = autoclass(
                 "android.media.MediaRecorder$AudioSource"
             )
+
+            try:
+                AcousticEchoCanceler = autoclass(
+                    "android.media.audiofx.AcousticEchoCanceler"
+                )
+            except Exception:
+                AcousticEchoCanceler = None
 
             channel_config = int(
                 AudioFormat.CHANNEL_IN_MONO
@@ -2234,10 +2535,34 @@ class RealtimeVoiceService:
                 read_bytes * 4,
             )
 
-            source_candidates = [
-                int(AudioSource.VOICE_RECOGNITION),
-                int(AudioSource.MIC),
-            ]
+            source_candidates = []
+
+            # VOICE_COMMUNICATION is the correct Android source for
+            # full-duplex assistant/conversation audio. On supported devices
+            # it enables the platform's communication processing path,
+            # including hardware/software echo cancellation where available.
+            try:
+                source_candidates.append(
+                    int(AudioSource.VOICE_COMMUNICATION)
+                )
+            except Exception:
+                pass
+
+            try:
+                source_candidates.append(
+                    int(AudioSource.VOICE_RECOGNITION)
+                )
+            except Exception:
+                pass
+
+            source_candidates.append(
+                int(AudioSource.MIC)
+            )
+
+            # Preserve order while removing duplicate integer constants.
+            source_candidates = list(
+                dict.fromkeys(source_candidates)
+            )
 
             last_error = None
 
@@ -2287,6 +2612,37 @@ class RealtimeVoiceService:
 
             # Store only for diagnostics. The worker owns start/stop/release.
             self._android_audio_record = recorder
+
+            # Explicitly enable Android AcousticEchoCanceler when the device
+            # exposes it for this AudioRecord session. This is what allows
+            # Echo Protection OFF to remain full-duplex without the assistant's
+            # own speaker overwhelming the user's interruption.
+            if AcousticEchoCanceler is not None:
+                try:
+                    if bool(
+                        AcousticEchoCanceler.isAvailable()
+                    ):
+                        acoustic_echo_canceler = (
+                            AcousticEchoCanceler.create(
+                                int(
+                                    recorder.getAudioSessionId()
+                                )
+                            )
+                        )
+
+                        if acoustic_echo_canceler is not None:
+                            acoustic_echo_canceler.setEnabled(
+                                True
+                            )
+                            print(
+                                "[Realtime] Android AcousticEchoCanceler enabled."
+                            )
+                except Exception as error:
+                    acoustic_echo_canceler = None
+                    print(
+                        "[Realtime] Android AcousticEchoCanceler unavailable: "
+                        f"{type(error).__name__}: {error}"
+                    )
 
             recorder.startRecording()
             recording_started = True
@@ -2412,6 +2768,12 @@ class RealtimeVoiceService:
                 )
 
         finally:
+            if acoustic_echo_canceler is not None:
+                try:
+                    acoustic_echo_canceler.release()
+                except Exception:
+                    pass
+
             if recorder is not None:
                 if recording_started:
                     try:

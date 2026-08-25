@@ -293,7 +293,7 @@ class NotesSkill(BaseSkill):
         if text in self.LIST_PHRASES:
             return 1.0
 
-        if text.startswith(self.CREATE_PREFIXES):
+        if self._is_create_command(text):
             return 1.0
 
         if text.startswith(self.FIND_PREFIXES):
@@ -459,7 +459,7 @@ class NotesSkill(BaseSkill):
                 open_first=False,
             )
 
-        if text.startswith(self.CREATE_PREFIXES):
+        if self._is_create_command(text):
             return self._handle_create(
                 original_message=str(message).strip(),
                 normalized=text,
@@ -522,6 +522,171 @@ class NotesSkill(BaseSkill):
             )
 
         return text
+
+    @classmethod
+    def _is_create_command(
+        cls,
+        text: str,
+    ) -> bool:
+        """
+        Recognize note-creation intent structurally instead of requiring
+        one exact hardcoded sentence.
+
+        English examples handled by the same rule:
+            create a note
+            create a new personal note
+            make work note
+            new shopping note
+            write a project note
+            take a note
+
+        Russian examples:
+            создай заметку
+            создай новую личную заметку
+            сделать рабочую заметку
+            новая заметка покупок
+        """
+        value = cls._normalize(text)
+
+        if not value:
+            return False
+
+        # Preserve all previously supported phrases.
+        if value.startswith(cls.CREATE_PREFIXES):
+            return True
+
+        words = value.split()
+
+        if not words:
+            return False
+
+        english_verbs = {
+            "create",
+            "make",
+            "write",
+            "take",
+            "add",
+            "new",
+        }
+
+        russian_verbs = {
+            "создай",
+            "создать",
+            "сделай",
+            "сделать",
+            "запиши",
+            "записать",
+            "добавь",
+            "добавить",
+            "новая",
+            "новую",
+            "новый",
+        }
+
+        first = words[0]
+
+        if (
+            first not in english_verbs
+            and first not in russian_verbs
+        ):
+            return False
+
+        # The command must actually refer to a note. This prevents generic
+        # phrases such as "create a timer" from being captured by Notes.
+        if any(
+            word in cls.NOTE_WORD_VARIANTS
+            for word in words
+        ):
+            return True
+
+        return any(
+            word.startswith("замет")
+            for word in words
+        )
+
+    @classmethod
+    def _remove_create_command(
+        cls,
+        value: str,
+    ) -> str:
+        """
+        Remove the creation instruction and return only explicit note
+        content/title syntax that follows it.
+
+        This accepts optional articles, "new", and any configured note type
+        between the creation verb and the word "note", so adding a new note
+        type does not require adding another full command sentence.
+        """
+        raw = str(value).strip()
+        normalized = cls._normalize(raw)
+
+        # First keep exact legacy behavior for old commands.
+        for prefix in sorted(
+            cls.CREATE_PREFIXES,
+            key=len,
+            reverse=True,
+        ):
+            if normalized.startswith(prefix):
+                return raw[len(prefix):].strip(
+                    " .:,-!?;'\"’"
+                )
+
+        # English structural form:
+        # create/make/write/take/add [a/an] [new] [TYPE] note(s) [CONTENT]
+        english = re.match(
+            r"^(?:create|make|write|take|add|new)"
+            r"\s+(?:(?:a|an)\s+)?"
+            r"(?:new\s+)?"
+            r"(?:[a-z0-9_-]+\s+)*?"
+            r"(?:note|notes|node|nodes|nose|not)"
+            r"\b[\s:,-]*(.*)$",
+            normalized,
+            re.IGNORECASE,
+        )
+
+        if english:
+            remainder = str(
+                english.group(1) or ""
+            ).strip()
+
+            # Find the same remainder in the raw text when practical.
+            if remainder:
+                index = normalized.find(remainder)
+                if index >= 0 and index < len(raw):
+                    return raw[index:].strip(
+                        " .:,-!?;'\"’"
+                    )
+
+            return ""
+
+        # Russian structural form. Note-type words may appear before or
+        # after "заметка/заметку"; _remove_type_words() handles type cleanup.
+        russian = re.match(
+            r"^(?:создай|создать|сделай|сделать|запиши|записать|"
+            r"добавь|добавить|новая|новую|новый)"
+            r"\s+(?:новую\s+|новая\s+)?"
+            r"(?:[а-яё0-9_-]+\s+)*?"
+            r"(?:заметка|заметку|заметки)"
+            r"\b[\s:,-]*(.*)$",
+            normalized,
+            re.IGNORECASE,
+        )
+
+        if russian:
+            remainder = str(
+                russian.group(1) or ""
+            ).strip()
+
+            if remainder:
+                index = normalized.find(remainder)
+                if index >= 0 and index < len(raw):
+                    return raw[index:].strip(
+                        " .:,-!?;'\"’"
+                    )
+
+            return ""
+
+        return raw
 
     @staticmethod
     def _is_russian(text: str) -> bool:
@@ -592,8 +757,8 @@ class NotesSkill(BaseSkill):
 
         normalized_body = self._normalize(body)
 
-        if normalized_body.startswith(
-            self.CREATE_PREFIXES
+        if self._is_create_command(
+            normalized_body
         ):
             return SkillResult(
                 handled=True,
@@ -807,10 +972,8 @@ class NotesSkill(BaseSkill):
         context: Any,
         russian: bool,
     ) -> SkillResult:
-        body = self._remove_prefix(
-            original_message,
-            self.CREATE_PREFIXES,
-            normalize_before_match=True,
+        body = self._remove_create_command(
+            original_message
         )
 
         note_type = (
