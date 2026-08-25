@@ -567,6 +567,19 @@ class RealtimeVoiceService:
         self._ready_event.clear()
         self._last_error = ""
 
+        # A new Realtime session must never inherit a completed/pending
+        # local answer or transcript from the previous voice session.
+        self._response_transcript = ""
+        self._user_transcript = ""
+        self._response_in_progress = False
+        self._pending_tool_followup = False
+        self._assistant_speaking.clear()
+        self._local_echo_suppress_until = 0.0
+        self._processed_transcript_ids.clear()
+        self._last_transcript_text = ""
+        self._last_transcript_time = 0.0
+        self._clear_audio_queues()
+
         self._thread = threading.Thread(
             target=self._thread_main,
             name="M12RealtimeVoice",
@@ -713,6 +726,18 @@ class RealtimeVoiceService:
         self._stop_speaker()
         self._clear_audio_queues()
 
+        # Drop all transient turn state when Voice is stopped. Conversation
+        # memory remains intact, but the last local answer (for example a
+        # Contacts result) must not be replayed when Voice starts again.
+        self._response_transcript = ""
+        self._user_transcript = ""
+        self._response_in_progress = False
+        self._pending_tool_followup = False
+        self._local_echo_suppress_until = 0.0
+        self._processed_transcript_ids.clear()
+        self._last_transcript_text = ""
+        self._last_transcript_time = 0.0
+
         self._emit_status(
             "Realtime voice stopped."
         )
@@ -834,12 +859,38 @@ class RealtimeVoiceService:
         self,
     ):
         """
-        Cancel current assistant response and clear queued audio.
+        Immediately cancel the current assistant response.
+
+        Clear both Python-side queued PCM and Android SDL audio that has
+        already been handed to the native speaker device.
         """
         self._assistant_speaking.clear()
+
+        # Drop PCM still waiting in Python.
         self._drain_queue(
             self._speaker_queue
         )
+
+        with self._speaker_timing_lock:
+            self._speaker_playback_until = 0.0
+
+        # On Android, draining the Python queue is not enough. PCM may
+        # already be buffered by SDL and will continue playing unless the
+        # native device queue is cleared explicitly.
+        if IS_ANDROID:
+            try:
+                with self._android_audio_lock:
+                    device_id = self._android_speaker_device
+                    sdl = self._android_sdl
+
+                if device_id and sdl is not None:
+                    sdl.SDL_ClearQueuedAudio(device_id)
+
+            except Exception as error:
+                print(
+                    "[Realtime] Unable to clear Android speaker queue: "
+                    f"{type(error).__name__}: {error}"
+                )
 
         loop = self._loop
         connection = self._connection
@@ -849,6 +900,8 @@ class RealtimeVoiceService:
             or connection is None
             or not loop.is_running()
         ):
+            self._response_in_progress = False
+            self._response_transcript = ""
             return False
 
         try:
@@ -863,9 +916,14 @@ class RealtimeVoiceService:
                 )
             )
             future.result(timeout=3.0)
+
+            self._response_in_progress = False
+            self._response_transcript = ""
             return True
 
         except Exception:
+            self._response_in_progress = False
+            self._response_transcript = ""
             return False
 
     def pause_microphone_for_local_answer(self):

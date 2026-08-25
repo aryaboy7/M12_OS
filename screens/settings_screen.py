@@ -1332,57 +1332,15 @@ class SettingsScreen(Screen):
         )
 
     def save_speaker_echo_protection(self, enabled):
-        """Save the preference without overwriting existing AI settings."""
+        """Save Speaker Echo Protection as a persistent user preference."""
         value = bool(enabled)
 
-        # Keep the normal M12 Settings copy too. This also lets the setting
-        # survive configurations that move settings storage in the future.
+        # ConfigManager is the single source of truth for user preferences.
+        # On Android it writes to private app storage, which survives normal
+        # APK updates installed with adb install -r.
         self.config.set(
             "speaker_echo_protection",
             value,
-        )
-
-        data = {}
-
-        if AI_SETTINGS_FILE.exists():
-            try:
-                loaded = json.loads(
-                    AI_SETTINGS_FILE.read_text(
-                        encoding="utf-8"
-                    )
-                )
-                if isinstance(loaded, dict):
-                    data = loaded
-            except Exception as error:
-                log.error(
-                    "Settings: AI settings read failed while saving "
-                    "Speaker Echo Protection: "
-                    f"{type(error).__name__}: {error}"
-                )
-
-        # Never copy an API key into this source configuration file.
-        data.pop("api_key", None)
-        data["speaker_echo_protection"] = value
-
-        AI_SETTINGS_FILE.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        temporary_file = AI_SETTINGS_FILE.with_suffix(
-            ".json.tmp"
-        )
-        temporary_file.write_text(
-            json.dumps(
-                data,
-                ensure_ascii=False,
-                indent=2,
-            ) + "\n",
-            encoding="utf-8",
-        )
-        os.replace(
-            temporary_file,
-            AI_SETTINGS_FILE,
         )
 
     def toggle_speaker_echo_protection(self, instance=None):

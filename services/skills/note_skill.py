@@ -182,12 +182,15 @@ class NotesSkill(BaseSkill):
         "find notes about ",
         "search notes for ",
         "search my notes for ",
-        "find ",
+        "find my note ",
+        "find note ",
+        "find notes ",
         "найди заметку про ",
         "найди заметку о ",
         "найди заметки про ",
+        "найди заметку ",
+        "найди заметки ",
         "поиск заметок ",
-        "найди ",
     )
 
     OPEN_NOTE_PREFIXES = (

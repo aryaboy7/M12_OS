@@ -3091,13 +3091,42 @@ class AIScreen(Screen):
     def stop_realtime_voice(
         self,
     ):
+        """
+        Stop all AI voice activity immediately.
+
+        This stops both speech paths used by the AI screen:
+            - OpenAI Realtime PCM playback
+            - Local VoiceService TTS used by local skills
+        """
         service = self.realtime_voice_service
 
         self.realtime_voice_active = False
         self.realtime_answer_active = False
         self.realtime_answer_text = ""
+        self.realtime_local_speech_active = False
+
+        # Contacts and other local skills are spoken through VoiceService,
+        # so stopping Realtime alone is not enough.
+        if self.voice_service is not None:
+            try:
+                self.voice_service.stop_speaking()
+            except Exception as error:
+                print(
+                    "Local voice stop error: "
+                    f"{type(error).__name__}: {error}"
+                )
 
         if service is not None:
+            # First cancel the active Realtime response so no more PCM is
+            # added while the conversation is being shut down.
+            try:
+                service.cancel_response()
+            except Exception as error:
+                print(
+                    "Realtime cancel error: "
+                    f"{type(error).__name__}: {error}"
+                )
+
             try:
                 service.stop_conversation()
             except Exception as error:
@@ -3105,6 +3134,22 @@ class AIScreen(Screen):
                     "Realtime stop error: "
                     f"{type(error).__name__}: {error}"
                 )
+
+        # Do not allow queued legacy/streaming TTS chunks to restart speech.
+        if self.speech_queue is not None:
+            try:
+                while True:
+                    self.speech_queue.get_nowait()
+            except queue.Empty:
+                pass
+
+            try:
+                self.speech_queue.put_nowait(None)
+            except queue.Full:
+                pass
+
+        self.speech_is_busy = False
+        self.continuous_voice = False
 
         self.voice_btn.text = "Voice"
         self.voice_status.text = "Realtime voice stopped"
