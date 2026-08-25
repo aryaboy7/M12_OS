@@ -573,8 +573,21 @@ class ContactsSkill(BaseSkill):
 
         return "\n".join(parts)
 
-    def handle(self, message, context):
-        name = self._extract_name(message)
+    def _search_name(
+        self,
+        name,
+        context,
+        original_message="",
+        intent_override=None,
+    ):
+        """
+        Search one already-extracted contact name.
+
+        This is shared by normal commands and generic registry follow-ups.
+        """
+        name = str(
+            name or ""
+        ).strip(" ?.,!:'\"")
 
         if not name:
             return SkillResult(
@@ -585,6 +598,15 @@ class ContactsSkill(BaseSkill):
                 ),
                 confidence=1.0,
                 action="contacts_search",
+                expected_followup="contact_name",
+                followup_data={
+                    "intent": (
+                        intent_override
+                        or self._intent(
+                            original_message
+                        )
+                    ),
+                },
             )
 
         result = ContactsService.search(
@@ -642,7 +664,12 @@ class ContactsSkill(BaseSkill):
                 },
             )
 
-        intent = self._intent(message)
+        intent = (
+            intent_override
+            or self._intent(
+                original_message
+            )
+        )
 
         if len(contacts) == 1:
             answer = self._format_contact(
@@ -677,4 +704,57 @@ class ContactsSkill(BaseSkill):
                 "query": name,
                 "contacts": contacts,
             },
+        )
+
+    def handle_followup(
+        self,
+        message,
+        context,
+        expected_followup,
+        followup_data=None,
+    ):
+        """
+        Handle a value explicitly requested by this skill.
+
+        A bare follow-up is treated as a contact name only when the registry
+        tells us ContactsSkill is specifically waiting for contact_name.
+        """
+        if expected_followup != "contact_name":
+            return super().handle_followup(
+                message=message,
+                context=context,
+                expected_followup=expected_followup,
+                followup_data=followup_data,
+            )
+
+        state = (
+            followup_data
+            if isinstance(
+                followup_data,
+                dict,
+            )
+            else {}
+        )
+
+        intent = str(
+            state.get(
+                "intent",
+                "all",
+            )
+        ).strip() or "all"
+
+        return self._search_name(
+            name=message,
+            context=context,
+            original_message="",
+            intent_override=intent,
+        )
+
+    def handle(self, message, context):
+        name = self._extract_name(message)
+
+        return self._search_name(
+            name=name,
+            context=context,
+            original_message=message,
         )

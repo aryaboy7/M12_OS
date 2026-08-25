@@ -1,4 +1,6 @@
 import re
+import unicodedata
+from difflib import SequenceMatcher
 
 from kivy.utils import platform as kivy_platform
 
@@ -154,61 +156,181 @@ class ContactsService:
             if value not in ("", None, [], {})
         }
 
-    RUSSIAN_NAME_ALIASES = {
-        # Explicit bilingual equivalents. Add more names here as needed.
-        "галина": "galina",
-        "galina": "галина",
+    CYRILLIC_TO_LATIN = {
+        "а": "a",
+        "б": "b",
+        "в": "v",
+        "г": "g",
+        "д": "d",
+        "е": "e",
+        "ё": "yo",
+        "ж": "zh",
+        "з": "z",
+        "и": "i",
+        "й": "y",
+        "к": "k",
+        "л": "l",
+        "м": "m",
+        "н": "n",
+        "о": "o",
+        "п": "p",
+        "р": "r",
+        "с": "s",
+        "т": "t",
+        "у": "u",
+        "ф": "f",
+        "х": "kh",
+        "ц": "ts",
+        "ч": "ch",
+        "ш": "sh",
+        "щ": "shch",
+        "ъ": "",
+        "ы": "y",
+        "ь": "",
+        "э": "e",
+        "ю": "yu",
+        "я": "ya",
     }
 
     @staticmethod
     def _normalize_name_token(value):
+        """Normalize one contact-name token without language-specific names."""
+        text = unicodedata.normalize(
+            "NFKD",
+            str(value or "").casefold(),
+        )
+        text = "".join(
+            character
+            for character in text
+            if not unicodedata.combining(character)
+        )
         return re.sub(
             r"[^0-9a-zа-яё]+",
             "",
-            str(value or "").casefold(),
+            text,
         )
 
     @classmethod
-    def _query_name_forms(cls, query):
-        """
-        Return only explicit search forms. No fuzzy matching.
+    def _transliterate_token(cls, value):
+        """Transliterate Cyrillic to Latin using general letter rules."""
+        token = cls._normalize_name_token(value)
+        if not token:
+            return ""
 
-        Example:
-            Galina -> {"galina", "галина"}
-            Галина -> {"галина", "galina"}
-        """
-        token = cls._normalize_name_token(query)
-        forms = {token} if token else set()
+        return "".join(
+            cls.CYRILLIC_TO_LATIN.get(character, character)
+            for character in token
+        )
 
-        alias = cls.RUSSIAN_NAME_ALIASES.get(token)
-        if alias:
-            forms.add(alias)
+    @classmethod
+    def _token_forms(cls, value):
+        """Return normalized and transliterated forms for one token."""
+        token = cls._normalize_name_token(value)
+        if not token:
+            return set()
 
+        forms = {token}
+        transliterated = cls._transliterate_token(token)
+        if transliterated:
+            forms.add(transliterated)
         return forms
+
+    @staticmethod
+    def _name_tokens(value):
+        return re.findall(
+            r"[0-9A-Za-zА-Яа-яЁё]+",
+            str(value or ""),
+        )
+
+    @staticmethod
+    def _minimum_similarity(token):
+        length = len(str(token or ""))
+        if length <= 2:
+            return 1.0
+        if length <= 4:
+            return 0.88
+        return 0.82
+
+    @classmethod
+    def _token_similarity(cls, query_token, name_token):
+        """Return a 0..1 similarity score for two name tokens."""
+        query_forms = cls._token_forms(query_token)
+        name_forms = cls._token_forms(name_token)
+
+        if not query_forms or not name_forms:
+            return 0.0
+
+        best = 0.0
+
+        for query_form in query_forms:
+            for name_form in name_forms:
+                if query_form == name_form:
+                    return 1.0
+
+                shorter = min(len(query_form), len(name_form))
+                longer = max(len(query_form), len(name_form))
+
+                if (
+                    shorter >= 3
+                    and longer > 0
+                    and (
+                        query_form.startswith(name_form)
+                        or name_form.startswith(query_form)
+                    )
+                ):
+                    coverage = shorter / longer
+                    if coverage >= 0.65:
+                        best = max(
+                            best,
+                            0.88 + min(0.08, coverage * 0.08),
+                        )
+
+                ratio = SequenceMatcher(
+                    None,
+                    query_form,
+                    name_form,
+                ).ratio()
+                best = max(best, ratio)
+
+        return min(1.0, best)
+
+    @classmethod
+    def _name_match_score(cls, display_name, query):
+        """
+        Score a display name against a user query.
+
+        Every query token must have a sufficiently close token in the saved
+        display name. This supports transliteration and small spelling or
+        inflection differences without any hardcoded person names.
+        """
+        query_tokens = cls._name_tokens(query)
+        name_tokens = cls._name_tokens(display_name)
+
+        if not query_tokens or not name_tokens:
+            return 0.0
+
+        scores = []
+
+        for query_token in query_tokens:
+            best = max(
+                cls._token_similarity(query_token, name_token)
+                for name_token in name_tokens
+            )
+
+            normalized_query = cls._normalize_name_token(query_token)
+            if best < cls._minimum_similarity(normalized_query):
+                return 0.0
+
+            scores.append(best)
+
+        if not scores:
+            return 0.0
+
+        return sum(scores) / len(scores)
 
     @classmethod
     def _name_matches_query(cls, display_name, query):
-        """
-        Match complete name tokens only.
-
-        'Галина' matches a saved 'Galina Ryaboy'.
-        'Galina' matches a saved 'Галина ...'.
-        It does not fuzzy-match Halina, David, or unrelated contacts.
-        """
-        forms = cls._query_name_forms(query)
-        if not forms:
-            return False
-
-        name_tokens = {
-            cls._normalize_name_token(part)
-            for part in re.findall(
-                r"[0-9A-Za-zА-Яа-яЁё]+",
-                str(display_name or ""),
-            )
-        }
-        name_tokens.discard("")
-
-        return bool(forms.intersection(name_tokens))
+        return cls._name_match_score(display_name, query) > 0.0
 
     @classmethod
     def search(cls, query, limit=20):
@@ -254,8 +376,6 @@ class ContactsService:
             Email = objects["Email"]
             Data = objects["Data"]
 
-            like_arg = f"%{name_query}%"
-
             contact_projection = [
                 Contacts._ID,
                 Contacts.DISPLAY_NAME,
@@ -277,7 +397,6 @@ class ContactsService:
             )
 
             contacts = {}
-            query_fold = name_query.casefold()
 
             for row in contact_rows:
                 contact_id = row.get(str(Contacts._ID), "")
@@ -289,10 +408,12 @@ class ContactsService:
                 if not contact_id:
                     continue
 
-                if not cls._name_matches_query(
+                match_score = cls._name_match_score(
                     display_name,
                     name_query,
-                ):
+                )
+
+                if match_score <= 0.0:
                     continue
 
                 contacts[contact_id] = {
@@ -318,6 +439,7 @@ class ContactsService:
                         str(Contacts.PHOTO_THUMBNAIL_URI),
                         "",
                     ),
+                    "_match_score": match_score,
                 }
 
             if not contacts:
@@ -531,22 +653,15 @@ class ContactsService:
                 cleaned = cls._clean_dict(item)
                 result.append(cleaned)
 
-            query_fold = name_query.casefold()
-
             result.sort(
                 key=lambda item: (
-                    0
-                    if item.get("name", "").casefold() == query_fold
-                    else (
-                        1
-                        if item.get("name", "").casefold().startswith(
-                            query_fold
-                        )
-                        else 2
-                    ),
+                    -float(item.get("_match_score", 0.0)),
                     item.get("name", "").casefold(),
                 )
             )
+
+            for item in result:
+                item.pop("_match_score", None)
 
             return {
                 "ok": True,

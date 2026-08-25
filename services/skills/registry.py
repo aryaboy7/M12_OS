@@ -1,5 +1,3 @@
-
-import re
 import threading
 import time
 
@@ -18,25 +16,11 @@ class SkillRegistry:
         self._skills = []
         self._lock = threading.RLock()
 
-        # ---------------------------------------------------------
-        # Recent skill context
+        # One generic expected-follow-up state.
         #
-        # Used for natural follow-up requests.
-        #
-        # Example:
-        #
-        #   Find contact Mozilla
-        #   -> Contacts handles it
-        #
-        #   Mazilo
-        #   -> treated as another contact search
-        #
-        # This context expires automatically.
-        # ---------------------------------------------------------
-        self._last_skill_name = None
-        self._last_skill_time = 0.0
-
-        self._followup_timeout = 60.0
+        # The registry does not know what a "contact name", "city",
+        # "duration", etc. means. The skill owns that meaning.
+        self._pending_followup = None
 
     def register(
         self,
@@ -77,16 +61,23 @@ class SkillRegistry:
                 if skill.name != target
             ]
 
+            pending = self._pending_followup
+
+            if (
+                pending
+                and pending.get("skill_name") == target
+            ):
+                self._pending_followup = None
+
     def clear(
         self,
     ):
         """
-        Remove all registered skills.
+        Remove all registered skills and pending continuation state.
         """
         with self._lock:
             self._skills.clear()
-
-        self.clear_followup_context()
+            self._pending_followup = None
 
     def list_names(
         self,
@@ -128,334 +119,236 @@ class SkillRegistry:
         return None
 
     # =============================================================
-    # FOLLOW-UP CONTEXT
+    # GENERIC EXPECTED FOLLOW-UP
     # =============================================================
 
     def clear_followup_context(self):
         """
-        Forget the previously active skill.
-        """
-        self._last_skill_name = None
-        self._last_skill_time = 0.0
+        Clear any skill that is waiting for another user value.
 
-    def _remember_skill(
+        Kept with the old public method name so existing callers remain
+        compatible.
+        """
+        with self._lock:
+            self._pending_followup = None
+
+    def _set_pending_followup(
         self,
-        skill_name,
+        skill,
+        result,
     ):
         """
-        Remember the most recently handled skill.
+        Store continuation state declared by a SkillResult.
+
+        The registry stores only routing metadata. It never interprets
+        the semantic meaning of expected_followup.
         """
-        self._last_skill_name = str(
-            skill_name or ""
+        expected = str(
+            result.expected_followup or ""
         ).strip()
 
-        self._last_skill_time = time.monotonic()
-
-    def _recent_skill(
-        self,
-    ):
-        """
-        Return the recently active skill name.
-
-        Context automatically expires.
-        """
-        if not self._last_skill_name:
-            return None
-
-        age = (
-            time.monotonic()
-            - self._last_skill_time
-        )
-
-        if age > self._followup_timeout:
-            self.clear_followup_context()
-            return None
-
-        return self._last_skill_name
-
-    # =============================================================
-    # CONTACT FOLLOW-UP DETECTION
-    # =============================================================
-
-    @staticmethod
-    def _looks_like_contact_name(
-        message,
-    ):
-        """
-        Decide whether a short follow-up could reasonably
-        be a person's/contact's name.
-
-        This is deliberately conservative.
-
-        Examples accepted:
-
-            Mazilo
-            mazilo
-            Alex Mazilo
-            Galina Ryaboy
-            Галина
-            Галины
-            Алекс Мазило
-
-        Examples rejected:
-
-            Thank you
-            Спасибо
-            Why
-            Привет
-            OK
-            What time is it
-            Call him
-        """
-        text = str(
-            message or ""
-        ).strip()
-
-        if not text:
-            return False
-
-        # Do not treat obvious questions as names.
-        if "?" in text:
-            return False
-
-        # Remove ordinary ending punctuation.
-        cleaned = text.strip(
-            " \t\r\n.,!;:\"'()[]{}"
-        )
-
-        if not cleaned:
-            return False
-
-        lowered = cleaned.lower()
-
-        # ---------------------------------------------------------
-        # Common conversational words/phrases that must NEVER
-        # become contact searches.
-        # ---------------------------------------------------------
-        blocked_exact = {
-            # English
-            "yes",
-            "no",
-            "ok",
-            "okay",
-            "thanks",
-            "thank you",
-            "why",
-            "hello",
-            "hi",
-            "hey",
-            "good",
-            "great",
-            "stop",
-            "cancel",
-            "continue",
-            "again",
-            "please",
-            "what",
-            "who",
-            "where",
-            "when",
-            "how",
-            "bye",
-            "goodbye",
-
-            # Russian
-            "да",
-            "нет",
-            "ок",
-            "хорошо",
-            "спасибо",
-            "пожалуйста",
-            "почему",
-            "привет",
-            "здравствуй",
-            "здравствуйте",
-            "стоп",
-            "остановись",
-            "отмена",
-            "продолжай",
-            "ещё",
-            "еще",
-            "что",
-            "кто",
-            "где",
-            "когда",
-            "как",
-            "пока",
-        }
-
-        if lowered in blocked_exact:
-            return False
-
-        # ---------------------------------------------------------
-        # Command phrases should go through normal skill routing,
-        # not the bare-contact follow-up.
-        # ---------------------------------------------------------
-        blocked_starts = (
-            # English
-            "find ",
-            "show ",
-            "open ",
-            "look ",
-            "call ",
-            "dial ",
-            "send ",
-            "write ",
-            "what ",
-            "who ",
-            "where ",
-            "when ",
-            "why ",
-            "how ",
-
-            # Russian
-            "найди ",
-            "найти ",
-            "покажи ",
-            "открой ",
-            "позвони ",
-            "набери ",
-            "напиши ",
-            "что ",
-            "кто ",
-            "где ",
-            "когда ",
-            "почему ",
-            "как ",
-        )
-
-        if lowered.startswith(
-            blocked_starts
-        ):
-            return False
-
-        # ---------------------------------------------------------
-        # Names should be short.
-        # Allow:
-        #   First
-        #   First Last
-        #   First Middle Last
-        #   short business/contact labels
-        # ---------------------------------------------------------
-        words = cleaned.split()
-
-        if len(words) > 4:
-            return False
-
-        # Reject digits. A phone number should not accidentally
-        # become a name search.
-        if re.search(
-            r"\d",
-            cleaned,
-        ):
-            return False
-
-        # Only allow letters, spaces, apostrophes and hyphens.
-        if not re.fullmatch(
-            r"[A-Za-zА-Яа-яЁё"
-            r"\u0400-\u04FF"
-            r"\-' ]+",
-            cleaned,
-        ):
-            return False
-
-        # Avoid very tiny recognition fragments such as:
-        # "а", "и", "я", etc.
-        letters = re.sub(
-            r"[^A-Za-zА-Яа-яЁё"
-            r"\u0400-\u04FF]",
-            "",
-            cleaned,
-        )
-
-        if len(letters) < 3:
-            return False
-
-        return True
-
-    def _try_contact_followup(
-        self,
-        text,
-        context,
-    ):
-        """
-        Try a bare contact-name follow-up.
-
-        Returns:
-            SkillResult if handled
-            None otherwise
-        """
-        if self._recent_skill() != "contacts":
-            return None
-
-        if not self._looks_like_contact_name(
-            text
-        ):
-            return None
-
-        contacts_skill = self.get(
-            "contacts"
-        )
-
-        if contacts_skill is None:
-            return None
-
-        print(
-            "[SkillRegistry] "
-            "Trying contacts follow-up: "
-            f"{text}"
-        )
+        if not expected:
+            with self._lock:
+                self._pending_followup = None
+            return
 
         try:
-            result = contacts_skill.handle(
-                text,
-                context,
-            )
-
-        except Exception as error:
-            print(
-                "Skill execution error "
-                "[contacts follow-up]: "
-                f"{type(error).__name__}: "
-                f"{error}"
-            )
-
-            return None
-
-        if not isinstance(
-            result,
-            SkillResult,
-        ):
-            result = SkillResult(
-                handled=True,
-                answer=str(result),
-                confidence=1.0,
-            )
-
-        if not result.handled:
-            return None
-
-        try:
-            result.confidence = max(
-                float(
-                    result.confidence
-                ),
-                0.95,
+            timeout = float(
+                result.followup_timeout
             )
         except (
             TypeError,
             ValueError,
         ):
-            result.confidence = 0.95
+            timeout = 120.0
 
-        self._remember_skill(
-            "contacts"
+        timeout = max(
+            1.0,
+            timeout,
         )
+
+        followup_data = (
+            dict(result.followup_data)
+            if isinstance(
+                result.followup_data,
+                dict,
+            )
+            else {}
+        )
+
+        pending = {
+            "skill_name": str(
+                skill.name
+            ),
+            "expected_followup": expected,
+            "followup_data": followup_data,
+            "expires_at": (
+                time.monotonic()
+                + timeout
+            ),
+        }
+
+        with self._lock:
+            self._pending_followup = pending
 
         print(
-            "[SkillRegistry] "
-            "Handled by contacts follow-up"
+            "[SkillRegistry] Waiting for "
+            f"{expected} from {skill.name}"
         )
+
+    def _get_pending_followup(self):
+        """
+        Return active continuation state or None when expired.
+        """
+        with self._lock:
+            pending = self._pending_followup
+
+            if not pending:
+                return None
+
+            expires_at = float(
+                pending.get(
+                    "expires_at",
+                    0.0,
+                )
+            )
+
+            if (
+                expires_at > 0.0
+                and time.monotonic() >= expires_at
+            ):
+                self._pending_followup = None
+                return None
+
+            return dict(
+                pending
+            )
+
+    @staticmethod
+    def _coerce_result(
+        result,
+        confidence=1.0,
+    ):
+        """
+        Convert legacy string-like skill results to SkillResult.
+        """
+        if isinstance(
+            result,
+            SkillResult,
+        ):
+            return result
+
+        return SkillResult(
+            handled=True,
+            answer=str(result),
+            confidence=confidence,
+        )
+
+    def _dispatch_pending_followup(
+        self,
+        text,
+        context,
+    ):
+        """
+        Route the next utterance directly to the skill that explicitly
+        requested it.
+
+        Returns:
+            SkillResult when a pending continuation existed.
+            None when there is no active continuation.
+        """
+        pending = self._get_pending_followup()
+
+        if pending is None:
+            return None
+
+        skill_name = str(
+            pending.get(
+                "skill_name",
+                "",
+            )
+        ).strip()
+
+        expected = str(
+            pending.get(
+                "expected_followup",
+                "",
+            )
+        ).strip()
+
+        followup_data = pending.get(
+            "followup_data",
+            {},
+        )
+
+        skill = self.get(
+            skill_name
+        )
+
+        if skill is None:
+            self.clear_followup_context()
+
+            return SkillResult(
+                handled=False
+            )
+
+        # Consume the previous expectation before execution. If the skill
+        # still needs input, its returned SkillResult will explicitly create
+        # a new expectation.
+        self.clear_followup_context()
+
+        print(
+            "[SkillRegistry] Follow-up -> "
+            f"{skill_name} ({expected}): {text}"
+        )
+
+        try:
+            result = skill.handle_followup(
+                message=text,
+                context=context,
+                expected_followup=expected,
+                followup_data=followup_data,
+            )
+
+        except Exception as error:
+            print(
+                "Skill follow-up execution error "
+                f"[{skill_name}]: "
+                f"{type(error).__name__}: {error}"
+            )
+
+            return SkillResult(
+                handled=False
+            )
+
+        result = self._coerce_result(
+            result,
+            confidence=1.0,
+        )
+
+        if result.handled:
+            try:
+                result.confidence = max(
+                    float(
+                        result.confidence
+                    ),
+                    0.95,
+                )
+            except (
+                TypeError,
+                ValueError,
+            ):
+                result.confidence = 0.95
+
+            self._set_pending_followup(
+                skill,
+                result,
+            )
+
+            print(
+                "[SkillRegistry] Follow-up handled by "
+                f"{skill_name}"
+            )
 
         return result
 
@@ -471,25 +364,42 @@ class SkillRegistry:
         """
         Find and execute the best available skill.
 
-        Every matching skill is ranked by:
+        Routing order:
 
-            1. Highest confidence
-            2. Lowest priority number
+            1. Explicit expected follow-up, if one is active.
+            2. Normal confidence-based skill routing.
 
-        If one skill fails or returns handled=False,
-        the registry automatically tries the next candidate.
-
-        If no normal skill matches, a recent skill may receive
-        a natural follow-up request.
+        No skill-specific guessing exists in this registry.
         """
         text = str(
-            message
+            message or ""
         ).strip()
 
         if not text:
             return SkillResult(
                 handled=False
             )
+
+        # ---------------------------------------------------------
+        # Explicit continuation always wins.
+        #
+        # Example:
+        #   User: Find contact
+        #   Contacts: Tell me the contact name.
+        #   User: Victoria Shpiller
+        #
+        # The second utterance goes directly back to ContactsSkill
+        # without needing can_handle() to recognize a bare name.
+        # ---------------------------------------------------------
+        followup_result = (
+            self._dispatch_pending_followup(
+                text,
+                context,
+            )
+        )
+
+        if followup_result is not None:
+            return followup_result
 
         with self._lock:
             skills = list(
@@ -547,23 +457,7 @@ class SkillRegistry:
                 )
             )
 
-        # ---------------------------------------------------------
-        # No normal skill matched.
-        #
-        # Before giving up and allowing Realtime/OpenAI to answer,
-        # check whether this is a natural follow-up to Contacts.
-        # ---------------------------------------------------------
         if not candidates:
-            followup_result = (
-                self._try_contact_followup(
-                    text,
-                    context,
-                )
-            )
-
-            if followup_result is not None:
-                return followup_result
-
             return SkillResult(
                 handled=False
             )
@@ -603,27 +497,19 @@ class SkillRegistry:
                     f"{error}"
                 )
 
-                # Try the next matching skill.
                 continue
 
-            if not isinstance(
+            result = self._coerce_result(
                 result,
-                SkillResult,
-            ):
-                result = SkillResult(
-                    handled=True,
-                    answer=str(result),
-                    confidence=confidence,
-                )
+                confidence=confidence,
+            )
 
             if not result.handled:
                 print(
                     f"[SkillRegistry] "
                     f"{skill.name} "
-                    f"declined request."
+                    "declined request."
                 )
-
-                # Try the next matching skill.
                 continue
 
             try:
@@ -633,49 +519,23 @@ class SkillRegistry:
                     ),
                     confidence,
                 )
-
             except (
                 TypeError,
                 ValueError,
             ):
-                result.confidence = (
-                    confidence
-                )
+                result.confidence = confidence
 
-            # -----------------------------------------------------
-            # Remember Contacts as active conversational context.
-            #
-            # Other skills do not automatically erase it because
-            # short Realtime conversation may occur between
-            # contact searches.
-            #
-            # It expires after 60 seconds.
-            # -----------------------------------------------------
-            if skill.name == "contacts":
-                self._remember_skill(
-                    "contacts"
-                )
+            self._set_pending_followup(
+                skill,
+                result,
+            )
 
             print(
-                f"[SkillRegistry] Handled by "
+                "[SkillRegistry] Handled by "
                 f"{skill.name}"
             )
 
             return result
-
-        # ---------------------------------------------------------
-        # Matching skills existed but they all declined/failed.
-        # Try Contacts follow-up before finally returning False.
-        # ---------------------------------------------------------
-        followup_result = (
-            self._try_contact_followup(
-                text,
-                context,
-            )
-        )
-
-        if followup_result is not None:
-            return followup_result
 
         return SkillResult(
             handled=False
