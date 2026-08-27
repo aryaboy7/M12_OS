@@ -35,10 +35,10 @@ from utils.text_editor_popup import open_text_editor
 
 try:
     from services.android_event_alarm_scheduler import (
-        schedule_event as schedule_android_event,
-        cancel_event as cancel_android_event,
-        stop_event_sound as stop_android_event_sound,
+        schedule_android_event,
+        stop_native_event_sound as stop_android_event_sound,
     )
+    cancel_android_event = None
 except Exception:
     schedule_android_event = None
     cancel_android_event = None

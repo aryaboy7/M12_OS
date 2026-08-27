@@ -8,7 +8,6 @@ title = M12 OS
 package.name = m12os
 package.domain = com.m12os
 
-
 source.dir = .
 source.include_exts = py,kv,json,png,jpg,jpeg,atlas,wav,mp3,m4a,txt
 
@@ -26,7 +25,8 @@ orientation = portrait
 fullscreen = 0
 
 # Core permissions needed by M12 voice/network.
-# Timer permissions support notifications, vibration and exact alarms.
+# Timer/Clock/Calendar permissions support notifications,
+# vibration, wake locks and exact alarms.
 android.permissions = INTERNET,RECORD_AUDIO,READ_MEDIA_AUDIO,READ_MEDIA_VIDEO,READ_MEDIA_IMAGES,READ_CONTACTS,POST_NOTIFICATIONS,SCHEDULE_EXACT_ALARM,VIBRATE,WAKE_LOCK
 
 android.api = 35
@@ -37,6 +37,7 @@ android.archs = arm64-v8a
 # the Android Realtime PCM audio backend.
 p4a.bootstrap = sdl2
 p4a.branch = develop
+p4a.hook = tools/p4a_hooks.py
 
 # Compile M12 native Android Java sources.
 android.add_src = android_src
