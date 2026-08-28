@@ -35,6 +35,9 @@ public class TimerAlarmReceiver extends BroadcastReceiver {
 
     private static final int NOTIFICATION_ID = 12053;
 
+    // How long the Timer alarm sound and vibration run.
+    private static final int AUTO_STOP_MS = 14000;
+
     private static PowerManager.WakeLock wakeLock;
 
     @Override
@@ -258,15 +261,15 @@ public class TimerAlarmReceiver extends BroadcastReceiver {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 vibrator.vibrate(
                         VibrationEffect.createOneShot(
-                                7000,
+                                AUTO_STOP_MS,
                                 VibrationEffect.DEFAULT_AMPLITUDE
                         )
                 );
             } else {
-                vibrator.vibrate(7000);
+                vibrator.vibrate(AUTO_STOP_MS);
             }
 
-            Log.i(TAG, "VIBRATION STARTED FOR 7 SECONDS");
+            Log.i(TAG, "VIBRATION STARTED FOR " + AUTO_STOP_MS + " MS");
 
         } catch (Exception error) {
             Log.e(TAG, "Vibration failed", error);
@@ -338,7 +341,7 @@ public class TimerAlarmReceiver extends BroadcastReceiver {
              * well within Android's allowed execution window.
              */
             try {
-                Thread.sleep(7000);
+                Thread.sleep(AUTO_STOP_MS);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
             }
@@ -347,7 +350,7 @@ public class TimerAlarmReceiver extends BroadcastReceiver {
                 ringtone.stop();
             }
 
-            Log.i(TAG, "ALARM STOPPED AFTER 7 SECONDS");
+            Log.i(TAG, "ALARM STOPPED AFTER " + AUTO_STOP_MS + " MS");
 
         } catch (Exception error) {
             Log.e(TAG, "Alarm playback failed", error);

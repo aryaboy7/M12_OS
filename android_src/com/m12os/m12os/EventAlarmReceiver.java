@@ -32,6 +32,15 @@ public class EventAlarmReceiver extends BroadcastReceiver {
     private static final String CHANNEL_ID =
             "m12_event_notifications_v2";
 
+    // Event notification ID settings.
+    // Calendar uses multiple notification IDs so different events
+    // do not overwrite each other.
+    private static final int NOTIFICATION_ID_BASE = 22000;
+    private static final int NOTIFICATION_ID_RANGE = 10000;
+
+    // How long the event sound plays before stopping automatically.
+    private static final int AUTO_STOP_MS = 14000;
+
     private static Ringtone activeRingtone = null;
 
 
@@ -373,14 +382,14 @@ public class EventAlarmReceiver extends BroadcastReceiver {
         }
 
         int notificationId =
-                22000
+                NOTIFICATION_ID_BASE
                         + Math.abs(
                         (
                                 title
                                         + eventDateTime
                                         + action
                         ).hashCode()
-                ) % 10000;
+                ) % NOTIFICATION_ID_RANGE;
 
         manager.notify(
                 notificationId,
@@ -460,7 +469,7 @@ public class EventAlarmReceiver extends BroadcastReceiver {
                     Looper.getMainLooper()
             ).postDelayed(
                     EventAlarmReceiver::stopEventSound,
-                    7000
+                    AUTO_STOP_MS
             );
 
         } catch (Exception error) {

@@ -34,7 +34,7 @@ public class ClockAlarmReceiver extends BroadcastReceiver {
             "m12_clock_alarm_v1";
 
     private static final int NOTIFICATION_ID = 31001;
-    private static final int AUTO_STOP_MS = 7000;
+    private static final int AUTO_STOP_MS = 14000;
 
     private static Ringtone activeRingtone;
     private static PowerManager.WakeLock wakeLock;
