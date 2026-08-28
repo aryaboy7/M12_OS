@@ -21,7 +21,7 @@ def _next_occurrence(alarm, now=None):
     except (TypeError, ValueError):
         return None
 
-    repeat_mode = str(alarm.get("repeat_mode","once")).strip()
+    repeat_mode = str(alarm.get("repeat_mode", "once")).strip()
     days = list(alarm.get("days", []))
     until_text = str(alarm.get("until_date", "")).strip()
 
@@ -34,6 +34,82 @@ def _next_occurrence(alarm, now=None):
             ).date()
         except ValueError:
             until_date = None
+
+    if repeat_mode == "once":
+        # New alarms may carry an explicit date selected in the Clock UI.
+        # When present, schedule that exact date/time only.
+        once_date_text = str(alarm.get("date", "")).strip()
+
+        if once_date_text:
+            try:
+                once_date = datetime.strptime(
+                    once_date_text,
+                    "%Y-%m-%d",
+                ).date()
+            except ValueError:
+                return None
+
+            candidate = datetime.combine(
+                once_date,
+                datetime.min.time(),
+            ).replace(
+                hour=hour,
+                minute=minute,
+                second=0,
+                microsecond=0,
+            )
+
+            # An explicitly dated Once alarm never rolls itself forward.
+            # If that selected date/time has passed, it has no next occurrence.
+            if candidate <= now:
+                return None
+
+            return candidate
+
+        # Backward compatibility:
+        # old Once alarms have no explicit date and keep the original
+        # "next matching clock time" behavior below.
+
+    if repeat_mode == "yearly":
+        try:
+            yearly_month = int(alarm.get("yearly_month", 0))
+            yearly_day = int(alarm.get("yearly_day", 0))
+        except (TypeError, ValueError):
+            return None
+
+        if not (1 <= yearly_month <= 12):
+            return None
+        if not (1 <= yearly_day <= 31):
+            return None
+
+        # Search several years ahead so February 29 yearly alarms
+        # correctly advance to the next leap year.
+        for year in range(now.year, now.year + 9):
+            try:
+                candidate = datetime(
+                    year,
+                    yearly_month,
+                    yearly_day,
+                    hour,
+                    minute,
+                    0,
+                    0,
+                )
+            except ValueError:
+                continue
+
+            if candidate <= now:
+                continue
+
+            if (
+                until_date is not None
+                and candidate.date() > until_date
+            ):
+                return None
+
+            return candidate
+
+        return None
 
     # Look ahead far enough for all supported repeat modes.
     for offset in range(0, 370):
@@ -168,6 +244,14 @@ def _pending_intent(
                 str(item)
                 for item in alarm.get("days", [])
             ),
+        )
+        extras.putInt(
+            "yearly_month",
+            int(alarm.get("yearly_month", 0)),
+        )
+        extras.putInt(
+            "yearly_day",
+            int(alarm.get("yearly_day", 0)),
         )
         extras.putString(
             "until_date",

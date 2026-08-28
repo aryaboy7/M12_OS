@@ -550,8 +550,148 @@ public class ClockAlarmReceiver extends BroadcastReceiver {
                         "until_date"
                 );
 
+        int yearlyMonth =
+                sourceIntent.getIntExtra(
+                        "yearly_month",
+                        0
+                );
+
+        int yearlyDay =
+                sourceIntent.getIntExtra(
+                        "yearly_day",
+                        0
+                );
+
         Calendar now =
                 Calendar.getInstance();
+
+        if ("yearly".equals(repeatMode)) {
+            if (
+                    yearlyMonth < 1
+                    || yearlyMonth > 12
+                    || yearlyDay < 1
+                    || yearlyDay > 31
+            ) {
+                Log.w(
+                        TAG,
+                        "Invalid yearly date "
+                                + yearlyMonth
+                                + "/"
+                                + yearlyDay
+                );
+                return;
+            }
+
+            for (
+                    int yearOffset = 0;
+                    yearOffset <= 8;
+                    yearOffset++
+            ) {
+                int targetYear =
+                        now.get(Calendar.YEAR)
+                                + yearOffset;
+
+                Calendar candidate =
+                        Calendar.getInstance();
+
+                candidate.clear();
+                candidate.setLenient(false);
+
+                try {
+                    candidate.set(
+                            targetYear,
+                            yearlyMonth - 1,
+                            yearlyDay,
+                            hour,
+                            minute,
+                            0
+                    );
+
+                    candidate.set(
+                            Calendar.MILLISECOND,
+                            0
+                    );
+
+                    // Force validation for dates such as February 29.
+                    candidate.getTime();
+                } catch (Exception invalidDate) {
+                    continue;
+                }
+
+                if (
+                        candidate.getTimeInMillis()
+                                <= now.getTimeInMillis()
+                ) {
+                    continue;
+                }
+
+                if (
+                        !isBeforeUntil(
+                                candidate.getTime(),
+                                untilDate
+                        )
+                ) {
+                    Log.i(
+                            TAG,
+                            "NO NEXT ALARM: until date reached"
+                    );
+                    return;
+                }
+
+                try {
+                    scheduleNativeAlarm(
+                            context,
+                            candidate,
+                            requestCode,
+                            hour,
+                            minute,
+                            alarmName,
+                            repeatMode,
+                            days,
+                            yearlyMonth,
+                            yearlyDay,
+                            untilDate
+                    );
+
+                    Log.i(
+                            TAG,
+                            "NEXT ALARM SCHEDULED "
+                                    + formatCalendar(
+                                            candidate
+                                    )
+                                    + " repeat=yearly"
+                                    + " name="
+                                    + alarmName
+                    );
+                } catch (Exception error) {
+                    Log.e(
+                            TAG,
+                            "Next yearly alarm schedule failed",
+                            error
+                    );
+                }
+
+                return;
+            }
+
+            Log.i(
+                    TAG,
+                    "NO NEXT YEARLY ALARM FOUND"
+            );
+            return;
+        }
+
+        if (
+                !"every_day".equals(repeatMode)
+                && !"days".equals(repeatMode)
+        ) {
+            Log.w(
+                    TAG,
+                    "Unknown repeat mode="
+                            + repeatMode
+            );
+            return;
+        }
 
         for (
                 int offset = 1;
@@ -609,18 +749,6 @@ public class ClockAlarmReceiver extends BroadcastReceiver {
                 continue;
             }
 
-            if (
-                    !"every_day".equals(repeatMode)
-                    && !"days".equals(repeatMode)
-            ) {
-                Log.w(
-                        TAG,
-                        "Unknown repeat mode="
-                                + repeatMode
-                );
-                return;
-            }
-
             try {
                 scheduleNativeAlarm(
                         context,
@@ -631,6 +759,8 @@ public class ClockAlarmReceiver extends BroadcastReceiver {
                         alarmName,
                         repeatMode,
                         days,
+                        yearlyMonth,
+                        yearlyDay,
                         untilDate
                 );
 
@@ -672,6 +802,8 @@ public class ClockAlarmReceiver extends BroadcastReceiver {
             String alarmName,
             String repeatMode,
             String days,
+            int yearlyMonth,
+            int yearlyDay,
             String untilDate
     ) {
         AlarmManager manager =
@@ -733,6 +865,16 @@ public class ClockAlarmReceiver extends BroadcastReceiver {
         nextIntent.putExtra(
                 "days",
                 days
+        );
+
+        nextIntent.putExtra(
+                "yearly_month",
+                yearlyMonth
+        );
+
+        nextIntent.putExtra(
+                "yearly_day",
+                yearlyDay
         );
 
         nextIntent.putExtra(

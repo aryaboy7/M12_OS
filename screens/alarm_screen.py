@@ -13,6 +13,7 @@ from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
+from kivy.uix.popup import Popup
 
 from utils.logger import log
 from utils.text_editor_popup import open_text_editor
@@ -299,6 +300,10 @@ class AlarmScreen(Screen):
         self.enabled = True
         self.repeat_mode = "once"
         self.days = []
+        now = datetime.now()
+        self.once_date = now.strftime("%Y-%m-%d")
+        self.yearly_month = now.month
+        self.yearly_day = now.day
         self.until_date = ""
 
         root = BoxLayout(
@@ -420,85 +425,28 @@ class AlarmScreen(Screen):
         self.once_btn = self.make_button("Once", self.set_once)
         self.every_btn = self.make_button("Every Day", self.set_every_day)
         self.days_btn = self.make_button("Days", self.set_days_mode)
+        self.yearly_btn = self.make_button("Yearly", self.set_yearly_mode)
 
         repeat_row.add_widget(self.once_btn)
         repeat_row.add_widget(self.every_btn)
         repeat_row.add_widget(self.days_btn)
+        repeat_row.add_widget(self.yearly_btn)
         root.add_widget(repeat_row)
 
-        days_row = BoxLayout(
+        # Only the controls needed by the selected repeat mode are shown.
+        self.repeat_options_box = BoxLayout(
+            orientation="vertical",
             size_hint=(1, None),
-            height=alarm_button_height(),
-            spacing=spacing_size()
+            height=0,
+            spacing=spacing_size(),
         )
-        self.day_buttons = {}
-
-        for day in DAY_NAMES:
-            btn = Button(
-                text=day,
-                font_size=max(12, int(day_button_font() * 0.82)),
-                background_normal="",
-                background_color=(0.10, 0.15, 0.25, 1)
-            )
-            btn.bind(on_press=lambda instance, d=day: self.toggle_day(d))
-            self.day_buttons[day] = btn
-            days_row.add_widget(btn)
-
-        root.add_widget(days_row)
-
-        root.add_widget(Label(
-            text="Repeat Until   None = Forever",
-            font_size=status_font(),
-            size_hint=(1, alarm_label_hint())
-        ))
-
-        month_row = BoxLayout(
-            size_hint=(1, None),
-            height=alarm_button_height(),
-            spacing=spacing_size()
-        )
-        month_row.add_widget(self.make_button("- Month", lambda x: self.change_until_month(-1)))
-        self.until_month_label = Label(text="None", font_size=max(12, int(alarm_small_label_font() * 0.78)))
-        month_row.add_widget(self.until_month_label)
-        month_row.add_widget(self.make_button("+ Month", lambda x: self.change_until_month(1)))
-        root.add_widget(month_row)
-
-        day_row = BoxLayout(
-            size_hint=(1, None),
-            height=alarm_button_height(),
-            spacing=spacing_size()
-        )
-        day_row.add_widget(self.make_button("- Day", lambda x: self.change_until_day(-1)))
-        self.until_day_label = Label(text="--", font_size=max(12, int(alarm_small_label_font() * 0.78)))
-        day_row.add_widget(self.until_day_label)
-        day_row.add_widget(self.make_button("+ Day", lambda x: self.change_until_day(1)))
-        root.add_widget(day_row)
-
-        year_row = BoxLayout(
-            size_hint=(1, None),
-            height=alarm_button_height(),
-            spacing=spacing_size()
-        )
-        year_row.add_widget(self.make_button("- Year", lambda x: self.change_until_year(-1)))
-        self.until_year_label = Label(text="----", font_size=max(12, int(alarm_small_label_font() * 0.78)))
-        year_row.add_widget(self.until_year_label)
-        year_row.add_widget(self.make_button("+ Year", lambda x: self.change_until_year(1)))
-        root.add_widget(year_row)
+        root.add_widget(self.repeat_options_box)
 
         action_row = BoxLayout(
             size_hint=(1, None),
             height=alarm_main_button_height(),
             spacing=spacing_size()
         )
-
-        clear_until_btn = Button(
-            text="Clear Until",
-            font_size=alarm_control_font(),
-            background_normal="",
-            background_color=(0.35, 0.15, 0.15, 1)
-        )
-        clear_until_btn.bind(on_press=self.clear_until)
-        action_row.add_widget(clear_until_btn)
 
         save_btn = Button(
             text="Save",
@@ -625,6 +573,8 @@ class AlarmScreen(Screen):
 
     def set_once(self, instance):
         self.repeat_mode = "once"
+        if not self.once_date:
+            self.once_date = datetime.now().strftime("%Y-%m-%d")
         self.update_repeat_buttons()
 
     def set_every_day(self, instance):
@@ -634,6 +584,11 @@ class AlarmScreen(Screen):
 
     def set_days_mode(self, instance):
         self.repeat_mode = "days"
+        self.update_repeat_buttons()
+
+    def set_yearly_mode(self, instance):
+        self.repeat_mode = "yearly"
+        self.days = []
         self.update_repeat_buttons()
 
     def toggle_day(self, day):
@@ -653,21 +608,247 @@ class AlarmScreen(Screen):
         self.once_btn.background_color = on if self.repeat_mode == "once" else off
         self.every_btn.background_color = on if self.repeat_mode == "every_day" else off
         self.days_btn.background_color = on if self.repeat_mode == "days" else off
+        self.yearly_btn.background_color = on if self.repeat_mode == "yearly" else off
 
-        for day, btn in self.day_buttons.items():
-            btn.background_color = on if day in self.days else (0.10, 0.15, 0.25, 1)
+        self.rebuild_repeat_options()
 
-    def ensure_until_date(self):
-        if not self.until_date:
-            self.until_date = datetime.now().strftime("%Y-%m-%d")
+    def rebuild_repeat_options(self):
+        if not hasattr(self, "repeat_options_box"):
+            return
 
-    def get_until_dt(self):
-        self.ensure_until_date()
-        return datetime.strptime(self.until_date, "%Y-%m-%d")
+        self.repeat_options_box.clear_widgets()
+        row_height_value = alarm_button_height()
 
-    def set_until_dt(self, dt):
-        self.until_date = dt.strftime("%Y-%m-%d")
-        self.update_until_label()
+        if self.repeat_mode == "days":
+            days_row = BoxLayout(
+                size_hint=(1, None),
+                height=row_height_value,
+                spacing=spacing_size(),
+            )
+            self.day_buttons = {}
+
+            off = (0.10, 0.15, 0.25, 1)
+            on = (0.10, 0.45, 0.20, 1)
+
+            for day in DAY_NAMES:
+                btn = Button(
+                    text=day,
+                    font_size=max(12, int(day_button_font() * 0.82)),
+                    background_normal="",
+                    background_color=on if day in self.days else off,
+                )
+                btn.bind(
+                    on_press=lambda instance, d=day: self.toggle_day(d)
+                )
+                self.day_buttons[day] = btn
+                days_row.add_widget(btn)
+
+            self.repeat_options_box.add_widget(days_row)
+            self.repeat_options_box.height = row_height_value
+            return
+
+        if self.repeat_mode in ("once", "yearly"):
+            date_row = BoxLayout(
+                size_hint=(1, None),
+                height=row_height_value,
+                spacing=spacing_size(),
+            )
+
+            label_text = "Date" if self.repeat_mode == "once" else "Yearly Date"
+            date_row.add_widget(
+                Label(
+                    text=label_text,
+                    font_size=alarm_small_label_font(),
+                    size_hint_x=0.32,
+                )
+            )
+
+            date_btn = Button(
+                text=self.selected_date_display(),
+                font_size=alarm_control_font(),
+                background_normal="",
+                background_color=(0.12, 0.20, 0.35, 1),
+                size_hint_x=0.68,
+            )
+            date_btn.bind(on_press=self.open_alarm_date_picker)
+            date_row.add_widget(date_btn)
+
+            self.repeat_options_box.add_widget(date_row)
+            self.repeat_options_box.height = row_height_value
+            return
+
+        # Every Day needs no additional controls.
+        self.repeat_options_box.height = 0
+
+    def selected_date_display(self):
+        if self.repeat_mode == "yearly":
+            try:
+                return datetime(
+                    2024,
+                    int(self.yearly_month),
+                    int(self.yearly_day),
+                ).strftime("%B %d")
+            except Exception:
+                return "Select Date"
+
+        try:
+            return datetime.strptime(
+                self.once_date,
+                "%Y-%m-%d",
+            ).strftime("%b %d, %Y")
+        except Exception:
+            return "Select Date"
+
+    def open_alarm_date_picker(self, instance=None):
+        if self.repeat_mode == "yearly":
+            # Use a leap year internally so February 29 can be selected.
+            current = datetime(
+                2024,
+                int(self.yearly_month),
+                int(self.yearly_day),
+            )
+            yearly = True
+        else:
+            try:
+                current = datetime.strptime(
+                    self.once_date,
+                    "%Y-%m-%d",
+                )
+            except Exception:
+                current = datetime.now()
+            yearly = False
+
+        values = {
+            "year": current.year,
+            "month": current.month,
+            "day": current.day,
+        }
+
+        box = BoxLayout(
+            orientation="vertical",
+            spacing=spacing_size(),
+            padding=padding_size(),
+        )
+
+        display = Label(
+            text=self.format_picker_date(values, yearly),
+            font_size=alarm_big_time_font(),
+            bold=True,
+            size_hint=(1, 0.18),
+        )
+        box.add_widget(display)
+
+        def refresh():
+            self.clamp_picker_day(values, yearly)
+            display.text = self.format_picker_date(values, yearly)
+
+        def add_row(label, key):
+            row = BoxLayout(
+                orientation="horizontal",
+                spacing=spacing_size(),
+                size_hint=(1, 0.20),
+            )
+
+            minus = self.make_button("-", lambda inst: None)
+            middle = Label(
+                text=label,
+                font_size=alarm_control_font(),
+                bold=True,
+            )
+            plus = self.make_button("+", lambda inst: None)
+
+            def dec(_instance):
+                values[key] -= 1
+
+                if key == "month" and values[key] < 1:
+                    values[key] = 12
+                    if not yearly:
+                        values["year"] -= 1
+
+                if key == "day" and values[key] < 1:
+                    values[key] = self.days_in_month(
+                        2024 if yearly else values["year"],
+                        values["month"],
+                    )
+
+                refresh()
+
+            def inc(_instance):
+                values[key] += 1
+
+                if key == "month" and values[key] > 12:
+                    values[key] = 1
+                    if not yearly:
+                        values["year"] += 1
+
+                max_day = self.days_in_month(
+                    2024 if yearly else values["year"],
+                    values["month"],
+                )
+                if key == "day" and values[key] > max_day:
+                    values[key] = 1
+
+                refresh()
+
+            minus.bind(on_press=dec)
+            plus.bind(on_press=inc)
+
+            row.add_widget(minus)
+            row.add_widget(middle)
+            row.add_widget(plus)
+            box.add_widget(row)
+
+        if not yearly:
+            add_row("Year", "year")
+
+        add_row("Month", "month")
+        add_row("Day", "day")
+
+        pop = Popup(
+            title="Pick Yearly Date" if yearly else "Pick Alarm Date",
+            content=box,
+            size_hint=(0.90, 0.78 if not yearly else 0.68),
+        )
+
+        buttons = BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint=(1, 0.18),
+        )
+
+        def today(_instance):
+            now = datetime.now()
+            values["year"] = 2024 if yearly else now.year
+            values["month"] = now.month
+            values["day"] = now.day
+            refresh()
+
+        def ok(_instance):
+            self.clamp_picker_day(values, yearly)
+
+            if yearly:
+                self.yearly_month = values["month"]
+                self.yearly_day = values["day"]
+            else:
+                self.once_date = (
+                    f"{values['year']:04}-"
+                    f"{values['month']:02}-"
+                    f"{values['day']:02}"
+                )
+
+            pop.dismiss()
+            self.rebuild_repeat_options()
+
+        buttons.add_widget(self.make_button("Today", today))
+        buttons.add_widget(self.make_button("OK", ok))
+        buttons.add_widget(
+            self.make_button(
+                "Cancel",
+                lambda inst: pop.dismiss(),
+            )
+        )
+        box.add_widget(buttons)
+        pop.open()
 
     def days_in_month(self, year, month):
         if month == 12:
@@ -675,66 +856,36 @@ class AlarmScreen(Screen):
         else:
             next_month = datetime(year, month + 1, 1)
 
-        this_month = datetime(year, month, 1)
-        return (next_month - this_month).days
+        return (next_month - datetime(year, month, 1)).days
 
-    def change_until_month(self, delta):
-        try:
-            dt = self.get_until_dt()
+    def clamp_picker_day(self, values, yearly=False):
+        year = 2024 if yearly else values["year"]
+        max_day = self.days_in_month(year, values["month"])
+        values["day"] = max(1, min(values["day"], max_day))
 
-            month = dt.month + delta
-            year = dt.year
-
-            if month < 1:
-                month = 12
-                year -= 1
-
-            if month > 12:
-                month = 1
-                year += 1
-
-            day = min(dt.day, self.days_in_month(year, month))
-            self.set_until_dt(dt.replace(year=year, month=month, day=day))
-
-        except Exception as e:
-            self.status_label.text = str(e)
-
-    def change_until_day(self, delta):
-        try:
-            dt = self.get_until_dt()
-            self.set_until_dt(dt + timedelta(days=delta))
-        except Exception as e:
-            self.status_label.text = str(e)
-
-    def change_until_year(self, delta):
-        try:
-            dt = self.get_until_dt()
-            year = dt.year + delta
-            day = min(dt.day, self.days_in_month(year, dt.month))
-            self.set_until_dt(dt.replace(year=year, day=day))
-        except Exception as e:
-            self.status_label.text = str(e)
-
-    def clear_until(self, instance):
-        self.until_date = ""
-        self.update_until_label()
-
-    def update_until_label(self):
-        if not self.until_date:
-            self.until_month_label.text = "None"
-            self.until_day_label.text = "--"
-            self.until_year_label.text = "----"
-            return
+    def format_picker_date(self, values, yearly=False):
+        year = 2024 if yearly else values["year"]
 
         try:
-            dt = datetime.strptime(self.until_date, "%Y-%m-%d")
-            self.until_month_label.text = dt.strftime("%b")
-            self.until_day_label.text = dt.strftime("%d")
-            self.until_year_label.text = dt.strftime("%Y")
+            dt = datetime(
+                year,
+                values["month"],
+                values["day"],
+            )
+            if yearly:
+                return dt.strftime("%A\n%B %d")
+            return dt.strftime("%A\n%B %d, %Y")
         except Exception:
-            self.until_month_label.text = "Err"
-            self.until_day_label.text = "--"
-            self.until_year_label.text = "----"
+            if yearly:
+                return (
+                    f"{values['month']:02}-"
+                    f"{values['day']:02}"
+                )
+            return (
+                f"{values['year']:04}-"
+                f"{values['month']:02}-"
+                f"{values['day']:02}"
+            )
 
     def alarm_to_state(self, alarm):
         self.alarm_name = str(
@@ -747,12 +898,19 @@ class AlarmScreen(Screen):
         self.enabled = bool(alarm.get("enabled", True))
         self.repeat_mode = alarm.get("repeat_mode", "once")
         self.days = list(alarm.get("days", []))
+        now = datetime.now()
+        self.once_date = str(alarm.get("date", "")).strip() or now.strftime("%Y-%m-%d")
+        self.yearly_month = int(alarm.get("yearly_month", now.month))
+        self.yearly_day = int(alarm.get("yearly_day", now.day))
         self.until_date = alarm.get("until_date", "")
+
+        self.yearly_month = max(1, min(self.yearly_month, 12))
+        max_day = self.days_in_month(2024, self.yearly_month)
+        self.yearly_day = max(1, min(self.yearly_day, max_day))
 
         self.update_alarm_label()
         self.update_enable_button()
         self.update_repeat_buttons()
-        self.update_until_label()
 
     def state_to_alarm(self):
         self.alarm_name = self.name_input.text.strip()
@@ -764,7 +922,10 @@ class AlarmScreen(Screen):
             "enabled": self.enabled,
             "repeat_mode": self.repeat_mode,
             "days": list(self.days),
-            "until_date": self.until_date,
+            "date": self.once_date if self.repeat_mode == "once" else "",
+            "yearly_month": int(self.yearly_month),
+            "yearly_day": int(self.yearly_day),
+            "until_date": "",
             "last_fired_date": "",
             "last_fired_time": ""
         }
@@ -778,17 +939,39 @@ class AlarmScreen(Screen):
         enabled = bool(alarm.get("enabled", False))
         repeat_mode = alarm.get("repeat_mode", "once")
         days = alarm.get("days", [])
-        until_date = alarm.get("until_date", "")
+        yearly_month = int(alarm.get("yearly_month", 1))
+        yearly_day = int(alarm.get("yearly_day", 1))
+        once_date = str(alarm.get("date", "")).strip()
 
         if repeat_mode == "every_day":
             repeat_text = "Every Day"
         elif repeat_mode == "days":
             repeat_text = " ".join(days) if days else "Days"
+        elif repeat_mode == "yearly":
+            try:
+                yearly_date = datetime(
+                    2024,
+                    yearly_month,
+                    yearly_day,
+                )
+                repeat_text = (
+                    "Yearly "
+                    + yearly_date.strftime("%b %d")
+                )
+            except ValueError:
+                repeat_text = "Yearly"
         else:
-            repeat_text = "Once"
+            if once_date:
+                try:
+                    repeat_text = "Once " + datetime.strptime(
+                        once_date,
+                        "%Y-%m-%d",
+                    ).strftime("%b %d, %Y")
+                except ValueError:
+                    repeat_text = "Once"
+            else:
+                repeat_text = "Once"
 
-        if until_date:
-            repeat_text += f" Until {until_date}"
 
         prefix = "ON" if enabled else "OFF"
         display_name = name or "Alarm"
@@ -845,12 +1028,15 @@ class AlarmScreen(Screen):
         self.enabled = True
         self.repeat_mode = "once"
         self.days = []
+        now = datetime.now()
+        self.once_date = now.strftime("%Y-%m-%d")
+        self.yearly_month = now.month
+        self.yearly_day = now.day
         self.until_date = ""
 
         self.update_alarm_label()
         self.update_enable_button()
         self.update_repeat_buttons()
-        self.update_until_label()
         self.rebuild_alarm_list()
 
         self.status_label.text = "New alarm. Set time and Save."
