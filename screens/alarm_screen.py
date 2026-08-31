@@ -293,6 +293,7 @@ class AlarmScreen(Screen):
 
         self.alarms = []
         self.selected_index = None
+        self.list_filter = "all"
 
         self.alarm_name = ""
         self.alarm_hour = 7
@@ -370,6 +371,30 @@ class AlarmScreen(Screen):
             size_hint=(1, alarm_big_time_hint())
         )
         root.add_widget(self.alarm_label)
+
+        filter_row = BoxLayout(
+            size_hint=(1, None),
+            height=alarm_button_height(),
+            spacing=spacing_size(),
+        )
+
+        self.all_filter_btn = self.make_button(
+            "All",
+            lambda instance: self.set_list_filter("all"),
+        )
+        self.today_filter_btn = self.make_button(
+            "Today",
+            lambda instance: self.set_list_filter("today"),
+        )
+        self.yearly_filter_btn = self.make_button(
+            "Yearly",
+            lambda instance: self.set_list_filter("yearly"),
+        )
+
+        filter_row.add_widget(self.all_filter_btn)
+        filter_row.add_widget(self.today_filter_btn)
+        filter_row.add_widget(self.yearly_filter_btn)
+        root.add_widget(filter_row)
 
         scroll = ScrollView(
             size_hint=(1, alarm_list_hint()),
@@ -981,8 +1006,82 @@ class AlarmScreen(Screen):
             f"{display_name}  {repeat_text}"
         )
 
+    def set_list_filter(self, filter_name):
+        if filter_name not in ("all", "today", "yearly"):
+            filter_name = "all"
+
+        self.list_filter = filter_name
+        self.update_filter_buttons()
+        self.rebuild_alarm_list()
+
+    def update_filter_buttons(self):
+        if not hasattr(self, "all_filter_btn"):
+            return
+
+        off = (0.12, 0.20, 0.35, 1)
+        on = (0.10, 0.45, 0.20, 1)
+
+        self.all_filter_btn.background_color = (
+            on if self.list_filter == "all" else off
+        )
+        self.today_filter_btn.background_color = (
+            on if self.list_filter == "today" else off
+        )
+        self.yearly_filter_btn.background_color = (
+            on if self.list_filter == "yearly" else off
+        )
+
+    def alarm_is_today(self, alarm, today=None):
+        if today is None:
+            today = datetime.now().date()
+
+        repeat_mode = str(
+            alarm.get("repeat_mode", "once")
+        ).strip()
+
+        if repeat_mode == "every_day":
+            return True
+
+        if repeat_mode == "days":
+            days = list(alarm.get("days", []))
+            return DAY_NAMES[today.weekday()] in days
+
+        if repeat_mode == "yearly":
+            try:
+                return (
+                    int(alarm.get("yearly_month", 0)) == today.month
+                    and int(alarm.get("yearly_day", 0)) == today.day
+                )
+            except (TypeError, ValueError):
+                return False
+
+        once_date = str(alarm.get("date", "")).strip()
+        if once_date:
+            try:
+                return (
+                    datetime.strptime(once_date, "%Y-%m-%d").date()
+                    == today
+                )
+            except ValueError:
+                return False
+
+        # Backward compatibility for legacy Once alarms without a date.
+        return True
+
+    def alarm_matches_filter(self, alarm):
+        if self.list_filter == "yearly":
+            return str(
+                alarm.get("repeat_mode", "once")
+            ).strip() == "yearly"
+
+        if self.list_filter == "today":
+            return self.alarm_is_today(alarm)
+
+        return True
+
     def rebuild_alarm_list(self):
         self.alarm_list.clear_widgets()
+        self.update_filter_buttons()
 
         if not self.alarms:
             self.alarm_list.add_widget(Label(
@@ -993,7 +1092,23 @@ class AlarmScreen(Screen):
             ))
             return
 
-        for index, alarm in enumerate(self.alarms):
+        visible_alarms = [
+            (index, alarm)
+            for index, alarm in enumerate(self.alarms)
+            if self.alarm_matches_filter(alarm)
+        ]
+
+        if not visible_alarms:
+            filter_name = self.list_filter.title()
+            self.alarm_list.add_widget(Label(
+                text=f"No {filter_name} alarms.",
+                font_size=alarm_list_font(),
+                size_hint_y=None,
+                height=alarm_list_row_height(),
+            ))
+            return
+
+        for index, alarm in visible_alarms:
             btn = Button(
                 text=self.alarm_summary(alarm),
                 font_size=alarm_list_font(),
