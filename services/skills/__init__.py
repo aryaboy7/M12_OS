@@ -5,6 +5,7 @@ from services.skills.contacts_skill import ContactsSkill
 from services.skills.context_skill import ContextSkill
 from services.skills.image_skill import ImageSkill
 from services.skills.music_skill import MusicSkill
+from services.skills.music_recognition_skill import MusicRecognitionSkill
 from services.skills.note_skill import NotesSkill
 from services.skills.reminder_skill import ReminderSkill
 from services.skills.stopwatch_skill import StopwatchSkill
@@ -33,6 +34,7 @@ def register_default_skills():
         ContextSkill,
         ImageSkill,
         MusicSkill,
+        MusicRecognitionSkill,
         NotesSkill,
         ReminderSkill,
         StopwatchSkill,

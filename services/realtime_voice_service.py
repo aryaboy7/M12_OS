@@ -1539,6 +1539,23 @@ class RealtimeVoiceService:
                 },
                 {
                     "type": "function",
+                    "name": "recognize_music",
+                    "description": (
+                        "Identify music that is currently audible around the "
+                        "M12 device. Use this tool when the user wants M12 to "
+                        "listen to an unknown song or piece of music and tell "
+                        "them its title or artist. Do not use this tool merely "
+                        "to report which local file the M12 Music player is "
+                        "already playing."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": False,
+                    },
+                },
+                {
+                    "type": "function",
                     "name": "control_timer",
                     "description": (
                         "Control the existing M12 Timer. Use this tool when the "
@@ -2157,6 +2174,10 @@ class RealtimeVoiceService:
             output = self._execute_show_images_tool(
                 raw_arguments
             )
+        elif name == "recognize_music":
+            output = self._execute_recognize_music_tool(
+                raw_arguments
+            )
         elif name == "control_timer":
             output = self._execute_control_timer_tool(
                 raw_arguments
@@ -2279,6 +2300,34 @@ class RealtimeVoiceService:
             result["seconds"] = seconds
 
         return result
+
+    def _execute_recognize_music_tool(
+        self,
+        raw_arguments,
+    ):
+        """Execute music recognition through M12 MusicRecognitionSkill."""
+        command = "__M12_RECOGNIZE_MUSIC__"
+
+        print(
+            "[Realtime] recognize_music requested"
+        )
+
+        handled, answer = self._route_local_request(
+            command
+        )
+
+        if not handled:
+            return {
+                "ok": False,
+                "error": (
+                    "M12 music recognition did not accept the request."
+                ),
+            }
+
+        return {
+            "ok": True,
+            "answer": str(answer or "").strip(),
+        }
 
     def _execute_show_images_tool(
         self,

@@ -64,8 +64,6 @@ class MusicSkill(BaseSkill):
             return 1.0
         if self._prefix_value(text, self.PLAY_PREFIXES) or self._prefix_value(text, self.SEARCH_PREFIXES):
             return 0.99
-        if any(word in text for word in ("music", "song", "track", "audio", "video", "favorite")):
-            return 0.86
         return 0.0
 
     def handle(self, message: str, context: Any) -> SkillResult:
