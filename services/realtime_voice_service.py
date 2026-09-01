@@ -1477,7 +1477,7 @@ class RealtimeVoiceService:
                 "type": "server_vad",
                 "threshold": 0.5,
                 "prefix_padding_ms": 300,
-                "silence_duration_ms": 650,
+                "silence_duration_ms": 1200,
                 "create_response": False,
                 "interrupt_response": True,
             },
@@ -1491,14 +1491,6 @@ class RealtimeVoiceService:
                     "gpt-4o-mini-transcribe"
                 ),
                 "language": self.language,
-                "prompt": (
-                    "Transcribe accurately in "
-                    + self.LANGUAGE_NAMES.get(
-                        self.language,
-                        self.language,
-                    )
-                    + "."
-                ),
             }
         else:
             input_configuration[
