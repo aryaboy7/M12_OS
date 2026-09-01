@@ -625,6 +625,102 @@ class RealtimeVoiceService:
             emit_status=True,
         )
 
+    def _acquire_android_wake_lock(
+        self,
+    ):
+        """
+        Keep Android CPU running while Realtime Voice is active.
+
+        PARTIAL_WAKE_LOCK allows the display to turn off while
+        preventing Android from suspending the Realtime session.
+        """
+        if not IS_ANDROID:
+            return
+
+        try:
+            wake_lock = getattr(
+                self,
+                "_wake_lock",
+                None,
+            )
+
+            if (
+                wake_lock is not None
+                and wake_lock.isHeld()
+            ):
+                return
+
+            from jnius import autoclass
+
+            PythonActivity = autoclass(
+                "org.kivy.android.PythonActivity"
+            )
+            Context = autoclass(
+                "android.content.Context"
+            )
+            PowerManager = autoclass(
+                "android.os.PowerManager"
+            )
+
+            activity = PythonActivity.mActivity
+
+            power_manager = (
+                activity.getSystemService(
+                    Context.POWER_SERVICE
+                )
+            )
+
+            wake_lock = power_manager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "M12OS:RealtimeVoice",
+            )
+
+            wake_lock.acquire()
+
+            self._wake_lock = wake_lock
+
+            print(
+                "[Realtime] Android wake lock acquired."
+            )
+
+        except Exception as error:
+            print(
+                "[Realtime] Android wake lock error: "
+                f"{type(error).__name__}: {error}"
+            )
+
+    def _release_android_wake_lock(
+        self,
+    ):
+        if not IS_ANDROID:
+            return
+
+        wake_lock = getattr(
+            self,
+            "_wake_lock",
+            None,
+        )
+
+        if wake_lock is None:
+            return
+
+        try:
+            if wake_lock.isHeld():
+                wake_lock.release()
+
+            print(
+                "[Realtime] Android wake lock released."
+            )
+
+        except Exception as error:
+            print(
+                "[Realtime] Android wake lock release error: "
+                f"{type(error).__name__}: {error}"
+            )
+
+        finally:
+            self._wake_lock = None
+
     def start(
         self,
         wait_until_ready=False,
@@ -715,6 +811,8 @@ class RealtimeVoiceService:
 
         self._clear_audio_queues()
 
+        self._acquire_android_wake_lock()
+
         # Mark the conversation active before starting audio threads.
         # The speaker worker checks this flag immediately; starting it
         # first caused the thread to exit before any audio arrived.
@@ -728,6 +826,7 @@ class RealtimeVoiceService:
             self._conversation_active.clear()
             self._stop_microphone()
             self._stop_speaker()
+            self._release_android_wake_lock()
             raise
 
         self._emit_status(
@@ -774,6 +873,9 @@ class RealtimeVoiceService:
             self._microphone_queue
         )
         self._user_transcript = ""
+
+        self._acquire_android_wake_lock()
+
         self._conversation_active.set()
 
         try:
@@ -784,6 +886,7 @@ class RealtimeVoiceService:
             self._conversation_active.clear()
             self._stop_microphone()
             self._stop_speaker()
+            self._release_android_wake_lock()
             raise
 
         self._emit_status(
@@ -809,6 +912,8 @@ class RealtimeVoiceService:
         self._stop_microphone()
         self._stop_speaker()
         self._clear_audio_queues()
+
+        self._release_android_wake_lock()
 
         # Drop all transient turn state when Voice is stopped. Conversation
         # memory remains intact, but the last local answer (for example a
