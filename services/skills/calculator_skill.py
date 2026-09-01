@@ -312,7 +312,11 @@ class CalculatorSkill(BaseSkill):
             return 1.0
 
         if any(
-            hint in text
+            re.search(
+                rf"(?<!\w){re.escape(hint)}(?!\w)",
+                text,
+                re.IGNORECASE,
+            )
             for hint in self.CALCULATOR_HINTS
         ):
             return 0.99
