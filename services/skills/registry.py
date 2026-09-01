@@ -360,6 +360,7 @@ class SkillRegistry:
         self,
         message,
         context,
+        excluded_skills=None,
     ):
         """
         Find and execute the best available skill.
@@ -374,6 +375,12 @@ class SkillRegistry:
         text = str(
             message or ""
         ).strip()
+
+        excluded = {
+            str(name).strip()
+            for name in (excluded_skills or ())
+            if str(name).strip()
+        }
 
         if not text:
             return SkillResult(
@@ -391,15 +398,32 @@ class SkillRegistry:
         # The second utterance goes directly back to ContactsSkill
         # without needing can_handle() to recognize a bare name.
         # ---------------------------------------------------------
-        followup_result = (
-            self._dispatch_pending_followup(
-                text,
-                context,
-            )
+        pending = self._get_pending_followup()
+
+        pending_skill_name = (
+            str(
+                pending.get(
+                    "skill_name",
+                    "",
+                )
+            ).strip()
+            if pending is not None
+            else ""
         )
 
-        if followup_result is not None:
-            return followup_result
+        if (
+            pending is not None
+            and pending_skill_name not in excluded
+        ):
+            followup_result = (
+                self._dispatch_pending_followup(
+                    text,
+                    context,
+                )
+            )
+
+            if followup_result is not None:
+                return followup_result
 
         with self._lock:
             skills = list(
@@ -412,6 +436,13 @@ class SkillRegistry:
         # Normal skill matching
         # ---------------------------------------------------------
         for skill in skills:
+            if str(skill.name).strip() in excluded:
+                print(
+                    "[SkillRegistry] Skipping excluded skill: "
+                    f"{skill.name}"
+                )
+                continue
+
             try:
                 confidence = float(
                     skill.can_handle(

@@ -3385,10 +3385,20 @@ class AIScreen(Screen):
 
         def run_local_router(dt):
             try:
+                excluded_skills = None
+
+                if not text.startswith(
+                    "__M12_IMAGE_SUBJECTS__:"
+                ):
+                    excluded_skills = {
+                        "image",
+                    }
+
                 handled, answer = (
                     self.ai_router.process_local(
                         message=text,
                         ai_screen=self,
+                        excluded_skills=excluded_skills,
                     )
                 )
 

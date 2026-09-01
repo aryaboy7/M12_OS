@@ -1305,12 +1305,23 @@ class AIRouter:
         self,
         message,
         ai_screen,
+        excluded_skills=None,
     ):
         original_message = str(message).strip()
 
         # Expose the complete SkillResult to AIScreen when a local
         # capability returns structured UI data such as an image.
         self.last_skill_result = None
+
+        excluded_skill_names = {
+            str(name).strip()
+            for name in (excluded_skills or ())
+            if str(name).strip()
+        }
+
+        image_excluded = (
+            "image" in excluded_skill_names
+        )
 
         context = M12Context(
             ai_screen=ai_screen,
@@ -1361,7 +1372,10 @@ class AIRouter:
             )
         )
 
-        if contextual_image_request:
+        if (
+            contextual_image_request
+            and not image_excluded
+        ):
             previous_answer = str(
                 self.last_assistant_answer
                 or ""
@@ -1418,6 +1432,7 @@ class AIRouter:
                 skill_result = self.skill_registry.dispatch(
                     message=semantic_command,
                     context=context,
+                    excluded_skills=excluded_skill_names,
                 )
 
                 if skill_result.handled:
@@ -1477,6 +1492,7 @@ class AIRouter:
             skill_result = self.skill_registry.dispatch(
                 message=original_message,
                 context=context,
+                excluded_skills=excluded_skill_names,
             )
 
             if skill_result.handled:
@@ -1496,6 +1512,7 @@ class AIRouter:
         skill_result = self.skill_registry.dispatch(
             message=original_message,
             context=context,
+            excluded_skills=excluded_skill_names,
         )
 
         if skill_result.handled:
