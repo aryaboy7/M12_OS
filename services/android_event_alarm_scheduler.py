@@ -49,6 +49,7 @@ def _android_classes():
         "ComponentName": autoclass("android.content.ComponentName"),
         "PendingIntent": autoclass("android.app.PendingIntent"),
         "AlarmManager": autoclass("android.app.AlarmManager"),
+        "Bundle": autoclass("android.os.Bundle"),
         "VERSION": autoclass("android.os.Build$VERSION"),
     }
 
@@ -89,6 +90,25 @@ def _next_occurrence(event, now=None):
         return base_dt if base_dt > now else None
 
     until = _until_date(event)
+
+    if repeat_mode == "yearly":
+        for year in range(now.year, now.year + 9):
+            try:
+                candidate = base_dt.replace(year=year)
+            except ValueError:
+                # February 29 waits for the next leap year.
+                continue
+
+            if candidate <= now:
+                continue
+
+            if until is not None and candidate.date() > until:
+                return None
+
+            return candidate
+
+        return None
+
     start_date = max(now.date(), base_dt.date())
 
     for offset in range(0, 370):
@@ -147,6 +167,7 @@ def _pending_intent(
     Intent = classes["Intent"]
     ComponentName = classes["ComponentName"]
     PendingIntent = classes["PendingIntent"]
+    Bundle = classes["Bundle"]
     VERSION = classes["VERSION"]
 
     component = ComponentName(
@@ -158,24 +179,90 @@ def _pending_intent(
     intent.setComponent(component)
     intent.setAction(action)
 
-    intent.putExtra(
+    # Use explicit Java types so recurrence metadata arrives
+    # correctly in EventAlarmReceiver.
+    extras = Bundle()
+
+    reminder = _normalize_reminder(
+        event.get("reminder", "None")
+    )
+    reminder_minutes = REMINDER_MINUTES.get(reminder)
+
+    days = event.get("days", [])
+    if not isinstance(days, list):
+        days = []
+
+    extras.putString(
         "event_title",
         str(event.get("title", "M12 Event")),
     )
-    intent.putExtra(
+
+    extras.putString(
         "event_notes",
         str(event.get("notes", "")),
     )
-    intent.putExtra(
+
+    extras.putString(
         "event_datetime",
         f"{event.get('date', '')} {event.get('time', '')}",
     )
-    intent.putExtra(
+
+    extras.putString(
         "event_reminder",
-        _normalize_reminder(event.get("reminder", "None")),
+        reminder,
     )
 
+    extras.putInt(
+        "event_reminder_minutes",
+        -1 if reminder_minutes is None else int(reminder_minutes),
+    )
+
+    extras.putString(
+        "event_date",
+        str(event.get("date", "")),
+    )
+
+    extras.putString(
+        "event_time",
+        str(event.get("time", "")),
+    )
+
+    extras.putString(
+        "repeat_mode",
+        str(event.get("repeat_mode", "once")),
+    )
+
+    extras.putString(
+        "days",
+        ",".join(str(item) for item in days),
+    )
+
+    extras.putString(
+        "until_date",
+        str(event.get("until_date", "")),
+    )
+
+    if action == ACTION_EVENT_REMINDER:
+        reminder_code = int(request_code)
+        time_code = int(request_code) + 1
+    else:
+        reminder_code = int(request_code) - 1
+        time_code = int(request_code)
+
+    extras.putInt(
+        "reminder_request_code",
+        reminder_code,
+    )
+
+    extras.putInt(
+        "time_request_code",
+        time_code,
+    )
+
+    intent.putExtras(extras)
+
     flags = PendingIntent.FLAG_UPDATE_CURRENT
+
     if VERSION.SDK_INT >= 23:
         flags |= PendingIntent.FLAG_IMMUTABLE
 
@@ -275,8 +362,11 @@ def schedule_android_event(event, index=0):
             event_time_pi,
         )
 
+        title = str(event.get("title", "Untitled Event"))
+
         print(
             "[EventAlarmScheduler] Scheduled EVENT_TIME "
+            f"title={title} "
             f"for {occurrence.isoformat()} request={time_code}"
         )
 
@@ -309,6 +399,7 @@ def schedule_android_event(event, index=0):
 
                 print(
                     "[EventAlarmScheduler] Scheduled EVENT_REMINDER "
+                    f"title={title} "
                     f"for {reminder_dt.isoformat()} "
                     f"({reminder}) request={reminder_code}"
                 )

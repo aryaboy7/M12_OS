@@ -36,12 +36,12 @@ from utils.text_editor_popup import open_text_editor
 try:
     from services.android_event_alarm_scheduler import (
         schedule_android_event,
+        sync_android_event_alarms,
         stop_native_event_sound as stop_android_event_sound,
     )
-    cancel_android_event = None
 except Exception:
     schedule_android_event = None
-    cancel_android_event = None
+    sync_android_event_alarms = None
     stop_android_event_sound = None
 
 
@@ -525,7 +525,26 @@ class CalendarScreen(Screen):
 
     def event_display_text(self, event):
         title = event.get("title", "Untitled Event")
-        dt = self.next_occurrence(event) or self.parse_event_datetime(event)
+
+        now = datetime.now()
+        today_occurrence = self.get_today_occurrence(event, now)
+        today_end = (
+            self.parse_event_end_datetime(event, today_occurrence)
+            if today_occurrence
+            else None
+        )
+
+        if (
+            today_occurrence
+            and today_end
+            and today_occurrence <= now < today_end
+        ):
+            # Keep displaying the current occurrence until it ends,
+            # even though the next recurring occurrence is already scheduled.
+            dt = today_occurrence
+        else:
+            dt = self.next_occurrence(event) or self.parse_event_datetime(event)
+
         end_dt = self.parse_event_end_datetime(event, dt) if dt else None
 
         if event.get("all_day", False):
@@ -557,7 +576,24 @@ class CalendarScreen(Screen):
             return (0.25, 0.45, 0.75, 1)
 
         now = datetime.now()
-        dt = self.next_occurrence(event) or self.parse_event_datetime(event)
+
+        today_occurrence = self.get_today_occurrence(event, now)
+        today_end = (
+            self.parse_event_end_datetime(event, today_occurrence)
+            if today_occurrence
+            else None
+        )
+
+        if (
+            today_occurrence
+            and today_end
+            and today_occurrence <= now < today_end
+        ):
+            # The current occurrence stays yellow until its end time.
+            dt = today_occurrence
+        else:
+            dt = self.next_occurrence(event) or self.parse_event_datetime(event)
+
         if not dt:
             return (0.10, 0.15, 0.25, 1)
 
@@ -773,14 +809,14 @@ class CalendarScreen(Screen):
 
         deleted = self.events.pop(self.selected_index)
 
-        if callable(cancel_android_event):
-            try:
-                cancel_android_event(deleted)
-            except Exception as error:
-                log.error(f"Calendar: native event cancel failed {error}")
-
         self.selected_index = None
         self.save_events()
+
+        if callable(sync_android_event_alarms):
+            try:
+                sync_android_event_alarms(self.events)
+            except Exception as error:
+                log.error(f"Calendar: native event sync failed {error}")
         log.info(f"Calendar: deleted {deleted.get('title')}")
         self.build_list_view()
 
@@ -815,6 +851,11 @@ class CalendarScreen(Screen):
 
         if not is_new:
             event = dict(self.events[index])
+
+        # A new event's default end time/date is generated automatically.
+        # If the user manually chooses an End Time, allow that choice to
+        # recalculate the automatically generated End Date.
+        self._end_auto_adjusted = bool(is_new)
 
         self.add_system_header(
             "Add Event" if is_new else "Edit Event"
@@ -1311,6 +1352,11 @@ class CalendarScreen(Screen):
                 self.end_date_input.text = end_dt.strftime("%Y-%m-%d")
                 self.end_time_input.text = end_dt.strftime("%H:%M")
 
+                # Remember that M12, not the user, moved the end.
+                # A later manual End Time choice may move the date
+                # back to the start date when that time is valid.
+                self._end_auto_adjusted = True
+
         except Exception:
             pass
 
@@ -1412,6 +1458,10 @@ class CalendarScreen(Screen):
             if target_input is self.date_input:
                 self.ensure_end_after_start()
 
+            elif target_input is self.end_date_input:
+                # The user explicitly chose the End Date.
+                self._end_auto_adjusted = False
+
             pop.dismiss()
 
         buttons.add_widget(self.make_btn("Today", today, fs=20))
@@ -1480,6 +1530,35 @@ class CalendarScreen(Screen):
             # end still occurs after the new start.
             if target_input is self.time_input:
                 self.ensure_end_after_start()
+
+            elif target_input is self.end_time_input:
+                # If M12 automatically moved End to the next day,
+                # a manual End Time selection should choose the
+                # earliest valid occurrence after Start.
+                if getattr(self, "_end_auto_adjusted", False):
+                    try:
+                        start_dt = datetime.strptime(
+                            f"{self.date_input.text.strip()} "
+                            f"{self.time_input.text.strip()}",
+                            "%Y-%m-%d %H:%M",
+                        )
+
+                        candidate = datetime.strptime(
+                            f"{self.date_input.text.strip()} "
+                            f"{target_input.text.strip()}",
+                            "%Y-%m-%d %H:%M",
+                        )
+
+                        if candidate <= start_dt:
+                            candidate += timedelta(days=1)
+
+                        self.end_date_input.text = (
+                            candidate.strftime("%Y-%m-%d")
+                        )
+                    except Exception:
+                        pass
+
+                self._end_auto_adjusted = False
 
             pop.dismiss()
 
@@ -1601,18 +1680,12 @@ class CalendarScreen(Screen):
         self.sort_events()
         self.save_events()
 
-        if callable(cancel_android_event) and old_event is not None:
+        if callable(sync_android_event_alarms):
             try:
-                cancel_android_event(old_event)
+                synced = sync_android_event_alarms(self.events)
+                log.info(f"Calendar: native events synced={synced}")
             except Exception as error:
-                log.error(f"Calendar: native old event cancel failed {error}")
-
-        if callable(schedule_android_event):
-            try:
-                scheduled = schedule_android_event(event)
-                log.info(f"Calendar: native event scheduled={scheduled}")
-            except Exception as error:
-                log.error(f"Calendar: native event schedule failed {error}")
+                log.error(f"Calendar: native event sync failed {error}")
 
         self.selected_index = None
         self.build_list_view()
