@@ -42,12 +42,17 @@ class TimeSkill(BaseSkill):
         "какое сегодня число",
     }
 
+    INTERNAL_TIME_COMMAND = "__m12_time__"
+
     def can_handle(self, message: str, context: Any) -> float:
         text = self._normalize(message)
         print(
             f"[TimeSkill] can_handle original={message!r} "
             f"normalized={text!r}"
         )
+
+        if text == self.INTERNAL_TIME_COMMAND:
+            return 1.0
 
         if text in self.TIME_PHRASES:
             return 0.98
@@ -71,6 +76,22 @@ class TimeSkill(BaseSkill):
             f"[TimeSkill] handle normalized={text!r} "
             f"now={now.isoformat(timespec='seconds')}"
         )
+
+        if text == self.INTERNAL_TIME_COMMAND:
+            return SkillResult(
+                handled=True,
+                answer=(
+                    "The current local device time is "
+                    f"{now.strftime('%I:%M %p').lstrip('0')}."
+                ),
+                confidence=1.0,
+                action="show_time",
+                data={
+                    "hour": now.hour,
+                    "minute": now.minute,
+                    "second": now.second,
+                },
+            )
 
         if text in self.TIME_PHRASES:
             return SkillResult(

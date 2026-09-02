@@ -124,6 +124,7 @@ class RealtimeVoiceService:
         on_speech_stopped=None,
         on_local_request=None,
         on_local_answer=None,
+        on_local_speech_done=None,
         on_error=None,
     ):
         settings = self.load_settings()
@@ -213,6 +214,7 @@ class RealtimeVoiceService:
         )
         self.on_local_request = on_local_request
         self.on_local_answer = on_local_answer
+        self.on_local_speech_done = on_local_speech_done
         self.on_error = on_error
 
         self._thread = None
@@ -624,6 +626,9 @@ class RealtimeVoiceService:
         self._apply_microphone_policy(
             emit_status=True,
         )
+
+        if was_local:
+            self._emit_local_speech_done()
 
     def _acquire_android_wake_lock(
         self,
@@ -1556,6 +1561,20 @@ class RealtimeVoiceService:
                 },
                 {
                     "type": "function",
+                    "name": "get_current_time",
+                    "description": (
+                        "Get the current local time from the M12 device. "
+                        "Use this tool whenever the user asks what time it is, "
+                        "regardless of the language or wording of the request."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": False,
+                    },
+                },
+                {
+                    "type": "function",
                     "name": "control_timer",
                     "description": (
                         "Control the existing M12 Timer. Use this tool when the "
@@ -1701,6 +1720,18 @@ class RealtimeVoiceService:
                             "audio",
                         ],
                         "instructions": instructions,
+                        "input": [
+                            {
+                                "type": "message",
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "input_text",
+                                        "text": message,
+                                    }
+                                ],
+                            }
+                        ],
                     },
                 }
             )
@@ -1963,35 +1994,16 @@ class RealtimeVoiceService:
                         transcript
                     )
 
-                    handled, answer = (
-                        self._route_local_request(
-                            transcript
-                        )
+                    # AI Mode is owned by OpenAI Realtime. Do not run the
+                    # legacy local skill router against natural-language
+                    # transcripts here. Realtime resolves intent and calls
+                    # structured M12 tools when device capabilities are needed.
+                    self._emit_status(
+                        "Realtime answering..."
                     )
-
-                    # Image display is an AI capability. If the legacy local
-                    # router recognizes an image request, do not execute that
-                    # result here; let Realtime resolve context and call the
-                    # structured show_images tool instead.
-                    if (
-                        handled
-                        and str(answer).strip().startswith(
-                            "__M12_IMAGE_SUBJECTS__:"
-                        )
-                    ):
-                        handled = False
-
-                    if handled:
-                        self._emit_local_answer(
-                            answer
-                        )
-                    else:
-                        self._emit_status(
-                            "Realtime answering..."
-                        )
-                        await self._create_response_once(
-                            connection
-                        )
+                    await self._create_response_once(
+                        connection
+                    )
 
             elif event_type == (
                 "response.function_call_arguments.done"
@@ -2102,10 +2114,14 @@ class RealtimeVoiceService:
                 if self._assistant_speaking.is_set():
                     self._schedule_microphone_resume_after_speaker()
                 else:
+                    was_local = self._local_speech_response
                     self._local_speech_response = False
                     self._apply_microphone_policy(
                         emit_status=True,
                     )
+
+                    if was_local:
+                        self._emit_local_speech_done()
 
                 if self._pending_tool_followup:
                     self._pending_tool_followup = False
@@ -2178,6 +2194,8 @@ class RealtimeVoiceService:
             output = self._execute_recognize_music_tool(
                 raw_arguments
             )
+        elif name == "get_current_time":
+            output = self._execute_get_current_time_tool()
         elif name == "control_timer":
             output = self._execute_control_timer_tool(
                 raw_arguments
@@ -2200,6 +2218,31 @@ class RealtimeVoiceService:
         )
 
         self._pending_tool_followup = True
+
+    def _execute_get_current_time_tool(
+        self,
+    ):
+        """Get current device time through M12 TimeSkill."""
+        command = "__M12_TIME__"
+
+        print(
+            "[Realtime] get_current_time requested"
+        )
+
+        handled, answer = self._route_local_request(
+            command
+        )
+
+        if not handled:
+            return {
+                "ok": False,
+                "error": "M12 TimeSkill did not accept the time request.",
+            }
+
+        return {
+            "ok": True,
+            "local_time": answer,
+        }
 
     def _execute_control_timer_tool(
         self,
@@ -2885,23 +2928,9 @@ class RealtimeVoiceService:
                 if not self._microphone_enabled.is_set():
                     continue
 
-                try:
-                    self._microphone_queue.put_nowait(
-                        audio_bytes
-                    )
-
-                except queue.Full:
-                    try:
-                        self._microphone_queue.get_nowait()
-                    except queue.Empty:
-                        pass
-
-                    try:
-                        self._microphone_queue.put_nowait(
-                            audio_bytes
-                        )
-                    except queue.Full:
-                        pass
+                self._queue_microphone_audio(
+                    audio_bytes
+                )
 
         except Exception as error:
             if (
@@ -3135,6 +3164,28 @@ class RealtimeVoiceService:
         except Exception:
             pass
 
+    def _queue_microphone_audio(
+        self,
+        audio_bytes,
+    ):
+        try:
+            self._microphone_queue.put_nowait(
+                audio_bytes
+            )
+
+        except queue.Full:
+            try:
+                self._microphone_queue.get_nowait()
+            except queue.Empty:
+                pass
+
+            try:
+                self._microphone_queue.put_nowait(
+                    audio_bytes
+                )
+            except queue.Full:
+                pass
+
     def _microphone_callback(
         self,
         indata,
@@ -3155,23 +3206,9 @@ class RealtimeVoiceService:
 
         audio_bytes = bytes(indata)
 
-        try:
-            self._microphone_queue.put_nowait(
-                audio_bytes
-            )
-
-        except queue.Full:
-            try:
-                self._microphone_queue.get_nowait()
-            except queue.Empty:
-                pass
-
-            try:
-                self._microphone_queue.put_nowait(
-                    audio_bytes
-                )
-            except queue.Full:
-                pass
+        self._queue_microphone_audio(
+            audio_bytes
+        )
 
     def _start_speaker(
         self,
@@ -3427,6 +3464,20 @@ class RealtimeVoiceService:
         print(
             f"\n[M12 LOCAL] {text}"
         )
+
+    def _emit_local_speech_done(
+        self,
+    ):
+        if self.on_local_speech_done is None:
+            return
+
+        try:
+            self.on_local_speech_done()
+        except Exception as error:
+            print(
+                "Realtime local speech done callback error: "
+                f"{type(error).__name__}: {error}"
+            )
 
     def _emit_status(
         self,

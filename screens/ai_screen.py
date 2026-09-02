@@ -3038,6 +3038,9 @@ class AIScreen(Screen):
                         on_local_answer=(
                             self.on_realtime_local_answer
                         ),
+                        on_local_speech_done=(
+                            self.on_realtime_local_speech_done
+                        ),
                         on_error=(
                             self.on_realtime_error
                         ),
@@ -3385,20 +3388,10 @@ class AIScreen(Screen):
 
         def run_local_router(dt):
             try:
-                excluded_skills = None
-
-                if not text.startswith(
-                    "__M12_IMAGE_SUBJECTS__:"
-                ):
-                    excluded_skills = {
-                        "image",
-                    }
-
                 handled, answer = (
                     self.ai_router.process_local(
                         message=text,
                         ai_screen=self,
-                        excluded_skills=excluded_skills,
                     )
                 )
 
@@ -3499,19 +3492,18 @@ class AIScreen(Screen):
         self,
         answer,
     ):
-        error_message = ""
-
         try:
-            if self.voice_service is None:
-                self.voice_service = VoiceService()
-                self.voice_service.set_transcription_language(
-                    self.voice_language,
-                    save=False,
+            service = self.realtime_voice_service
+
+            if service is None:
+                raise RuntimeError(
+                    "Realtime voice service is not available."
                 )
 
-            self.voice_service.speak_text(
+            service.speak_local_answer(
                 answer
             )
+            return
 
         except Exception as error:
             error_message = (
@@ -3529,22 +3521,21 @@ class AIScreen(Screen):
             0,
         )
 
+    def on_realtime_local_speech_done(
+        self,
+    ):
+        Clock.schedule_once(
+            lambda dt: self._finish_realtime_local_answer(
+                ""
+            ),
+            0,
+        )
+
     def _finish_realtime_local_answer(
         self,
         error_message="",
     ):
         self.realtime_local_speech_active = False
-        service = self.realtime_voice_service
-
-        if service is not None:
-            try:
-                service.resume_microphone_after_local_answer()
-            except Exception as error:
-                print(
-                    "Realtime microphone resume error: "
-                    f"{type(error).__name__}: {error}"
-                )
-
         if error_message:
             self.voice_status.text = (
                 "Local answer speech failed"
