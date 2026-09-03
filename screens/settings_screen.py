@@ -20,6 +20,7 @@ from kivy.graphics import Color, Rectangle
 
 from utils.config_manager import ConfigManager
 from services.api_key_manager import APIKeyManager
+from services.audd_key_manager import AudDKeyManager
 from utils.system_header import create_system_header
 from utils.logger import log
 from utils.text_editor_popup import open_text_editor
@@ -444,27 +445,27 @@ class SettingsScreen(Screen):
         )
         dashboard.add_widget(storage_card)
 
-        ai_key_configured = APIKeyManager.has_key()
+        openai_key_configured = APIKeyManager.has_key()
+        audd_key_configured = AudDKeyManager.has_key()
+        security_keys_configured = (
+            openai_key_configured and audd_key_configured
+        )
 
         ai_card = self.make_dashboard_card(
-            "AI Setup",
+            "Security Key Setup",
             (
-                "OpenAI access is configured"
-                if ai_key_configured
-                else "Configure OpenAI access"
+                "OpenAI and AudD keys configured"
+                if security_keys_configured
+                else "Configure API security keys"
             ),
             CARD,
         )
 
         self.add_dashboard_button(
             ai_card,
-            (
-                "Open AI Setup"
-                if ai_key_configured
-                else "Set Up AI"
-            ),
+            "Open Security Key Setup",
             self.build_ai_setup_view,
-            GREEN if ai_key_configured else ORANGE,
+            GREEN if security_keys_configured else ORANGE,
         )
         dashboard.add_widget(ai_card)
 
@@ -571,49 +572,40 @@ class SettingsScreen(Screen):
 
         self.add_system_header(
             root=root,
-            title="AI Setup",
+            title="Security Key Setup",
             back_callback=self.build_settings_view,
         )
 
-        configured = APIKeyManager.has_key()
-        source = APIKeyManager.key_source()
+        openai_configured = APIKeyManager.has_key()
+        audd_configured = AudDKeyManager.has_key()
 
-        self.ai_key_status = Label(
+        self.security_key_status = Label(
             text=(
-                "OpenAI access: CONFIGURED\n"
-                f"Source: {source}"
-                if configured
-                else (
-                    "OpenAI access: NOT CONFIGURED\n"
-                    "Enter a personal OpenAI API key below."
-                )
+                "OpenAI: "
+                + ("CONFIGURED" if openai_configured else "NOT CONFIGURED")
+                + "\nAudD: "
+                + ("CONFIGURED" if audd_configured else "NOT CONFIGURED")
             ),
             font_size=settings_text_font(),
-            color=(
-                (0.60, 1.00, 0.70, 1)
-                if configured
-                else (1.00, 0.78, 0.45, 1)
-            ),
+            color=(0.78, 0.88, 1, 1),
             size_hint=(1, 0.16),
             halign="center",
             valign="middle",
         )
-        self.ai_key_status.bind(
+        self.security_key_status.bind(
             size=lambda inst, val: setattr(
                 inst,
                 "text_size",
                 val,
             )
         )
-        root.add_widget(
-            self.ai_key_status
-        )
+        root.add_widget(self.security_key_status)
 
         description = Label(
             text=(
-                "The key is saved only in M12 private app storage. "
-                "It is not saved in config/ai_settings.json, "
-                "Git, or the APK source files."
+                "Paste one API key below, then choose which service "
+                "should save it. Keys are stored only in M12 private "
+                "application storage."
             ),
             font_size=settings_status_font(),
             color=(0.78, 0.88, 1, 1),
@@ -630,58 +622,30 @@ class SettingsScreen(Screen):
         )
         root.add_widget(description)
 
-        self.ai_key_input = self.make_text_input(
+        self.security_key_input = self.make_text_input(
             ""
         )
-        self.ai_key_input.hint_text = (
-            "Paste OpenAI API key"
-        )
-        self.ai_key_input.password = True
-        self.ai_key_input.password_mask = "*"
-        root.add_widget(
-            self.ai_key_input
-        )
+        self.security_key_input.hint_text = "Paste API key"
+        self.security_key_input.password = False
+        root.add_widget(self.security_key_input)
 
-        save_btn = self.make_button(
-            "Save OpenAI Key",
+        save_openai_btn = self.make_button(
+            "SAVE OpenAI Key",
             GREEN,
         )
-        save_btn.bind(
+        save_openai_btn.bind(
             on_press=self.save_ai_api_key
         )
-        root.add_widget(save_btn)
+        root.add_widget(save_openai_btn)
 
-        remove_btn = self.make_button(
-            "Remove Saved Key",
-            RED,
+        save_audd_btn = self.make_button(
+            "SAVE AudD Key",
+            GREEN,
         )
-        remove_btn.disabled = (
-            not APIKeyManager.load_private_key()
+        save_audd_btn.bind(
+            on_press=self.save_audd_api_key
         )
-        remove_btn.bind(
-            on_press=self.remove_ai_api_key
-        )
-        root.add_widget(remove_btn)
-
-        note = Label(
-            text=(
-                "Linux/macOS may continue using the "
-                "OPENAI_API_KEY environment variable."
-            ),
-            font_size=settings_status_font(),
-            color=(0.72, 0.82, 0.92, 1),
-            size_hint=(1, 0.12),
-            halign="center",
-            valign="middle",
-        )
-        note.bind(
-            size=lambda inst, val: setattr(
-                inst,
-                "text_size",
-                val,
-            )
-        )
-        root.add_widget(note)
+        root.add_widget(save_audd_btn)
 
         root.add_widget(
             BoxLayout(
@@ -691,19 +655,44 @@ class SettingsScreen(Screen):
 
         self.add_widget(root)
 
+    def _security_key_text(self):
+        return str(
+            self.security_key_input.text
+        ).strip()
+
+    def _refresh_security_key_status(self, message=None):
+        openai_state = (
+            "CONFIGURED"
+            if APIKeyManager.has_key()
+            else "NOT CONFIGURED"
+        )
+        audd_state = (
+            "CONFIGURED"
+            if AudDKeyManager.has_key()
+            else "NOT CONFIGURED"
+        )
+
+        status = (
+            f"OpenAI: {openai_state}\n"
+            f"AudD: {audd_state}"
+        )
+
+        if message:
+            status += f"\n{message}"
+
+        self.security_key_status.text = status
+
     def save_ai_api_key(
         self,
         instance=None,
     ):
-        key = str(
-            self.ai_key_input.text
-        ).strip()
+        key = self._security_key_text()
 
         if not key:
-            self.ai_key_status.text = (
-                "Enter an OpenAI API key first."
+            self.security_key_status.text = (
+                "Paste API key first."
             )
-            self.ai_key_status.color = (
+            self.security_key_status.color = (
                 1.00,
                 0.60,
                 0.45,
@@ -712,33 +701,28 @@ class SettingsScreen(Screen):
             return
 
         try:
-            APIKeyManager.save_api_key(
-                key
-            )
-
-            self.ai_key_input.text = ""
-            self.ai_key_status.text = (
-                "OpenAI access: CONFIGURED\n"
-                f"Source: {APIKeyManager.key_source()}"
-            )
-            self.ai_key_status.color = (
+            APIKeyManager.save_api_key(key)
+            self.security_key_input.text = ""
+            self.security_key_status.color = (
                 0.60,
                 1.00,
                 0.70,
                 1,
             )
-
+            self._refresh_security_key_status(
+                "OpenAI key saved."
+            )
             log.info(
                 "Settings: OpenAI API key saved "
                 "to private application storage"
             )
 
         except Exception as error:
-            self.ai_key_status.text = (
+            self.security_key_status.text = (
                 "Could not save OpenAI API key:\n"
                 f"{type(error).__name__}: {error}"
             )
-            self.ai_key_status.color = (
+            self.security_key_status.color = (
                 1.00,
                 0.45,
                 0.45,
@@ -749,46 +733,55 @@ class SettingsScreen(Screen):
                 f"{type(error).__name__}: {error}"
             )
 
-    def remove_ai_api_key(
+    def save_audd_api_key(
         self,
         instance=None,
     ):
-        try:
-            APIKeyManager.delete_api_key()
+        key = self._security_key_text()
 
-            self.ai_key_input.text = ""
-
-            if APIKeyManager.has_key():
-                self.ai_key_status.text = (
-                    "Private key removed.\n"
-                    f"Active source: {APIKeyManager.key_source()}"
-                )
-            else:
-                self.ai_key_status.text = (
-                    "OpenAI access: NOT CONFIGURED"
-                )
-
-            self.ai_key_status.color = (
+        if not key:
+            self.security_key_status.text = (
+                "Paste API key first."
+            )
+            self.security_key_status.color = (
                 1.00,
-                0.78,
+                0.60,
                 0.45,
                 1,
             )
+            return
 
+        try:
+            AudDKeyManager.save_token(key)
+            self.security_key_input.text = ""
+            self.security_key_status.color = (
+                0.60,
+                1.00,
+                0.70,
+                1,
+            )
+            self._refresh_security_key_status(
+                "AudD key saved."
+            )
             log.info(
-                "Settings: private OpenAI API key removed"
+                "Settings: AudD API key saved "
+                "to private application storage"
             )
 
         except Exception as error:
-            self.ai_key_status.text = (
-                "Could not remove OpenAI API key:\n"
+            self.security_key_status.text = (
+                "Could not save AudD API key:\n"
                 f"{type(error).__name__}: {error}"
             )
-            self.ai_key_status.color = (
+            self.security_key_status.color = (
                 1.00,
                 0.45,
                 0.45,
                 1,
+            )
+            log.error(
+                "Settings: AudD API key save failed: "
+                f"{type(error).__name__}: {error}"
             )
 
     def make_path_row(self, text):
