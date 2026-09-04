@@ -10,6 +10,7 @@ import ssl
 import certifi
 import threading
 import time
+import wave
 from pathlib import Path
 
 from kivy.utils import platform as kivy_platform
@@ -17,6 +18,7 @@ from openai import AsyncOpenAI
 
 from services.memory_manager import get_memory_manager
 from services.api_key_manager import APIKeyManager
+from services.music_recognition_service import MusicRecognitionService
 from utils.config_manager import ConfigManager
 
 
@@ -229,6 +231,11 @@ class RealtimeVoiceService:
         self._conversation_active = (
             threading.Event()
         )
+        # Keyboard and microphone requests share one Realtime connection.
+        # In text-input mode the Realtime speaker remains available, while
+        # normal microphone routing stays off except for an explicit Music
+        # Recognition sample.
+        self._text_input_mode = False
         self._assistant_speaking = (
             threading.Event()
         )
@@ -250,6 +257,26 @@ class RealtimeVoiceService:
         self._microphone_queue = queue.Queue(
             maxsize=200
         )
+
+        # Music Recognition uses the already-open Realtime microphone.
+        # While capture is active, consecutive microphone PCM is diverted
+        # from normal Realtime transcription into this exact 7-second sample.
+        self._music_recognition_lock = threading.Lock()
+        self._music_recognition_audio = bytearray()
+        self._music_recognition_target_bytes = (
+            SAMPLE_RATE
+            * CHANNELS
+            * SAMPLE_WIDTH
+            * 7
+        )
+        self._music_recognition_capture_active = False
+        self._music_recognition_request_active = False
+        self._music_recognition_waiting_for_ack = False
+        self._music_recognition_response_done = threading.Event()
+        self._music_recognition_capture_started = threading.Event()
+        self._music_recognition_capture_done = threading.Event()
+        self._music_recognition_worker = None
+
         self._speaker_queue = queue.Queue(
             maxsize=400
         )
@@ -458,6 +485,16 @@ class RealtimeVoiceService:
         ):
             return False
 
+        # A keyboard-only Realtime session must not listen to room audio.
+        # Music Recognition is the one deliberate exception: its existing
+        # microphone is enabled only while the fresh 7-second sample is
+        # actively being captured.
+        if (
+            self._text_input_mode
+            and not self._music_recognition_capture_active
+        ):
+            return False
+
         if self._local_speech_response:
             return False
 
@@ -623,9 +660,46 @@ class RealtimeVoiceService:
                 time.monotonic() + 1.0
             )
 
-        self._apply_microphone_policy(
-            emit_status=True,
-        )
+        start_music_capture = False
+
+        if was_local:
+            with self._music_recognition_lock:
+                if (
+                    self._music_recognition_request_active
+                    and self._music_recognition_waiting_for_ack
+                ):
+                    self._music_recognition_waiting_for_ack = False
+                    self._music_recognition_audio.clear()
+                    self._music_recognition_capture_done.clear()
+                    self._music_recognition_capture_active = True
+                    start_music_capture = True
+
+        if start_music_capture:
+            # Do not let any pre-capture microphone PCM reach Realtime.
+            self._drain_queue(
+                self._microphone_queue
+            )
+
+            self._emit_status(
+                "Recording sample..."
+            )
+            print(
+                "[Realtime] Recording sample..."
+            )
+            print(
+                "[Realtime] Listening for music: 7 seconds"
+            )
+
+            # Start the existing Realtime microphone with no status overwrite.
+            # Its callback now diverts PCM only to Music Recognition.
+            self._apply_microphone_policy(
+                emit_status=False,
+            )
+            self._music_recognition_capture_started.set()
+        else:
+            self._apply_microphone_policy(
+                emit_status=True,
+            )
 
         if was_local:
             self._emit_local_speech_done()
@@ -815,6 +889,7 @@ class RealtimeVoiceService:
             )
 
         self._clear_audio_queues()
+        self._text_input_mode = False
 
         self._acquire_android_wake_lock()
 
@@ -836,6 +911,48 @@ class RealtimeVoiceService:
 
         self._emit_status(
             "Realtime voice is listening."
+        )
+
+        return True
+
+    def start_text_session(
+        self,
+        timeout=20.0,
+    ):
+        """
+        Connect Realtime for keyboard input without normal room listening.
+
+        The same Realtime session, tools, speaker, and conversation context
+        are used for typed and spoken requests. The microphone stays off for
+        ordinary typed turns and is enabled only when Music Recognition
+        explicitly records its fresh 7-second sample.
+        """
+        if not self.start(
+            wait_until_ready=True,
+            timeout=timeout,
+        ):
+            raise RuntimeError(
+                "Realtime connection is not ready. "
+                f"{self._last_error}"
+            )
+
+        self._clear_audio_queues()
+        self._text_input_mode = True
+        self._conversation_active.set()
+
+        try:
+            self._start_speaker()
+            self._apply_microphone_policy()
+
+        except Exception:
+            self._conversation_active.clear()
+            self._text_input_mode = False
+            self._stop_microphone()
+            self._stop_speaker()
+            raise
+
+        self._emit_status(
+            "Realtime text is ready."
         )
 
         return True
@@ -880,6 +997,7 @@ class RealtimeVoiceService:
         self._user_transcript = ""
 
         self._acquire_android_wake_lock()
+        self._text_input_mode = False
 
         self._conversation_active.set()
 
@@ -905,6 +1023,7 @@ class RealtimeVoiceService:
         Stop microphone and speaker but keep WebSocket connected.
         """
         self._conversation_active.clear()
+        self._text_input_mode = False
         self._assistant_speaking.clear()
         self._local_speech_response = False
         self._echo_paused_microphone = False
@@ -983,6 +1102,7 @@ class RealtimeVoiceService:
         self,
     ):
         active = self.is_conversation_active
+        text_input_mode = bool(self._text_input_mode)
         self.stop()
         time.sleep(0.2)
         self.start(
@@ -991,7 +1111,10 @@ class RealtimeVoiceService:
         )
 
         if active:
-            self.start_conversation()
+            if text_input_mode:
+                self.start_text_session()
+            else:
+                self.start_conversation()
 
     def send_text(
         self,
@@ -1006,7 +1129,11 @@ class RealtimeVoiceService:
         if not message:
             return False
 
-        if not self.is_running:
+        if not self.is_conversation_active:
+            self.start_text_session(
+                timeout=timeout
+            )
+        elif not self.is_running:
             self.start(
                 wait_until_ready=True,
                 timeout=timeout,
@@ -1358,7 +1485,9 @@ class RealtimeVoiceService:
 
             if self._conversation_active.is_set():
                 self._emit_status(
-                    "Realtime voice is listening."
+                    "Realtime text is ready."
+                    if self._text_input_mode
+                    else "Realtime voice is listening."
                 )
 
             receiver_task = asyncio.create_task(
@@ -1547,11 +1676,21 @@ class RealtimeVoiceService:
                     "name": "recognize_music",
                     "description": (
                         "Identify music that is currently audible around the "
-                        "M12 device. Use this tool when the user wants M12 to "
-                        "listen to an unknown song or piece of music and tell "
-                        "them its title or artist. Do not use this tool merely "
-                        "to report which local file the M12 Music player is "
-                        "already playing."
+                        "M12 device by title or artist. Whenever the user's "
+                        "current request clearly asks to identify a song, piece "
+                        "of music, track, artist, or title from what is playing "
+                        "now, you MUST call this tool instead of answering the "
+                        "question directly. Natural, informal, grammatically "
+                        "imperfect, or imperfectly transcribed speech still "
+                        "qualifies when the music-identification meaning is "
+                        "clear. Do not infer music identification from a vague "
+                        "general question that has no clear music meaning. Call "
+                        "the tool immediately and silently; do not speak an "
+                        "acknowledgement, preamble, or explanation before the "
+                        "tool call. M12 will speak its own single listening "
+                        "acknowledgement after the tool call. Do not use this "
+                        "tool merely to report which local file the M12 Music "
+                        "player is already playing."
                     ),
                     "parameters": {
                         "type": "object",
@@ -1563,9 +1702,14 @@ class RealtimeVoiceService:
                     "type": "function",
                     "name": "get_current_time",
                     "description": (
-                        "Get the current local time from the M12 device. "
-                        "Use this tool whenever the user asks what time it is, "
-                        "regardless of the language or wording of the request."
+                        "Get the current local clock time from the M12 device. "
+                        "Call this tool only when the latest user request has "
+                        "current clock time itself as the primary information "
+                        "being requested. Do not infer a time request merely "
+                        "from the grammar or shape of the sentence, from vague "
+                        "references, or from earlier conversation context. If "
+                        "current clock time is not clearly the requested answer, "
+                        "do not call this tool."
                     ),
                     "parameters": {
                         "type": "object",
@@ -2111,6 +2255,23 @@ class RealtimeVoiceService:
             ):
                 self._response_in_progress = False
 
+                with self._music_recognition_lock:
+                    music_request_active = (
+                        self._music_recognition_request_active
+                    )
+                    music_waiting_for_ack = (
+                        self._music_recognition_waiting_for_ack
+                    )
+
+                if (
+                    music_request_active
+                    and not music_waiting_for_ack
+                    and not self._music_recognition_capture_started.is_set()
+                ):
+                    # The response that selected recognize_music is complete.
+                    # A separate local acknowledgement can now be spoken.
+                    self._music_recognition_response_done.set()
+
                 if self._assistant_speaking.is_set():
                     self._schedule_microphone_resume_after_speaker()
                 else:
@@ -2131,7 +2292,7 @@ class RealtimeVoiceService:
                     await self._create_response_once(
                         connection
                     )
-                else:
+                elif not music_request_active:
                     self._emit_status(
                         "Realtime ready."
                     )
@@ -2191,9 +2352,21 @@ class RealtimeVoiceService:
                 raw_arguments
             )
         elif name == "recognize_music":
-            output = self._execute_recognize_music_tool(
-                raw_arguments
+            started = self._start_music_recognition_tool(
+                connection=connection,
+                call_id=call_id,
+                raw_arguments=raw_arguments,
             )
+
+            if started:
+                # This tool call is completed later, after Ace's acknowledgement,
+                # the exact 7-second sample, and the AudD result.
+                return
+
+            output = {
+                "ok": False,
+                "error": "Music recognition is already running.",
+            }
         elif name == "get_current_time":
             output = self._execute_get_current_time_tool()
         elif name == "control_timer":
@@ -2344,33 +2517,254 @@ class RealtimeVoiceService:
 
         return result
 
-    def _execute_recognize_music_tool(
+    def _start_music_recognition_tool(
         self,
+        connection,
+        call_id,
         raw_arguments,
     ):
-        """Execute music recognition through M12 MusicRecognitionSkill."""
-        command = "__M12_RECOGNIZE_MUSIC__"
+        """Start one non-blocking Music Recognition workflow."""
+        del raw_arguments
+
+        with self._music_recognition_lock:
+            if self._music_recognition_request_active:
+                return False
+
+            self._music_recognition_request_active = True
+            self._music_recognition_waiting_for_ack = False
+            self._music_recognition_capture_active = False
+            self._music_recognition_audio.clear()
+
+        self._music_recognition_response_done.clear()
+        self._music_recognition_capture_started.clear()
+        self._music_recognition_capture_done.clear()
 
         print(
             "[Realtime] recognize_music requested"
         )
 
-        handled, answer = self._route_local_request(
-            command
+        worker = threading.Thread(
+            target=self._music_recognition_worker_main,
+            args=(
+                connection,
+                call_id,
+            ),
+            name="M12MusicRecognition",
+            daemon=True,
         )
+        self._music_recognition_worker = worker
+        worker.start()
+        return True
 
-        if not handled:
-            return {
+    def _music_recognition_worker_main(
+        self,
+        connection,
+        call_id,
+    ):
+        """
+        Run Music Recognition without blocking the Realtime receive loop.
+
+        Ace first speaks a short acknowledgement. When the speaker is
+        physically drained, the existing microphone records exactly 7 seconds
+        of consecutive 24 kHz mono PCM. Only then is the WAV sent to AudD.
+        """
+        output = None
+
+        try:
+            if not self._music_recognition_response_done.wait(
+                timeout=10.0
+            ):
+                raise RuntimeError(
+                    "Timed out waiting for the music tool response to finish."
+                )
+
+            if self._stop_event.is_set():
+                raise RuntimeError(
+                    "Realtime voice stopped before music recognition started."
+                )
+
+            with self._music_recognition_lock:
+                self._music_recognition_waiting_for_ack = True
+
+            if not self.speak_local_answer(
+                "Let me listen to the music."
+            ):
+                raise RuntimeError(
+                    "M12 could not speak the music-listening acknowledgement."
+                )
+
+            if not self._music_recognition_capture_started.wait(
+                timeout=30.0
+            ):
+                raise RuntimeError(
+                    "Timed out waiting for the microphone sample to start."
+                )
+
+            if not self._music_recognition_capture_done.wait(
+                timeout=12.0
+            ):
+                raise RuntimeError(
+                    "Timed out while recording the 7-second music sample."
+                )
+
+            with self._music_recognition_lock:
+                audio_bytes = bytes(
+                    self._music_recognition_audio[
+                        :self._music_recognition_target_bytes
+                    ]
+                )
+                self._music_recognition_capture_active = False
+
+            # The sample is complete. In Voice mode normal Realtime listening
+            # resumes. In keyboard-only mode the microphone is shut back off
+            # immediately while AudD processes the saved WAV.
+            self._apply_microphone_policy(
+                emit_status=False,
+            )
+            self._emit_status(
+                "Realtime text is ready."
+                if self._text_input_mode
+                else "Realtime voice is listening."
+            )
+
+            if len(audio_bytes) != self._music_recognition_target_bytes:
+                raise RuntimeError(
+                    "Music sample size is "
+                    f"{len(audio_bytes)} bytes; expected "
+                    f"{self._music_recognition_target_bytes}."
+                )
+
+            audio_path = (
+                MusicRecognitionService.DEFAULT_AUDIO_PATH
+            )
+            audio_path.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            with wave.open(
+                str(audio_path),
+                "wb",
+            ) as audio_file:
+                audio_file.setnchannels(CHANNELS)
+                audio_file.setsampwidth(SAMPLE_WIDTH)
+                audio_file.setframerate(SAMPLE_RATE)
+                audio_file.writeframes(audio_bytes)
+
+            print(
+                "[Realtime] Music recognition audio saved: "
+                f"{len(audio_bytes)} bytes"
+            )
+
+            handled, answer = self._route_local_request(
+                "__M12_RECOGNIZE_MUSIC__"
+            )
+
+            if not handled:
+                output = {
+                    "ok": False,
+                    "error": (
+                        "M12 music recognition did not accept the request."
+                    ),
+                }
+            else:
+                output = {
+                    "ok": True,
+                    "answer": str(answer or "").strip(),
+                }
+
+        except Exception as error:
+            print(
+                "[Realtime] Music recognition error: "
+                f"{type(error).__name__}: {error}"
+            )
+            output = {
                 "ok": False,
-                "error": (
-                    "M12 music recognition did not accept the request."
-                ),
+                "error": str(error),
             }
 
-        return {
-            "ok": True,
-            "answer": str(answer or "").strip(),
-        }
+        finally:
+            with self._music_recognition_lock:
+                self._music_recognition_capture_active = False
+                self._music_recognition_waiting_for_ack = False
+                self._music_recognition_request_active = False
+
+            if (
+                self.is_conversation_active
+                and self._microphone_enabled.is_set()
+            ):
+                self._emit_status(
+                    "Realtime voice is listening."
+                )
+
+        self._complete_music_recognition_tool(
+            connection=connection,
+            call_id=call_id,
+            output=output,
+        )
+
+    def _complete_music_recognition_tool(
+        self,
+        connection,
+        call_id,
+        output,
+    ):
+        """Return the completed Music Recognition result to Realtime."""
+        loop = self._loop
+
+        if (
+            loop is None
+            or not loop.is_running()
+            or self._stop_event.is_set()
+        ):
+            return
+
+        future = asyncio.run_coroutine_threadsafe(
+            self._send_music_recognition_tool_result(
+                connection=connection,
+                call_id=call_id,
+                output=output,
+            ),
+            loop,
+        )
+
+        def _report_completion_error(done_future):
+            try:
+                done_future.result()
+            except Exception as error:
+                print(
+                    "[Realtime] Music recognition completion error: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        future.add_done_callback(
+            _report_completion_error
+        )
+
+    async def _send_music_recognition_tool_result(
+        self,
+        connection,
+        call_id,
+        output,
+    ):
+        """Send Music Recognition output and request the final spoken answer."""
+        await connection.conversation.item.create(
+            item={
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": json.dumps(
+                    output,
+                    ensure_ascii=False,
+                ),
+            }
+        )
+
+        self._emit_status(
+            "Realtime answering..."
+        )
+        await self._create_response_once(
+            connection
+        )
 
     def _execute_show_images_tool(
         self,
@@ -3168,6 +3562,30 @@ class RealtimeVoiceService:
         self,
         audio_bytes,
     ):
+        audio_bytes = bytes(audio_bytes)
+
+        with self._music_recognition_lock:
+            if self._music_recognition_capture_active:
+                remaining = (
+                    self._music_recognition_target_bytes
+                    - len(self._music_recognition_audio)
+                )
+
+                if remaining > 0:
+                    self._music_recognition_audio.extend(
+                        audio_bytes[:remaining]
+                    )
+
+                if (
+                    len(self._music_recognition_audio)
+                    >= self._music_recognition_target_bytes
+                ):
+                    self._music_recognition_capture_done.set()
+
+                # During the sample, music PCM belongs only to Music
+                # Recognition. Do not send it to normal Realtime VAD/STT.
+                return
+
         try:
             self._microphone_queue.put_nowait(
                 audio_bytes

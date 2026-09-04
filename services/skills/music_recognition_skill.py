@@ -8,7 +8,7 @@ class MusicRecognitionSkill(BaseSkill):
     """
     Recognizes music audible through the M12 microphone.
 
-    Natural-language intent is resolved by the AI/Realtme layer.
+    Natural-language intent is resolved by the AI/Realtime layer.
     This skill handles only the internal structured command.
     """
 
@@ -33,6 +33,11 @@ class MusicRecognitionSkill(BaseSkill):
     ) -> SkillResult:
         result = self.service.recognize()
 
+        print(
+            "[MusicRecognition] result:",
+            result,
+        )
+
         if result.get("success"):
             title = str(result.get("title", "")).strip()
             artist = str(result.get("artist", "")).strip()
@@ -52,12 +57,53 @@ class MusicRecognitionSkill(BaseSkill):
                 data=result,
             )
 
+        status = str(
+            result.get("status", "")
+        ).strip()
+
+        if status == "not_configured":
+            answer = (
+                "Music recognition is not configured yet."
+            )
+
+        elif status == "not_recognized":
+            answer = (
+                "I couldn't identify that song. "
+                "Please try again while the music is playing clearly."
+            )
+
+        elif status == "audio_file_not_found":
+            answer = (
+                "I couldn't capture enough audio to identify the song."
+            )
+
+        elif status == "network_error":
+            answer = (
+                "I couldn't reach the music recognition service. "
+                "Please check the network connection and try again."
+            )
+
+        elif status == "http_error":
+            answer = (
+                "The music recognition service returned an error. "
+                "Please try again."
+            )
+
+        elif status == "provider_error":
+            answer = (
+                "The music recognition service could not process "
+                "the audio right now."
+            )
+
+        else:
+            answer = (
+                "I couldn't identify the song right now. "
+                "Please try again."
+            )
+
         return SkillResult(
             handled=True,
-            answer=(
-                "Music recognition is ready, "
-                "but the recognition provider is not configured yet."
-            ),
+            answer=answer,
             confidence=1.0,
             action="recognize_music",
             data=result,

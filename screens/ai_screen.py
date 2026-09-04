@@ -1,4 +1,5 @@
 import json
+import math
 import base64
 import queue
 import re
@@ -17,6 +18,7 @@ import certifi
 
 from kivy.clock import Clock
 from kivy.core.clipboard import Clipboard
+from kivy.graphics import Color, Ellipse, RoundedRectangle
 from kivy.utils import escape_markup
 
 from kivy.uix.boxlayout import BoxLayout
@@ -28,6 +30,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
+from kivy.uix.widget import Widget
 
 from services.ai_actions import AIActions
 from services.ai_router import AIRouter
@@ -48,6 +51,116 @@ VOICE_LANGUAGES = (
 )
 
 
+class _RecordingMeter(Widget):
+    """Modern 12-dot circular activity indicator for music recording."""
+
+    DOT_COUNT = 12
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._phase = 0
+        self._dot_colors = []
+        self._dots = []
+
+        with self.canvas:
+            for index in range(self.DOT_COUNT):
+                dot_color = Color(
+                    0.92,
+                    0.96,
+                    1.0,
+                    0.16,
+                )
+                dot = Ellipse(
+                    pos=(0, 0),
+                    size=(1, 1),
+                )
+                self._dot_colors.append(dot_color)
+                self._dots.append(dot)
+
+        self.bind(
+            pos=self._update_spinner_geometry,
+            size=self._update_spinner_geometry,
+        )
+        Clock.schedule_once(
+            self._update_spinner_geometry,
+            0,
+        )
+        self._update_dot_brightness()
+
+    def _update_spinner_geometry(
+        self,
+        *args,
+    ):
+        radius = max(
+            height(24),
+            min(
+                self.width,
+                self.height,
+                height(92),
+            ) * 0.34,
+        )
+
+        dot_size = max(
+            height(7),
+            radius * 0.18,
+        )
+
+        center_x = self.center_x
+        center_y = self.center_y
+
+        for index, dot in enumerate(self._dots):
+            angle = math.radians(
+                90.0 - (360.0 * index / self.DOT_COUNT)
+            )
+            dot_center_x = center_x + radius * math.cos(angle)
+            dot_center_y = center_y + radius * math.sin(angle)
+
+            dot.size = (
+                dot_size,
+                dot_size,
+            )
+            dot.pos = (
+                dot_center_x - dot_size / 2.0,
+                dot_center_y - dot_size / 2.0,
+            )
+
+    def _update_dot_brightness(
+        self,
+    ):
+        alpha_tail = (
+            1.00,
+            0.78,
+            0.60,
+            0.46,
+            0.34,
+            0.26,
+            0.20,
+            0.16,
+            0.13,
+            0.11,
+            0.10,
+            0.09,
+        )
+
+        for index, dot_color in enumerate(self._dot_colors):
+            distance = (
+                index - self._phase
+            ) % self.DOT_COUNT
+            dot_color.rgba = (
+                0.92,
+                0.96,
+                1.0,
+                alpha_tail[distance],
+            )
+
+    def advance(
+        self,
+    ):
+        self._phase = (
+            self._phase + 1
+        ) % self.DOT_COUNT
+        self._update_dot_brightness()
+
 
 class AIScreen(Screen):
     def __init__(self, **kwargs):
@@ -65,6 +178,16 @@ class AIScreen(Screen):
         self.realtime_answer_active = False
         self.realtime_answer_text = ""
         self.realtime_local_speech_active = False
+        self.realtime_typed_request_active = False
+
+        # Temporary Music Recognition recording popup.
+        # This is UI-only state; the 7-second audio capture remains owned by
+        # RealtimeVoiceService.
+        self._music_recording_popup = None
+        self._music_recording_meter_widget = None
+        self._music_recording_meter_event = None
+        self._music_recording_close_event = None
+
         self.session_memory = get_ai_session_memory()
 
         self.voice_is_busy = False
@@ -3107,6 +3230,8 @@ class AIScreen(Screen):
         self.realtime_answer_active = False
         self.realtime_answer_text = ""
         self.realtime_local_speech_active = False
+        self.realtime_typed_request_active = False
+        self.ai_is_busy = False
 
         # Contacts and other local skills are spoken through VoiceService,
         # so stopping Realtime alone is not enough.
@@ -3170,6 +3295,8 @@ class AIScreen(Screen):
         if "response_cancel_not_active" in message:
             self.realtime_answer_active = False
             self.realtime_answer_text = ""
+            self.realtime_typed_request_active = False
+            self.ai_is_busy = False
 
             if self.realtime_voice_active:
                 self.voice_btn.text = "Stop Voice"
@@ -3184,6 +3311,8 @@ class AIScreen(Screen):
             return
 
         self.realtime_voice_active = False
+        self.realtime_typed_request_active = False
+        self.ai_is_busy = False
         self.voice_btn.text = "Voice"
         self.voice_status.text = (
             f"Realtime error: {message}"
@@ -3205,10 +3334,160 @@ class AIScreen(Screen):
         self,
         message,
     ):
+        status_text = str(message or "").strip()
+
+        if (
+            status_text.lower()
+            == "recording sample..."
+        ):
+            self._show_music_recording_popup()
+
         if self.realtime_voice_active:
-            self.voice_status.text = str(
-                message
+            self.voice_status.text = status_text
+
+    def _show_music_recording_popup(
+        self,
+    ):
+        """Show a temporary recording meter while the 7-second sample records."""
+        self._hide_music_recording_popup()
+
+        content = BoxLayout(
+            orientation="vertical",
+            padding=height(18),
+            spacing=height(10),
+        )
+
+        self._music_recording_meter_widget = _RecordingMeter(
+            size_hint=(1, 0.62),
+        )
+
+        recording_label = Label(
+            text="Recording Sample",
+            font_size=font(20),
+            bold=True,
+            size_hint=(1, 0.38),
+            halign="center",
+            valign="middle",
+        )
+        recording_label.bind(
+            size=lambda instance, value: setattr(
+                instance,
+                "text_size",
+                value,
             )
+        )
+
+        content.add_widget(
+            self._music_recording_meter_widget
+        )
+        content.add_widget(
+            recording_label
+        )
+
+        # Draw the recording indicator directly on the AI screen. This avoids
+        # Popup/ModalView theme images, which can appear as a missing-texture X
+        # on some Kivy installations.
+        content.size_hint = (0.42, 0.24)
+        content.pos_hint = {
+            "center_x": 0.5,
+            "center_y": 0.56,
+        }
+
+        with content.canvas.before:
+            panel_color = Color(
+                0.06,
+                0.08,
+                0.12,
+                0.96,
+            )
+            panel_rect = RoundedRectangle(
+                pos=content.pos,
+                size=content.size,
+                radius=[height(18)],
+            )
+
+        content.bind(
+            pos=lambda instance, value, rect=panel_rect: setattr(
+                rect,
+                "pos",
+                value,
+            ),
+            size=lambda instance, value, rect=panel_rect: setattr(
+                rect,
+                "size",
+                value,
+            ),
+        )
+
+        content._m12_recording_panel_color = panel_color
+        content._m12_recording_panel_rect = panel_rect
+
+        self._music_recording_popup = content
+        self.add_widget(content)
+
+        self._music_recording_meter_event = (
+            Clock.schedule_interval(
+                self._advance_music_recording_meter,
+                1.0 / 60.0,
+            )
+        )
+
+        # RealtimeVoiceService owns the actual 7-second capture. Keep this
+        # popup independent from later status messages so it cannot disappear
+        # early when the normal listening status is emitted during capture.
+        self._music_recording_close_event = (
+            Clock.schedule_once(
+                self._hide_music_recording_popup,
+                7.0,
+            )
+        )
+
+    def _advance_music_recording_meter(
+        self,
+        dt=0,
+    ):
+        spinner = self._music_recording_meter_widget
+
+        if spinner is None:
+            return False
+
+        spinner.advance()
+        return True
+
+    def _hide_music_recording_popup(
+        self,
+        dt=0,
+    ):
+        spinner_event = self._music_recording_meter_event
+        self._music_recording_meter_event = None
+
+        if spinner_event is not None:
+            try:
+                spinner_event.cancel()
+            except Exception:
+                pass
+
+        close_event = self._music_recording_close_event
+        self._music_recording_close_event = None
+
+        if close_event is not None:
+            try:
+                close_event.cancel()
+            except Exception:
+                pass
+
+        panel = self._music_recording_popup
+        self._music_recording_popup = None
+        self._music_recording_meter_widget = None
+
+        if panel is not None:
+            try:
+                if panel.parent is self:
+                    self.remove_widget(panel)
+            except Exception:
+                pass
+
+        return False
 
     def on_realtime_user_transcript(
         self,
@@ -3615,10 +3894,19 @@ class AIScreen(Screen):
         self.realtime_answer_active = False
         self.realtime_answer_text = ""
 
+        if self.realtime_typed_request_active:
+            self.realtime_typed_request_active = False
+            self.ai_is_busy = False
+            self.set_controls_enabled(True)
+
         if self.realtime_voice_active:
+            self.voice_btn.text = "Stop Voice"
             self.voice_status.text = (
                 "Realtime connected — listening"
             )
+        else:
+            self.voice_btn.text = "Voice"
+            self.voice_status.text = "AI Mode"
 
     def on_realtime_speech_started(
         self,
@@ -4137,7 +4425,25 @@ class AIScreen(Screen):
                 self.voice_status.text = "AI Mode"
                 return
 
-        # Not handled locally: send the request to OpenAI.
+        # One AI channel for both keyboard and microphone input.
+        # Typed local device commands were already checked above. Every other
+        # typed AI request now enters the same tool-capable Realtime session
+        # used by spoken requests, even when the Voice button was never
+        # started. RealtimeVoiceService keeps the normal microphone off for
+        # keyboard-only turns and enables it only for an explicit Music
+        # Recognition sample.
+        if source == "typed":
+            self.realtime_typed_request_active = True
+            self.voice_status.text = "Realtime answering..."
+
+            threading.Thread(
+                target=self._send_typed_realtime_request_worker,
+                args=(user_message,),
+                daemon=True,
+            ).start()
+            return
+
+        # Legacy non-Realtime path retained only for non-typed callers.
         self.show_ai_screen_for_question()
 
         # Create an empty answer immediately. Text will appear
@@ -4163,6 +4469,92 @@ class AIScreen(Screen):
             args=(user_message,),
             daemon=True,
         ).start()
+
+
+    def _send_typed_realtime_request_worker(
+        self,
+        user_message,
+    ):
+        """Send typed AI text through the active Realtime session."""
+        try:
+            service = self.realtime_voice_service
+
+            if service is None:
+                service = RealtimeVoiceService(
+                    on_status=(
+                        self.on_realtime_status
+                    ),
+                    on_user_transcript=(
+                        self.on_realtime_user_transcript
+                    ),
+                    on_text_delta=(
+                        self.on_realtime_text_delta
+                    ),
+                    on_text_done=(
+                        self.on_realtime_text_done
+                    ),
+                    on_speech_started=(
+                        self.on_realtime_speech_started
+                    ),
+                    on_speech_stopped=(
+                        self.on_realtime_speech_stopped
+                    ),
+                    on_local_request=(
+                        self.on_realtime_local_request
+                    ),
+                    on_local_answer=(
+                        self.on_realtime_local_answer
+                    ),
+                    on_local_speech_done=(
+                        self.on_realtime_local_speech_done
+                    ),
+                    on_error=(
+                        self.on_realtime_error
+                    ),
+                )
+                self.realtime_voice_service = service
+
+            service.language = self.voice_language
+            service.send_text(
+                user_message
+            )
+
+        except Exception as error:
+            error_message = (
+                f"{type(error).__name__}: {error}"
+            )
+
+            print(
+                "Typed Realtime send error: "
+                + error_message
+            )
+
+            Clock.schedule_once(
+                lambda dt, message=error_message: (
+                    self._finish_typed_realtime_send_error(
+                        message
+                    )
+                ),
+                0,
+            )
+
+    def _finish_typed_realtime_send_error(
+        self,
+        error_message,
+    ):
+        self.realtime_typed_request_active = False
+        self.ai_is_busy = False
+        self.set_controls_enabled(True)
+
+        if self.realtime_voice_active:
+            self.voice_btn.text = "Stop Voice"
+        else:
+            self.voice_btn.text = "Voice"
+
+        self.voice_status.text = (
+            "Realtime text request failed: "
+            + str(error_message)
+        )
 
 
     def is_clear_ai_request(self, message):
