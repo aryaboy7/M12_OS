@@ -19,6 +19,12 @@ RECEIVERS_XML = """
             android:name="com.m12os.m12os.ClockAlarmReceiver"
             android:enabled="true"
             android:exported="false" />
+
+        <!-- M12 OS native Spotify control receiver -->
+        <receiver
+            android:name="com.m12os.m12os.SpotifyControlReceiver"
+            android:enabled="true"
+            android:exported="false" />
 """
 
 
@@ -27,7 +33,7 @@ def before_apk_assemble(toolchain):
 
     manifest = (
         dist_dir
-	 /"m12os"
+        / "m12os"
         / "src"
         / "main"
         / "AndroidManifest.xml"
@@ -44,6 +50,7 @@ def before_apk_assemble(toolchain):
         "com.m12os.m12os.TimerAlarmReceiver",
         "com.m12os.m12os.EventAlarmReceiver",
         "com.m12os.m12os.ClockAlarmReceiver",
+        "com.m12os.m12os.SpotifyControlReceiver",
     )
 
     if all(name in text for name in required):
@@ -84,3 +91,4 @@ def before_apk_assemble(toolchain):
     print("[M12Hook] TimerAlarmReceiver added.")
     print("[M12Hook] EventAlarmReceiver added.")
     print("[M12Hook] ClockAlarmReceiver added.")
+    print("[M12Hook] SpotifyControlReceiver added.")

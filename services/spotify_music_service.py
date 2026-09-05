@@ -1,5 +1,6 @@
 import json
 import re
+import ssl
 import subprocess
 import time
 import unicodedata
@@ -7,6 +8,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from difflib import SequenceMatcher
+
+import certifi
 
 from services.spotify_auth_service import (
     spotify_auth_service,
@@ -41,6 +44,20 @@ class SpotifyMusicService:
     """
 
     MINIMUM_MATCH_SCORE = 0.72
+
+    @staticmethod
+    def _is_android():
+        try:
+            from kivy.utils import platform
+            return platform == "android"
+        except Exception:
+            return False
+
+    @staticmethod
+    def _ssl_context():
+        return ssl.create_default_context(
+            cafile=certifi.where()
+        )
 
     @staticmethod
     def _text(value):
@@ -344,6 +361,7 @@ class SpotifyMusicService:
             with urllib.request.urlopen(
                 request,
                 timeout=30,
+                context=SpotifyMusicService._ssl_context(),
             ) as response:
                 body = response.read()
 
@@ -654,6 +672,7 @@ class SpotifyMusicService:
             with urllib.request.urlopen(
                 request,
                 timeout=30,
+                context=SpotifyMusicService._ssl_context(),
             ) as response:
                 raw = response.read()
 
@@ -1067,6 +1086,16 @@ class SpotifyMusicService:
                 "This song has no Spotify track ID."
             )
 
+        if cls._is_android():
+            from services.spotify_android_remote_service import (
+                spotify_android_remote_service,
+            )
+
+            return (
+                spotify_android_remote_service
+                .play_track(track_id)
+            )
+
         access_token = (
             spotify_auth_service
             .get_access_token(
@@ -1165,6 +1194,16 @@ class SpotifyMusicService:
         cls,
         device_id="",
     ):
+        if cls._is_android():
+            from services.spotify_android_remote_service import (
+                spotify_android_remote_service,
+            )
+
+            return (
+                spotify_android_remote_service
+                .pause_playback()
+            )
+
         access_token = (
             spotify_auth_service
             .get_access_token(
@@ -1223,6 +1262,16 @@ class SpotifyMusicService:
         """
         Resume Spotify playback at the current paused position.
         """
+        if cls._is_android():
+            from services.spotify_android_remote_service import (
+                spotify_android_remote_service,
+            )
+
+            return (
+                spotify_android_remote_service
+                .resume_playback()
+            )
+
         access_token = (
             spotify_auth_service
             .get_access_token(

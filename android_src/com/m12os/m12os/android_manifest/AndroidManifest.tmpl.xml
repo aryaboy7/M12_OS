@@ -18,3 +18,10 @@
     android:name="com.m12os.m12os.ClockAlarmReceiver"
     android:enabled="true"
     android:exported="false" />
+
+<!-- M12 OS native Spotify control receiver -->
+<receiver
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:name="com.m12os.m12os.SpotifyControlReceiver"
+    android:enabled="true"
+    android:exported="false" />

@@ -22,6 +22,32 @@ RECEIVER_BLOCK = """        <!-- M12 OS native Timer receiver -->
             android:enabled="true"
             android:exported="false" />
 
+        <!-- M12 OS native Spotify control receiver -->
+        <receiver
+            android:name="com.m12os.m12os.SpotifyControlReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+"""
+
+THREE_RECEIVER_BLOCK = """        <!-- M12 OS native Timer receiver -->
+        <receiver
+            android:name="com.m12os.m12os.TimerAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- M12 OS native Calendar Event receiver -->
+        <receiver
+            android:name="com.m12os.m12os.EventAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- M12 OS native Clock Alarm receiver -->
+        <receiver
+            android:name="com.m12os.m12os.ClockAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
 """
 
 TIMER_ONLY_BLOCK = """        <!-- M12 OS native Timer receiver -->
@@ -40,20 +66,31 @@ def patch_manifest(path: Path) -> bool:
 
     text = path.read_text(encoding="utf-8")
 
-    has_timer = "com.m12os.m12os.TimerAlarmReceiver" in text
-    has_event = "com.m12os.m12os.EventAlarmReceiver" in text
-    has_clock = "com.m12os.m12os.ClockAlarmReceiver" in text
+    required = (
+        "com.m12os.m12os.TimerAlarmReceiver",
+        "com.m12os.m12os.EventAlarmReceiver",
+        "com.m12os.m12os.ClockAlarmReceiver",
+        "com.m12os.m12os.SpotifyControlReceiver",
+    )
 
-    if has_timer and has_event and has_clock:
+    if all(item in text for item in required):
         print(f"[OK] Already patched: {path}")
         return False
 
-    if TIMER_ONLY_BLOCK in text:
+    if THREE_RECEIVER_BLOCK in text:
+        text = text.replace(
+            THREE_RECEIVER_BLOCK,
+            RECEIVER_BLOCK,
+            1,
+        )
+
+    elif TIMER_ONLY_BLOCK in text:
         text = text.replace(
             TIMER_ONLY_BLOCK,
             RECEIVER_BLOCK,
             1,
         )
+
     else:
         marker = """        </activity>
 
@@ -69,15 +106,20 @@ def patch_manifest(path: Path) -> bool:
             1,
         )
 
-    path.write_text(text, encoding="utf-8")
-
-    verify = path.read_text(encoding="utf-8")
-    required = (
-        "com.m12os.m12os.TimerAlarmReceiver",
-        "com.m12os.m12os.EventAlarmReceiver",
-        "com.m12os.m12os.ClockAlarmReceiver",
+    path.write_text(
+        text,
+        encoding="utf-8",
     )
-    missing = [item for item in required if item not in verify]
+
+    verify = path.read_text(
+        encoding="utf-8"
+    )
+
+    missing = [
+        item
+        for item in required
+        if item not in verify
+    ]
 
     if missing:
         raise RuntimeError(
@@ -89,7 +131,12 @@ def patch_manifest(path: Path) -> bool:
 
 
 def main() -> int:
-    project_root = Path(__file__).resolve().parent.parent
+    project_root = (
+        Path(__file__)
+        .resolve()
+        .parent
+        .parent
+    )
 
     p4a_template = (
         project_root
@@ -124,7 +171,10 @@ def main() -> int:
 
     changed = 0
 
-    for target in (p4a_template, bootstrap_template):
+    for target in (
+        p4a_template,
+        bootstrap_template,
+    ):
         try:
             if patch_manifest(target):
                 changed += 1
@@ -138,9 +188,14 @@ def main() -> int:
     print()
 
     if changed:
-        print(f"Done. Patched {changed} manifest template(s).")
+        print(
+            f"Done. Patched {changed} "
+            "manifest template(s)."
+        )
     else:
-        print("Done. No changes were required.")
+        print(
+            "Done. No changes were required."
+        )
 
     print()
     print("Next command:")

@@ -1,5 +1,6 @@
 from datetime import datetime
 import threading
+import time
 import webbrowser
 
 from kivy.clock import Clock
@@ -584,8 +585,8 @@ class RecognizedSongsScreen(Screen):
             font_size=status_font(),
             size_hint=(1, None),
             height=max(
-                34,
-                int(button_height() * 0.55),
+                52,
+                int(button_height() * 0.82),
             ),
             halign="center",
             valign="middle",
@@ -594,7 +595,23 @@ class RecognizedSongsScreen(Screen):
             size=lambda inst, val: setattr(
                 inst,
                 "text_size",
-                val,
+                (
+                    val[0],
+                    None,
+                ),
+            )
+        )
+        self.status_label.bind(
+            texture_size=lambda inst, val: setattr(
+                inst,
+                "height",
+                max(
+                    52,
+                    min(
+                        104,
+                        int(val[1] + 10),
+                    ),
+                ),
             )
         )
         root.add_widget(
@@ -2116,20 +2133,78 @@ class RecognizedSongsScreen(Screen):
                     "accept the playback URL."
                 )
 
-            browser_device = (
-                spotify_music_service
-                .wait_for_new_device(
-                    before_ids,
-                    timeout_seconds=15.0,
-                    interval_seconds=1.0,
+            # The Spotify Web Player can already be present in the
+            # Connect device list before this button is pressed. In that
+            # case waiting only for a brand-new device incorrectly times
+            # out even though the browser is already playing.
+            #
+            # After opening the Web Player, prefer the active controllable
+            # Spotify device. If no device is active yet, keep waiting for
+            # a newly registered device as the secondary path.
+            browser_device = None
+            deadline = time.monotonic() + 15.0
+
+            while time.monotonic() < deadline:
+                devices = (
+                    spotify_music_service
+                    .available_devices()
                 )
-            )
+
+                active_devices = [
+                    device
+                    for device in devices
+                    if str(
+                        device.get(
+                            "id",
+                            "",
+                        )
+                    ).strip()
+                    and not bool(
+                        device.get(
+                            "is_restricted"
+                        )
+                    )
+                    and bool(
+                        device.get(
+                            "is_active"
+                        )
+                    )
+                ]
+
+                if active_devices:
+                    browser_device = active_devices[0]
+                    break
+
+                for device in devices:
+                    device_id = str(
+                        device.get(
+                            "id",
+                            "",
+                        )
+                    ).strip()
+
+                    if (
+                        device_id
+                        and device_id not in before_ids
+                        and not bool(
+                            device.get(
+                                "is_restricted"
+                            )
+                        )
+                    ):
+                        browser_device = device
+                        break
+
+                if browser_device is not None:
+                    break
+
+                time.sleep(1.0)
 
             if browser_device is None:
                 raise RuntimeError(
                     "Spotify Web Player opened, "
-                    "but it did not register as "
-                    "a new Spotify Connect device. "
+                    "but no controllable Spotify "
+                    "Connect device became active. "
                     "Make sure you are signed in "
                     "to Spotify in the browser."
                 )
