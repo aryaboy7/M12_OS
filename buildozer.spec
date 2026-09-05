@@ -9,7 +9,7 @@ package.name = m12os
 package.domain = com.m12os
 
 source.dir = .
-source.include_exts = py,kv,json,png,jpg,jpeg,atlas,wav,mp3,m4a,txt
+source.include_exts = py,kv,json,png,jpg,jpeg,atlas,wav,mp3,m4a,txt,aar,xml
 
 # Keep local development/build folders out of the APK.
 source.exclude_dirs = .git,.github,.venv,.buildozer,bin,backups,updates,__pycache__,current_phone_snapshot,phone_data_before_restore,recovered_m12_data,restore_payload
@@ -42,6 +42,14 @@ p4a.hook = tools/p4a_hooks.py
 # Compile M12 native Android Java sources.
 android.add_src = android_src
 
+# Spotify Android App Remote SDK.
+android.add_aars = android_libs/spotify-app-remote-release-0.8.0.aar
+
+# Spotify App Remote dependency.
+android.gradle_dependencies = com.google.code.gson:gson:2.10.1
+
+# Allow Gradle to resolve local AAR files copied into libs/.
+android.add_gradle_repositories = flatDir { dirs 'libs' }
 
 [buildozer]
 

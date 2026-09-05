@@ -3,12 +3,15 @@ import hashlib
 import json
 import os
 import secrets
+import ssl
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
+
+import certifi
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from kivy.utils import platform as kivy_platform
@@ -66,6 +69,20 @@ class SpotifyAuthService:
     @staticmethod
     def _now():
         return int(time.time())
+
+    @staticmethod
+    def _ssl_context():
+        """
+        Use certifi's CA bundle explicitly.
+
+        On Android, Python's default OpenSSL certificate locations may
+        not contain a usable CA store even though Android itself has one.
+        certifi is already packaged with M12, so use its CA bundle for
+        Spotify HTTPS requests on every platform.
+        """
+        return ssl.create_default_context(
+            cafile=certifi.where()
+        )
 
     @classmethod
     def load_tokens(cls):
@@ -180,7 +197,11 @@ class SpotifyAuthService:
         )
 
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(
+                request,
+                timeout=30,
+                context=SpotifyAuthService._ssl_context(),
+            ) as response:
                 body = response.read()
 
         except urllib.error.HTTPError as error:
@@ -218,7 +239,11 @@ class SpotifyAuthService:
         )
 
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(
+                request,
+                timeout=30,
+                context=SpotifyAuthService._ssl_context(),
+            ) as response:
                 body = response.read()
 
         except urllib.error.HTTPError as error:
@@ -476,17 +501,30 @@ class SpotifyAuthService:
     def _open_browser(url):
         if kivy_platform == "android":
             try:
-                from android import activity
                 from jnius import autoclass
 
-                Intent = autoclass("android.content.Intent")
-                Uri = autoclass("android.net.Uri")
+                Intent = autoclass(
+                    "android.content.Intent"
+                )
+                Uri = autoclass(
+                    "android.net.Uri"
+                )
+                PythonActivity = autoclass(
+                    "org.kivy.android.PythonActivity"
+                )
+
+                activity = (
+                    PythonActivity.mActivity
+                )
 
                 intent = Intent(
                     Intent.ACTION_VIEW,
                     Uri.parse(url),
                 )
-                activity.startActivity(intent)
+
+                activity.startActivity(
+                    intent
+                )
                 return True
 
             except Exception as error:

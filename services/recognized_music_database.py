@@ -66,17 +66,26 @@ class RecognizedMusicDatabase:
             "",
         ).strip()
 
-        if android_private:
-            return (
-                Path(android_private)
-                / "music"
-                / "recognized_songs.xml"
-            )
-
         try:
             from kivy.utils import platform
 
             if platform == "android":
+                # M12 keeps persistent writable user data under
+                # <ANDROID_PRIVATE>/user_data on Android.
+                #
+                # Do not use <ANDROID_PRIVATE>/music here. That path
+                # can contain a separate empty recognized_songs.xml,
+                # which makes the Recognized Songs screen appear empty
+                # even though the populated database exists in
+                # user_data/music.
+                if android_private:
+                    return (
+                        Path(android_private)
+                        / "user_data"
+                        / "music"
+                        / "recognized_songs.xml"
+                    )
+
                 kivy_directory = (
                     cls._kivy_user_data_dir()
                 )
@@ -89,6 +98,13 @@ class RecognizedMusicDatabase:
                     )
         except Exception:
             pass
+
+        if android_private:
+            return (
+                Path(android_private)
+                / "music"
+                / "recognized_songs.xml"
+            )
 
         return (
             BASE_DIR

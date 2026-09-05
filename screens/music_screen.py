@@ -453,6 +453,17 @@ class MusicScreen(Screen):
             "Recognized Songs",
             (0.55, 0.45, 0.10, 1),
         )
+
+        # This is the longest label in the three-button row.
+        # Android UI scaling makes the normal control font too wide,
+        # so reduce only this button's font while leaving the other
+        # Music controls unchanged.
+        if platform == "android":
+            recognized_btn.font_size = max(
+                11,
+                int(button_font() * 0.55),
+            )
+
         recognized_btn.bind(
             on_press=self.open_recognized_songs
         )

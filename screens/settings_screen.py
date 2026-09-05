@@ -707,9 +707,10 @@ class SettingsScreen(Screen):
             f"Spotify: {spotify_state}"
         )
 
-        if message:
-            status += f"\n{message}"
-
+        # Keep the Security Key Setup header at exactly three
+        # status lines: OpenAI, AudD, and Spotify. Save confirmations
+        # are already written to the system log and should not create
+        # duplicate status lines in the UI.
         self.security_key_status.text = status
 
     def save_ai_api_key(
