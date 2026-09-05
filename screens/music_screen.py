@@ -449,6 +449,15 @@ class MusicScreen(Screen):
         refresh_btn.bind(on_press=self.refresh_media)
         controls2.add_widget(refresh_btn)
 
+        recognized_btn = self.make_button(
+            "Recognized Songs",
+            (0.55, 0.45, 0.10, 1),
+        )
+        recognized_btn.bind(
+            on_press=self.open_recognized_songs
+        )
+        controls2.add_widget(recognized_btn)
+
         root.add_widget(controls2)
 
         volume_row = BoxLayout(
@@ -2037,6 +2046,146 @@ class MusicScreen(Screen):
                 return provider()
 
         return "WiFi"
+
+    def open_recognized_songs(
+        self,
+        instance=None,
+    ):
+        """
+        Open Recognized Songs.
+
+        Spotify authorization is intentionally on-demand:
+        users who never open Recognized Songs are never asked to authorize
+        Spotify. The first use authorizes once; later uses reuse/refresh the
+        saved Spotify authorization automatically.
+        """
+        if not self.manager:
+            self.status_label.text = (
+                "Recognized Songs screen is unavailable."
+            )
+            return False
+
+        try:
+            from services.spotify_auth_service import (
+                spotify_auth_service,
+            )
+
+            token = (
+                spotify_auth_service
+                .get_access_token(
+                    authorize_if_needed=False
+                )
+            )
+
+            if token:
+                return (
+                    self._open_recognized_songs_screen()
+                )
+
+            self.status_label.text = (
+                "Connecting Spotify..."
+            )
+
+            started = (
+                spotify_auth_service
+                .ensure_authorized_async(
+                    on_success=(
+                        self._spotify_authorized_for_recognized_songs
+                    ),
+                    on_error=(
+                        self._spotify_authorization_failed
+                    ),
+                )
+            )
+
+            if not started:
+                return False
+
+            return True
+
+        except Exception as error:
+            self._spotify_authorization_failed(
+                f"{type(error).__name__}: {error}"
+            )
+            return False
+
+    def _spotify_authorized_for_recognized_songs(
+        self,
+    ):
+        self.status_label.text = (
+            "Spotify connected."
+        )
+        self._open_recognized_songs_screen()
+
+    def _spotify_authorization_failed(
+        self,
+        message,
+    ):
+        self.status_label.text = (
+            "Spotify authorization failed: "
+            + str(message)
+        )
+        log.error(
+            "Music: Spotify authorization failed "
+            + str(message)
+        )
+
+    def _open_recognized_songs_screen(
+        self,
+    ):
+        """
+        Open the existing Recognized Songs screen after Spotify authorization.
+        """
+        if not self.manager:
+            self.status_label.text = (
+                "Recognized Songs screen is unavailable."
+            )
+            return False
+
+        try:
+            if not self.manager.has_screen(
+                "recognized_songs"
+            ):
+                from screens.recognized_songs_screen import (
+                    RecognizedSongsScreen,
+                )
+
+                self.manager.add_widget(
+                    RecognizedSongsScreen(
+                        name="recognized_songs"
+                    )
+                )
+
+            recognized_screen = (
+                self.manager.get_screen(
+                    "recognized_songs"
+                )
+            )
+
+            refresh = getattr(
+                recognized_screen,
+                "refresh_songs",
+                None,
+            )
+
+            if callable(refresh):
+                refresh()
+
+            self.manager.current = (
+                "recognized_songs"
+            )
+            return True
+
+        except Exception as error:
+            self.status_label.text = (
+                "Could not open Recognized Songs: "
+                f"{error}"
+            )
+            log.error(
+                "Music: recognized songs open failed "
+                f"{type(error).__name__}: {error}"
+            )
+            return False
 
     def go_back(self, instance=None):
         if self.manager:

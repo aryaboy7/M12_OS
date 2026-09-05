@@ -21,6 +21,7 @@ from kivy.graphics import Color, Rectangle
 from utils.config_manager import ConfigManager
 from services.api_key_manager import APIKeyManager
 from services.audd_key_manager import AudDKeyManager
+from services.spotify_client_manager import SpotifyClientManager
 from utils.system_header import create_system_header
 from utils.logger import log
 from utils.text_editor_popup import open_text_editor
@@ -447,14 +448,19 @@ class SettingsScreen(Screen):
 
         openai_key_configured = APIKeyManager.has_key()
         audd_key_configured = AudDKeyManager.has_key()
+        spotify_key_configured = (
+            SpotifyClientManager.has_client_id()
+        )
         security_keys_configured = (
-            openai_key_configured and audd_key_configured
+            openai_key_configured
+            and audd_key_configured
+            and spotify_key_configured
         )
 
         ai_card = self.make_dashboard_card(
             "Security Key Setup",
             (
-                "OpenAI and AudD keys configured"
+                "OpenAI, AudD and Spotify configured"
                 if security_keys_configured
                 else "Configure API security keys"
             ),
@@ -578,6 +584,9 @@ class SettingsScreen(Screen):
 
         openai_configured = APIKeyManager.has_key()
         audd_configured = AudDKeyManager.has_key()
+        spotify_configured = (
+            SpotifyClientManager.has_client_id()
+        )
 
         self.security_key_status = Label(
             text=(
@@ -585,10 +594,16 @@ class SettingsScreen(Screen):
                 + ("CONFIGURED" if openai_configured else "NOT CONFIGURED")
                 + "\nAudD: "
                 + ("CONFIGURED" if audd_configured else "NOT CONFIGURED")
+                + "\nSpotify: "
+                + ("CONFIGURED" if spotify_configured else "NOT CONFIGURED")
             ),
             font_size=settings_text_font(),
             color=(0.78, 0.88, 1, 1),
-            size_hint=(1, 0.16),
+            size_hint=(1, None),
+            height=max(
+                96,
+                int(settings_row_height() * 1.55),
+            ),
             halign="center",
             valign="middle",
         )
@@ -625,7 +640,7 @@ class SettingsScreen(Screen):
         self.security_key_input = self.make_text_input(
             ""
         )
-        self.security_key_input.hint_text = "Paste API key"
+        self.security_key_input.hint_text = "Paste OpenAI/AudD key or Spotify Client ID"
         self.security_key_input.password = False
         root.add_widget(self.security_key_input)
 
@@ -646,6 +661,15 @@ class SettingsScreen(Screen):
             on_press=self.save_audd_api_key
         )
         root.add_widget(save_audd_btn)
+
+        save_spotify_btn = self.make_button(
+            "SAVE Spotify Client ID",
+            GREEN,
+        )
+        save_spotify_btn.bind(
+            on_press=self.save_spotify_client_id
+        )
+        root.add_widget(save_spotify_btn)
 
         root.add_widget(
             BoxLayout(
@@ -671,10 +695,16 @@ class SettingsScreen(Screen):
             if AudDKeyManager.has_key()
             else "NOT CONFIGURED"
         )
+        spotify_state = (
+            "CONFIGURED"
+            if SpotifyClientManager.has_client_id()
+            else "NOT CONFIGURED"
+        )
 
         status = (
             f"OpenAI: {openai_state}\n"
-            f"AudD: {audd_state}"
+            f"AudD: {audd_state}\n"
+            f"Spotify: {spotify_state}"
         )
 
         if message:
@@ -781,6 +811,59 @@ class SettingsScreen(Screen):
             )
             log.error(
                 "Settings: AudD API key save failed: "
+                f"{type(error).__name__}: {error}"
+            )
+
+    def save_spotify_client_id(
+        self,
+        instance=None,
+    ):
+        client_id = self._security_key_text()
+
+        if not client_id:
+            self.security_key_status.text = (
+                "Paste Spotify Client ID first."
+            )
+            self.security_key_status.color = (
+                1.00,
+                0.60,
+                0.45,
+                1,
+            )
+            return
+
+        try:
+            SpotifyClientManager.save_client_id(
+                client_id
+            )
+            self.security_key_input.text = ""
+            self.security_key_status.color = (
+                0.60,
+                1.00,
+                0.70,
+                1,
+            )
+            self._refresh_security_key_status(
+                "Spotify Client ID saved."
+            )
+            log.info(
+                "Settings: Spotify Client ID saved "
+                "to private application storage"
+            )
+
+        except Exception as error:
+            self.security_key_status.text = (
+                "Could not save Spotify Client ID:\n"
+                f"{type(error).__name__}: {error}"
+            )
+            self.security_key_status.color = (
+                1.00,
+                0.45,
+                0.45,
+                1,
+            )
+            log.error(
+                "Settings: Spotify Client ID save failed: "
                 f"{type(error).__name__}: {error}"
             )
 

@@ -1,0 +1,42 @@
+<?xml version='1.0' encoding='utf-8'?>
+<recognizedSongs version="1" updatedAt="2026-09-04T20:20:49-04:00">
+    <song id="eac5f21516c84586bad9b99c41f7f7c3">
+        <title>Take Me Home Tonight (Album Version)</title>
+        <artist>Eddie Money</artist>
+        <album>Playlist: The Very Best '80s Radio Hits</album>
+        <recognitionProvider>audd</recognitionProvider>
+        <recognizedAt>2026-09-04T16:08:29-04:00</recognizedAt>
+        <playback>
+            <provider>spotify</provider>
+            <status>found</status>
+            <playUrl>https://open.spotify.com/track/63diy8Bzm0pHMAU37By2Nh</playUrl>
+            <trackId>63diy8Bzm0pHMAU37By2Nh</trackId>
+        </playback>
+    </song>
+    <song id="5e6b00bbd1bd4421b7331641e1838760">
+        <title>You're Beautiful (Clean Edit)</title>
+        <artist>James Blunt</artist>
+        <album>You're Beautiful (Clean Edit)</album>
+        <recognitionProvider>audd</recognitionProvider>
+        <recognizedAt>2026-09-04T16:10:59-04:00</recognizedAt>
+        <playback>
+            <provider>spotify</provider>
+            <status>found</status>
+            <playUrl>https://open.spotify.com/track/6URztwactGeJLJMd4iP6x4</playUrl>
+            <trackId>6URztwactGeJLJMd4iP6x4</trackId>
+        </playback>
+    </song>
+    <song id="7d8bd6008d284f3a819c60a12e27f4ac">
+        <title>Let Me Love You (Radio Edit)</title>
+        <artist>Mario</artist>
+        <album>100 R&amp;B Platinum Superstar Hits</album>
+        <recognitionProvider>audd</recognitionProvider>
+        <recognizedAt>2026-09-04T16:11:56-04:00</recognizedAt>
+        <playback>
+            <provider>spotify</provider>
+            <status>found</status>
+            <playUrl>https://open.spotify.com/track/5jMfUlvj7qqesIwHeoW7mi</playUrl>
+            <trackId>5jMfUlvj7qqesIwHeoW7mi</trackId>
+        </playback>
+    </song>
+</recognizedSongs>
