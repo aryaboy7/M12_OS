@@ -58,9 +58,6 @@ TILE_COLORS = [
 ]
 
 
-
-
-
 class HomeScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -149,7 +146,7 @@ class HomeScreen(Screen):
         unit = self.config.get("temperature_unit", "F")
 
         self.weather_card = Button(
-            text=f"Weather\n{city}  °{unit}",
+            text="Weather\n" + city + "  °" + unit,
             font_size=text_font(),
             background_normal="",
             background_color=CARD_WEATHER,
@@ -176,6 +173,7 @@ class HomeScreen(Screen):
             ("Files", "files"),
             ("Music", "music"),
             ("AI", "ai"),
+            ("Brainstorm", "brainstorm"),
             ("Weather", "weather"),
             ("Clock", "clock"),
             ("Calculator", "calculator"),
@@ -188,7 +186,7 @@ class HomeScreen(Screen):
         root.add_widget(self.grid)
 
         self.version_label = Label(
-            text=f"M12 OS {VERSION}",
+            text="M12 OS " + VERSION,
             font_size=status_font(),
             size_hint=(1, version_hint),
             color=(0.65, 0.75, 0.90, 1)
@@ -208,7 +206,7 @@ class HomeScreen(Screen):
             display_title = title
 
             if title == "Calendar" and today_count > 0:
-                display_title = f"Calendar ({today_count})"
+                display_title = "Calendar (" + str(today_count) + ")"
 
             if title == "Clock" and alarm_active:
                 display_title = "Clock (AL)"
@@ -258,7 +256,7 @@ class HomeScreen(Screen):
             return False
 
         except Exception as e:
-            log.error(f"Home: alarm active check failed {e}")
+            log.error("Home: alarm active check failed " + str(e))
             return False
 
     def refresh_clock_button(self):
@@ -276,7 +274,7 @@ class HomeScreen(Screen):
         try:
             date_text = str(event.get("date", "")).strip()
             time_text = str(event.get("time", "")).strip() or "00:00"
-            return datetime.strptime(f"{date_text} {time_text}", "%Y-%m-%d %H:%M")
+            return datetime.strptime(date_text + " " + time_text, "%Y-%m-%d %H:%M")
         except Exception:
             return None
 
@@ -343,7 +341,7 @@ class HomeScreen(Screen):
             return count
 
         except Exception as e:
-            log.error(f"Home: today calendar count failed {e}")
+            log.error("Home: today calendar count failed " + str(e))
             return 0
 
     def refresh_calendar_button(self):
@@ -353,7 +351,7 @@ class HomeScreen(Screen):
             return
 
         count = self.get_today_calendar_count()
-        btn.text = f"Calendar ({count})" if count > 0 else "Calendar"
+        btn.text = "Calendar (" + str(count) + ")" if count > 0 else "Calendar"
 
     def bluetooth_status_text(self):
         try:
@@ -370,17 +368,16 @@ class HomeScreen(Screen):
             if not name:
                 return "BT"
 
-            # Keep Home status short.
             if "bose" in name.lower():
                 return "BT Bose"
 
             if len(name) > 10:
                 name = name[:10]
 
-            return f"BT {name}"
+            return "BT " + name
 
         except Exception as e:
-            log.error(f"Home: bluetooth status failed {e}")
+            log.error("Home: bluetooth status failed " + str(e))
             return ""
 
     def music_is_playing(self):
@@ -445,9 +442,13 @@ class HomeScreen(Screen):
         condition = self.config.get("last_condition", "")
 
         if condition:
-            self.weather_card.text = f"Weather\n{city}\n{temp}°{unit}  {condition}"
+            self.weather_card.text = (
+                "Weather\n" + city + "\n" + str(temp) + " °" + unit + "  " + condition
+            )
         else:
-            self.weather_card.text = f"Weather\n{city}\n{temp}°{unit}"
+            self.weather_card.text = (
+                "Weather\n" + city + "\n" + str(temp) + " °" + unit
+            )
 
     def on_leave(self):
         Clock.unschedule(self.update_time)
@@ -543,7 +544,7 @@ class HomeScreen(Screen):
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
     def open_screen(self, screen_name):
-        log.info(f"Home: open {screen_name}")
+        log.info("Home: open " + screen_name)
 
         if screen_name == "restart":
             self.restart_app()
@@ -552,4 +553,4 @@ class HomeScreen(Screen):
         if self.manager and self.manager.has_screen(screen_name):
             self.manager.current = screen_name
         else:
-            log.error(f"Home: missing screen {screen_name}")
+            log.error("Home: missing screen " + screen_name)

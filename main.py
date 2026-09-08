@@ -19,7 +19,6 @@ if IS_LINUX:
     Config.set("graphics", "resizable", "1")
     Config.set("graphics", "borderless", "0")
     Config.set("graphics", "fullscreen", "0")
-
 else:
     # Preserve existing behavior on macOS and other desktop platforms.
     Config.set("graphics", "width", "900")
@@ -28,7 +27,6 @@ else:
     Config.set("graphics", "minimum_height", "650")
     Config.set("graphics", "resizable", "0")
     Config.set("graphics", "fullscreen", "0")
-
 
 from kivy.app import App
 from kivy.clock import Clock
@@ -39,7 +37,6 @@ from kivy.uix.screenmanager import ScreenManager
 from kivy.utils import platform
 
 from config.version import APP_NAME, VERSION
-
 from utils.config_manager import ConfigManager
 from utils.logger import log
 from utils.event_notifier import EventNotifier
@@ -59,6 +56,7 @@ from screens.drawing_screen import DrawingScreen
 from screens.files_screen import FilesScreen
 from screens.music_screen import MusicScreen
 from screens.ai_screen import AIScreen
+from screens.brainstorm_screen import BrainstormScreen
 from screens.weather_screen import WeatherScreen
 from screens.calendar_screen import CalendarScreen
 from screens.calculator_converter_screen import CalculatorConverterScreen
@@ -66,23 +64,19 @@ from screens.alarm_screen import AlarmScreen
 from screens.backup_screen import BackupScreen
 from screens.video_player_screen import VideoPlayerScreen
 
-
 BluetoothScreen = None
 
 try:
     from screens.bluetooth_screen import BluetoothScreen
-
 except Exception as error:
     print(
         "Bluetooth screen unavailable: "
         f"{type(error).__name__}: {error}"
     )
-
     log.error(
         "Bluetooth screen import failed: "
         f"{type(error).__name__}: {error}"
     )
-
 
 print("PLATFORM =", platform)
 print("WINDOW WIDTH =", Window.width)
@@ -95,7 +89,6 @@ log.info(f"{APP_NAME} {VERSION} started")
 
 
 class M12OS(App):
-
     def build(self):
         self.config_manager = ConfigManager()
 
@@ -109,90 +102,34 @@ class M12OS(App):
         # ---------------------------------------------------------
         self.screen_manager = ScreenManager()
 
+        self.screen_manager.add_widget(HomeScreen(name="home"))
+        self.screen_manager.add_widget(NotesScreen(name="notes"))
+        self.screen_manager.add_widget(NoteEditorScreen(name="editor"))
+        self.screen_manager.add_widget(NoteTypesScreen(name="note_types"))
+        self.screen_manager.add_widget(ClockScreen(name="clock"))
+        self.screen_manager.add_widget(StopwatchScreen(name="stopwatch"))
+        self.screen_manager.add_widget(TimerScreen(name="timer"))
+        self.screen_manager.add_widget(SettingsScreen(name="settings"))
+        self.screen_manager.add_widget(UpdaterScreen(name="updater"))
+        self.screen_manager.add_widget(DrawingScreen(name="drawing"))
+        self.screen_manager.add_widget(FilesScreen(name="files"))
+        self.screen_manager.add_widget(MusicScreen(name="music"))
+        self.screen_manager.add_widget(AIScreen(name="ai"))
+        self.screen_manager.add_widget(BrainstormScreen(name="brainstorm"))
+        self.screen_manager.add_widget(WeatherScreen(name="weather"))
+        self.screen_manager.add_widget(CalendarScreen(name="calendar"))
         self.screen_manager.add_widget(
-            HomeScreen(name="home")
+            CalculatorConverterScreen(name="calculator")
         )
-
-        self.screen_manager.add_widget(
-            NotesScreen(name="notes")
-        )
-
-        self.screen_manager.add_widget(
-            NoteEditorScreen(name="editor")
-        )
-
-        self.screen_manager.add_widget(
-            NoteTypesScreen(name="note_types")
-        )
-
-        self.screen_manager.add_widget(
-            ClockScreen(name="clock")
-        )
-
-        self.screen_manager.add_widget(
-            StopwatchScreen(name="stopwatch")
-        )
-
-        self.screen_manager.add_widget(
-            TimerScreen(name="timer")
-        )
-
-        self.screen_manager.add_widget(
-            SettingsScreen(name="settings")
-        )
-
-        self.screen_manager.add_widget(
-            UpdaterScreen(name="updater")
-        )
-
-        self.screen_manager.add_widget(
-            DrawingScreen(name="drawing")
-        )
-
-        self.screen_manager.add_widget(
-            FilesScreen(name="files")
-        )
-
-        self.screen_manager.add_widget(
-            MusicScreen(name="music")
-        )
-
-        self.screen_manager.add_widget(
-            AIScreen(name="ai")
-        )
-
-        self.screen_manager.add_widget(
-            WeatherScreen(name="weather")
-        )
-
-        self.screen_manager.add_widget(
-            CalendarScreen(name="calendar")
-        )
-
-        self.screen_manager.add_widget(
-            CalculatorConverterScreen(
-                name="calculator"
-            )
-        )
-
-        self.screen_manager.add_widget(
-            AlarmScreen(name="alarm")
-        )
-
-        self.screen_manager.add_widget(
-            BackupScreen(name="backup")
-        )
-
-        self.screen_manager.add_widget(
-            VideoPlayerScreen(name="video_player")
-        )
+        self.screen_manager.add_widget(AlarmScreen(name="alarm"))
+        self.screen_manager.add_widget(BackupScreen(name="backup"))
+        self.screen_manager.add_widget(VideoPlayerScreen(name="video_player"))
 
         if BluetoothScreen is not None:
             try:
                 self.screen_manager.add_widget(
                     BluetoothScreen(name="bluetooth")
                 )
-
             except Exception as error:
                 log.error(
                     "Bluetooth screen creation failed: "
@@ -219,23 +156,17 @@ class M12OS(App):
         print("HEIGHT =", Window.height)
         print("DPI =", Window.dpi)
         print("LINUX =", IS_LINUX)
-
         if IS_LINUX:
             print("F11 FULLSCREEN = ENABLED")
-
         print("================================")
 
         # ---------------------------------------------------------
         # Event and alarm notification services
         # ---------------------------------------------------------
-        self.event_notifier = EventNotifier(
-            interval_seconds=30
-        )
+        self.event_notifier = EventNotifier(interval_seconds=30)
         self.event_notifier.start()
 
-        self.alarm_notifier = AlarmNotifier(
-            interval_seconds=30
-        )
+        self.alarm_notifier = AlarmNotifier(interval_seconds=30)
         self.alarm_notifier.start()
 
         # ---------------------------------------------------------
@@ -243,25 +174,13 @@ class M12OS(App):
         # ---------------------------------------------------------
         try:
             if self.screen_manager.has_screen("bluetooth"):
-                bluetooth_screen = (
-                    self.screen_manager.get_screen(
-                        "bluetooth"
-                    )
-                )
-
+                bluetooth_screen = self.screen_manager.get_screen("bluetooth")
                 Clock.schedule_once(
-                    lambda dt: (
-                        bluetooth_screen
-                        .auto_connect_default()
-                    ),
+                    lambda dt: bluetooth_screen.auto_connect_default(),
                     3,
                 )
-
         except Exception as error:
-            log.error(
-                "Bluetooth auto-connect schedule failed: "
-                f"{error}"
-            )
+            log.error(f"Bluetooth auto-connect schedule failed: {error}")
 
         return root
 
@@ -270,13 +189,8 @@ class M12OS(App):
     # -------------------------------------------------------------
     def on_start(self):
         if IS_LINUX:
-            Window.bind(
-                on_key_down=self.on_window_key_down
-            )
-
-            Window.bind(
-                size=self.on_window_size
-            )
+            Window.bind(on_key_down=self.on_window_key_down)
+            Window.bind(size=self.on_window_size)
 
             try:
                 Window.minimum_width = 900
@@ -289,14 +203,7 @@ class M12OS(App):
     # -------------------------------------------------------------
     # Linux keyboard handling
     # -------------------------------------------------------------
-    def on_window_key_down(
-        self,
-        window,
-        key,
-        scancode,
-        codepoint,
-        modifiers,
-    ):
+    def on_window_key_down(self, window, key, scancode, codepoint, modifiers):
         if not IS_LINUX:
             return False
 
@@ -320,20 +227,13 @@ class M12OS(App):
             else:
                 Window.fullscreen = "auto"
 
-            Clock.schedule_once(
-                lambda dt: self.update_window_title(),
-                0.15,
-            )
+            Clock.schedule_once(lambda dt: self.update_window_title(), 0.15)
 
-            log.info(
-                "Linux fullscreen: "
-                f"{Window.fullscreen}"
-            )
+            log.info(f"Linux fullscreen: {Window.fullscreen}")
 
         except Exception as error:
             log.error(
-                "Fullscreen toggle failed: "
-                f"{type(error).__name__}: {error}"
+                f"Fullscreen toggle failed: {type(error).__name__}: {error}"
             )
 
     # -------------------------------------------------------------
@@ -346,11 +246,7 @@ class M12OS(App):
     # Window title
     # -------------------------------------------------------------
     def update_window_title(self):
-        mode = (
-            "Fullscreen"
-            if Window.fullscreen
-            else "Windowed"
-        )
+        mode = "Fullscreen" if Window.fullscreen else "Windowed"
 
         Window.set_title(
             f"{APP_NAME} {VERSION} | "
@@ -372,16 +268,31 @@ class M12OS(App):
 
         try:
             ai_screen = manager.get_screen("ai")
-
             # Save where the user came from.
             ai_screen.return_screen = previous_screen
-
         except Exception as error:
-            log.error(
-                f"Unable to prepare AI screen: {error}"
-            )
+            log.error(f"Unable to prepare AI screen: {error}")
 
         manager.current = "ai"
+
+    # -------------------------------------------------------------
+    # Open Brainstorm from any screen
+    # -------------------------------------------------------------
+    def open_global_brainstorm(self, instance=None):
+        manager = self.screen_manager
+
+        if manager.current == "brainstorm":
+            return
+
+        previous_screen = manager.current
+
+        try:
+            brainstorm_screen = manager.get_screen("brainstorm")
+            brainstorm_screen.return_screen = previous_screen
+        except Exception as error:
+            log.error(f"Unable to prepare Brainstorm screen: {error}")
+
+        manager.current = "brainstorm"
 
     # -------------------------------------------------------------
     # Stop services
@@ -389,14 +300,8 @@ class M12OS(App):
     def on_stop(self):
         if IS_LINUX:
             try:
-                Window.unbind(
-                    on_key_down=self.on_window_key_down
-                )
-
-                Window.unbind(
-                    size=self.on_window_size
-                )
-
+                Window.unbind(on_key_down=self.on_window_key_down)
+                Window.unbind(size=self.on_window_size)
             except Exception:
                 pass
 

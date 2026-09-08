@@ -1,5 +1,6 @@
 # M12 OS Settings Screen - shared UI scale version
 # v0.4.25 - Storage Settings page improved for Android keyboard
+# + Claude (Anthropic) API key management added alongside OpenAI/AudD/Spotify
 from pathlib import Path
 import json
 import subprocess
@@ -22,6 +23,7 @@ from utils.config_manager import ConfigManager
 from services.api_key_manager import APIKeyManager
 from services.audd_key_manager import AudDKeyManager
 from services.spotify_client_manager import SpotifyClientManager
+from services.claude_key_manager import ClaudeKeyManager
 from utils.system_header import create_system_header
 from utils.logger import log
 from utils.text_editor_popup import open_text_editor
@@ -451,16 +453,18 @@ class SettingsScreen(Screen):
         spotify_key_configured = (
             SpotifyClientManager.has_client_id()
         )
+        claude_key_configured = ClaudeKeyManager.has_key()
         security_keys_configured = (
             openai_key_configured
             and audd_key_configured
             and spotify_key_configured
+            and claude_key_configured
         )
 
         ai_card = self.make_dashboard_card(
             "Security Key Setup",
             (
-                "OpenAI, AudD and Spotify configured"
+                "OpenAI, Claude, AudD and Spotify configured"
                 if security_keys_configured
                 else "Configure API security keys"
             ),
@@ -587,11 +591,14 @@ class SettingsScreen(Screen):
         spotify_configured = (
             SpotifyClientManager.has_client_id()
         )
+        claude_configured = ClaudeKeyManager.has_key()
 
         self.security_key_status = Label(
             text=(
                 "OpenAI: "
                 + ("CONFIGURED" if openai_configured else "NOT CONFIGURED")
+                + "\nClaude: "
+                + ("CONFIGURED" if claude_configured else "NOT CONFIGURED")
                 + "\nAudD: "
                 + ("CONFIGURED" if audd_configured else "NOT CONFIGURED")
                 + "\nSpotify: "
@@ -601,8 +608,8 @@ class SettingsScreen(Screen):
             color=(0.78, 0.88, 1, 1),
             size_hint=(1, None),
             height=max(
-                96,
-                int(settings_row_height() * 1.55),
+                112,
+                int(settings_row_height() * 1.9),
             ),
             halign="center",
             valign="middle",
@@ -640,7 +647,9 @@ class SettingsScreen(Screen):
         self.security_key_input = self.make_text_input(
             ""
         )
-        self.security_key_input.hint_text = "Paste OpenAI/AudD key or Spotify Client ID"
+        self.security_key_input.hint_text = (
+            "Paste OpenAI/Claude/AudD key or Spotify Client ID"
+        )
         self.security_key_input.password = False
         root.add_widget(self.security_key_input)
 
@@ -652,6 +661,15 @@ class SettingsScreen(Screen):
             on_press=self.save_ai_api_key
         )
         root.add_widget(save_openai_btn)
+
+        save_claude_btn = self.make_button(
+            "SAVE Claude Key",
+            GREEN,
+        )
+        save_claude_btn.bind(
+            on_press=self.save_claude_api_key
+        )
+        root.add_widget(save_claude_btn)
 
         save_audd_btn = self.make_button(
             "SAVE AudD Key",
@@ -690,6 +708,11 @@ class SettingsScreen(Screen):
             if APIKeyManager.has_key()
             else "NOT CONFIGURED"
         )
+        claude_state = (
+            "CONFIGURED"
+            if ClaudeKeyManager.has_key()
+            else "NOT CONFIGURED"
+        )
         audd_state = (
             "CONFIGURED"
             if AudDKeyManager.has_key()
@@ -703,14 +726,15 @@ class SettingsScreen(Screen):
 
         status = (
             f"OpenAI: {openai_state}\n"
+            f"Claude: {claude_state}\n"
             f"AudD: {audd_state}\n"
             f"Spotify: {spotify_state}"
         )
 
-        # Keep the Security Key Setup header at exactly three
-        # status lines: OpenAI, AudD, and Spotify. Save confirmations
-        # are already written to the system log and should not create
-        # duplicate status lines in the UI.
+        # Keep the Security Key Setup header at exactly four
+        # status lines: OpenAI, Claude, AudD, and Spotify. Save
+        # confirmations are already written to the system log and
+        # should not create duplicate status lines in the UI.
         self.security_key_status.text = status
 
     def save_ai_api_key(
@@ -761,6 +785,57 @@ class SettingsScreen(Screen):
             )
             log.error(
                 "Settings: OpenAI API key save failed: "
+                f"{type(error).__name__}: {error}"
+            )
+
+    def save_claude_api_key(
+        self,
+        instance=None,
+    ):
+        key = self._security_key_text()
+
+        if not key:
+            self.security_key_status.text = (
+                "Paste API key first."
+            )
+            self.security_key_status.color = (
+                1.00,
+                0.60,
+                0.45,
+                1,
+            )
+            return
+
+        try:
+            ClaudeKeyManager.save_api_key(key)
+            self.security_key_input.text = ""
+            self.security_key_status.color = (
+                0.60,
+                1.00,
+                0.70,
+                1,
+            )
+            self._refresh_security_key_status(
+                "Claude key saved."
+            )
+            log.info(
+                "Settings: Claude API key saved "
+                "to private application storage"
+            )
+
+        except Exception as error:
+            self.security_key_status.text = (
+                "Could not save Claude API key:\n"
+                f"{type(error).__name__}: {error}"
+            )
+            self.security_key_status.color = (
+                1.00,
+                0.45,
+                0.45,
+                1,
+            )
+            log.error(
+                "Settings: Claude API key save failed: "
                 f"{type(error).__name__}: {error}"
             )
 
