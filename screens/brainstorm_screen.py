@@ -20,6 +20,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
+from kivy.utils import platform
 
 import subprocess
 import sys
@@ -31,12 +32,12 @@ from utils.ui_scale import (
     button_font,
     button_height,
     text_font,
-    small_font,
     input_font,
     row_height,
     small_row_height,
     padding_size,
     spacing_size,
+    device_profile,
 )
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -199,6 +200,29 @@ class BrainstormScreen(Screen):
             )
         )
 
+    @staticmethod
+    def _enable_button_wrap(button):
+        """
+        Let a Button's text wrap onto multiple lines instead of
+        overflowing past its own edges into neighboring widgets.
+
+        Kivy Buttons don't wrap by default (text_size defaults to
+        (None, None), i.e. natural single-line width). On phone/tablet
+        profiles, button_font() is large enough (~58px) that labels
+        like "Continue Brainstorm" or "Get Final Decision Now" are
+        wider than the button actually is, so the text visibly spills
+        over the button's edge and into whatever sits next to it,
+        looking like the buttons themselves are overlapping.
+        """
+        button.halign = "center"
+        button.valign = "middle"
+
+        def _update(instance, size):
+            instance.text_size = (size[0] * 0.94, size[1] * 0.9)
+
+        button.bind(size=_update)
+        _update(button, button.size)
+
     def build_ui(self):
         root = BoxLayout(
             orientation="vertical",
@@ -273,6 +297,17 @@ class BrainstormScreen(Screen):
             bar_color=(0.45, 0.55, 0.70, 0.9),
             bar_inactive_color=(0.35, 0.40, 0.48, 0.6),
         )
+        # Bind resize DIRECTLY to the ScrollView's own size changing --
+        # this is the real event that fires exactly when Kivy completes
+        # a layout pass and the viewport gets a genuine size, on any
+        # platform, regardless of how long that takes. A fixed time
+        # delay (Clock.schedule_once with a guessed number of seconds)
+        # is not reliable across platforms -- Android's window/layout
+        # startup can take noticeably longer than desktop Linux, so a
+        # delay tuned for one silently fails on the other.
+        self.chat_scroll.bind(
+            size=lambda inst, val: Clock.schedule_once(self._resize_chat_view, 0)
+        )
 
         self.chat_view = TextInput(
             text="",
@@ -322,6 +357,7 @@ class BrainstormScreen(Screen):
             background_color=(0.25, 0.28, 0.38, 1),
         )
         self.copy_btn.bind(on_press=self.copy_transcript)
+        self._enable_button_wrap(self.copy_btn)
         copy_row.add_widget(self.copy_btn)
 
         root.add_widget(copy_row)
@@ -338,10 +374,29 @@ class BrainstormScreen(Screen):
         )
         root.add_widget(self.topic_input)
 
+        # ---------------------------------------------------------
+        # Controls: Start/Continue, Stop, New Topic, Past Sessions
+        # ---------------------------------------------------------
+        # On phone/tablet/m12 profiles, button_font()/button_height()
+        # are MUCH larger (touch-friendly) than on desktop/linux -- 4
+        # buttons squeezed into a single horizontal row that fits fine
+        # on desktop overlaps badly on mobile. Stack them 2x2 on mobile
+        # profiles instead, matching how HomeScreen already reduces its
+        # grid to 2 columns on the same profiles.
+        profile = device_profile()
+        stacked_controls = profile in ("phone", "tablet", "m12")
+
+        controls_hint = 0.18 if stacked_controls else 0.08
+        controls_container = BoxLayout(
+            orientation="vertical",
+            spacing=spacing_size(),
+            size_hint=(1, controls_hint),
+        )
+
         control_row = BoxLayout(
             orientation="horizontal",
             spacing=spacing_size(),
-            size_hint=(1, 0.08),
+            size_hint=(1, 0.5 if stacked_controls else 1),
         )
 
         self.start_btn = Button(
@@ -352,6 +407,7 @@ class BrainstormScreen(Screen):
         )
         self.start_btn.bind(on_press=self.start_brainstorm)
         self._bind_disabled_dim(self.start_btn, (0.10, 0.40, 0.30, 1))
+        self._enable_button_wrap(self.start_btn)
         control_row.add_widget(self.start_btn)
 
         self.stop_btn = Button(
@@ -363,31 +419,45 @@ class BrainstormScreen(Screen):
         )
         self.stop_btn.bind(on_press=self.stop_brainstorm)
         self._bind_disabled_dim(self.stop_btn, (0.42, 0.22, 0.22, 1))
+        self._enable_button_wrap(self.stop_btn)
         control_row.add_widget(self.stop_btn)
+
+        controls_container.add_widget(control_row)
+
+        second_row = control_row if not stacked_controls else BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint=(1, 0.5),
+        )
 
         self.new_topic_btn = Button(
             text="New Topic",
             font_size=button_font(),
-            size_hint_x=0.32,
+            size_hint_x=(1 if stacked_controls else 0.32),
             background_normal="",
             background_color=(0.30, 0.30, 0.14, 1),
         )
         self.new_topic_btn.bind(on_press=self.new_topic)
         self._bind_disabled_dim(self.new_topic_btn, (0.30, 0.30, 0.14, 1))
-        control_row.add_widget(self.new_topic_btn)
+        self._enable_button_wrap(self.new_topic_btn)
+        second_row.add_widget(self.new_topic_btn)
 
         self.past_sessions_btn = Button(
             text="Past Sessions",
             font_size=button_font(),
-            size_hint_x=0.36,
+            size_hint_x=(1 if stacked_controls else 0.36),
             background_normal="",
             background_color=(0.16, 0.24, 0.34, 1),
         )
         self.past_sessions_btn.bind(on_press=self.open_past_sessions)
         self._bind_disabled_dim(self.past_sessions_btn, (0.16, 0.24, 0.34, 1))
-        control_row.add_widget(self.past_sessions_btn)
+        self._enable_button_wrap(self.past_sessions_btn)
+        second_row.add_widget(self.past_sessions_btn)
 
-        root.add_widget(control_row)
+        if stacked_controls:
+            controls_container.add_widget(second_row)
+
+        root.add_widget(controls_container)
 
         self.final_decision_btn = Button(
             text="Get Final Decision Now",
@@ -398,6 +468,7 @@ class BrainstormScreen(Screen):
         )
         self.final_decision_btn.bind(on_press=self.request_final_decision)
         self._bind_disabled_dim(self.final_decision_btn, (0.42, 0.32, 0.10, 1))
+        self._enable_button_wrap(self.final_decision_btn)
         root.add_widget(self.final_decision_btn)
 
         # ---------------------------------------------------------
@@ -430,6 +501,7 @@ class BrainstormScreen(Screen):
         )
         self.answer_btn.bind(on_press=self.send_user_answer)
         self._bind_disabled_dim(self.answer_btn, (0.20, 0.32, 0.72, 1))
+        self._enable_button_wrap(self.answer_btn)
         self.answer_row.add_widget(self.answer_btn)
 
         root.add_widget(self.answer_row)
@@ -651,7 +723,6 @@ class BrainstormScreen(Screen):
 
         return self.archive_current_session()
 
-    @staticmethod
     @staticmethod
     def _transcript_stats(transcript):
         """Return (chatgpt_count, claude_count) for a transcript list."""
@@ -1021,6 +1092,7 @@ class BrainstormScreen(Screen):
             background_normal="",
             background_color=(0.30, 0.30, 0.14, 1),
         )
+        self._enable_button_wrap(close_btn)
         content.add_widget(close_btn)
 
         popup = Popup(
@@ -1065,9 +1137,9 @@ class BrainstormScreen(Screen):
 
         info_btn = Button(
             text=label_text,
-            font_size=small_font(),
+            font_size=text_font(),
             size_hint_y=None,
-            height=row_height(),
+            height=row_height() * 1.3,
             halign="left",
             valign="middle",
             background_normal="",
@@ -1090,7 +1162,14 @@ class BrainstormScreen(Screen):
 
         row.add_widget(info_btn)
 
-        actions = BoxLayout(
+        # On phone/tablet/m12, up to 3 buttons (View/Get Decision +
+        # Rename + Delete) no longer fit legibly in one row at the much
+        # larger button_font() used there -- stack into two rows, same
+        # pattern as the main screen's control buttons.
+        profile = device_profile()
+        stacked = profile in ("phone", "tablet", "m12")
+
+        actions_first = BoxLayout(
             orientation="horizontal",
             spacing=spacing_size(),
             size_hint_y=None,
@@ -1109,7 +1188,8 @@ class BrainstormScreen(Screen):
                     "Final decision:", d["final_decision"], title=d["title"]
                 )
             )
-            actions.add_widget(view_btn)
+            self._enable_button_wrap(view_btn)
+            actions_first.add_widget(view_btn)
         else:
             get_btn = Button(
                 text="Get Decision",
@@ -1122,12 +1202,20 @@ class BrainstormScreen(Screen):
                     p, cur, popup_holder.get("popup")
                 )
             )
-            actions.add_widget(get_btn)
+            self._enable_button_wrap(get_btn)
+            actions_first.add_widget(get_btn)
+
+        actions_second = actions_first if not stacked else BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint_y=None,
+            height=small_row_height(),
+        )
 
         rename_btn = Button(
             text="Rename",
             font_size=button_font(),
-            size_hint_x=0.4,
+            size_hint_x=(1 if stacked else 0.4),
             background_normal="",
             background_color=(0.30, 0.30, 0.14, 1),
         )
@@ -1136,13 +1224,14 @@ class BrainstormScreen(Screen):
                 d, popup_holder.get("popup")
             )
         )
-        actions.add_widget(rename_btn)
+        self._enable_button_wrap(rename_btn)
+        actions_second.add_widget(rename_btn)
 
         if not is_current:
             delete_btn = Button(
                 text="Delete",
                 font_size=button_font(),
-                size_hint_x=0.4,
+                size_hint_x=(1 if stacked else 0.4),
                 background_normal="",
                 background_color=(0.42, 0.18, 0.18, 1),
             )
@@ -1151,9 +1240,12 @@ class BrainstormScreen(Screen):
                     p, popup_holder.get("popup")
                 )
             )
-            actions.add_widget(delete_btn)
+            self._enable_button_wrap(delete_btn)
+            actions_second.add_widget(delete_btn)
 
-        row.add_widget(actions)
+        row.add_widget(actions_first)
+        if stacked:
+            row.add_widget(actions_second)
         return row
 
     def open_rename_popup(self, row_data, past_sessions_popup=None):
@@ -1190,6 +1282,8 @@ class BrainstormScreen(Screen):
             background_normal="",
             background_color=(0.10, 0.40, 0.30, 1),
         )
+        self._enable_button_wrap(cancel_btn)
+        self._enable_button_wrap(save_btn)
         buttons.add_widget(cancel_btn)
         buttons.add_widget(save_btn)
         content.add_widget(buttons)
@@ -1306,6 +1400,8 @@ class BrainstormScreen(Screen):
         self.refresh_final_decision_button()
         self.schedule_save()
 
+        Clock.schedule_once(self._resize_chat_view, 0)
+        Clock.schedule_once(self._resize_chat_view, 0.05)
         Clock.schedule_once(self.scroll_to_bottom, 0.05)
         self.set_status(f"Loaded: {data.get('title', path.stem)}")
 
@@ -1345,6 +1441,8 @@ class BrainstormScreen(Screen):
             background_normal="",
             background_color=(0.55, 0.16, 0.16, 1),
         )
+        self._enable_button_wrap(cancel_btn)
+        self._enable_button_wrap(yes_btn)
 
         buttons.add_widget(cancel_btn)
         buttons.add_widget(yes_btn)
@@ -1678,8 +1776,7 @@ class BrainstormScreen(Screen):
         self.finish_brainstorm(f"Solution reached (by {speaker}).")
         self._show_decision_popup(f"{speaker} proposed a solution:", solution_text)
 
-    @staticmethod
-    def _show_decision_popup(heading, decision_text, title="Solution Reached"):
+    def _show_decision_popup(self, heading, decision_text, title="Solution Reached"):
         content = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
 
         content.add_widget(
@@ -1693,7 +1790,7 @@ class BrainstormScreen(Screen):
             )
         )
 
-        scroll = ScrollView(size_hint=(1, 0.65), do_scroll_x=False, do_scroll_y=True)
+        scroll = ScrollView(size_hint=(1, 0.55), do_scroll_x=False, do_scroll_y=True)
         solution_label = Label(
             text=decision_text,
             font_size=text_font(),
@@ -1708,14 +1805,30 @@ class BrainstormScreen(Screen):
         scroll.add_widget(solution_label)
         content.add_widget(scroll)
 
+        buttons = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.20))
+
+        print_btn = Button(
+            text="Print Solution",
+            font_size=button_font(),
+            background_normal="",
+            background_color=(0.16, 0.24, 0.34, 1),
+        )
+        print_btn.bind(
+            on_press=lambda inst, d=decision_text, h=heading: self.print_solution(d, h)
+        )
+        self._enable_button_wrap(print_btn)
+        buttons.add_widget(print_btn)
+
         close_btn = Button(
             text="OK",
             font_size=button_font(),
-            size_hint=(1, 0.20),
             background_normal="",
             background_color=(0.10, 0.40, 0.30, 1),
         )
-        content.add_widget(close_btn)
+        self._enable_button_wrap(close_btn)
+        buttons.add_widget(close_btn)
+
+        content.add_widget(buttons)
 
         popup = Popup(
             title=title,
@@ -1725,6 +1838,83 @@ class BrainstormScreen(Screen):
         )
         close_btn.bind(on_press=popup.dismiss)
         popup.open()
+
+    # -------------------------------------------------------------
+    # Printing
+    # -------------------------------------------------------------
+    def print_solution(self, decision_text, heading="Final decision", instance=None):
+        """
+        Send a final decision to the system's default printer.
+
+        Runs off the main thread since talking to the print system can
+        block briefly. Linux/macOS use the standard `lp` command (CUPS).
+        Windows uses the OS "print" verb on a temporary text file, since
+        there's no equivalent one-line command-line printer call.
+        Android has no general-purpose print pipeline available this
+        way, so it's reported as unsupported rather than attempted.
+        """
+        text = str(decision_text or "").strip()
+
+        if not text:
+            self.set_status("No decision text to print.")
+            return
+
+        self.set_status("Sending to printer...")
+
+        threading.Thread(
+            target=self._print_solution_worker,
+            args=(text, str(heading or "Final decision")),
+            daemon=True,
+        ).start()
+
+    def _print_solution_worker(self, text, heading):
+        document = f"{heading}\n{'-' * len(heading)}\n\n{text}\n"
+
+        try:
+            if platform in ("linux", "macosx"):
+                process = subprocess.run(
+                    ["lp"],
+                    input=document,
+                    text=True,
+                    capture_output=True,
+                    timeout=20,
+                )
+                if process.returncode != 0:
+                    raise RuntimeError(
+                        process.stderr.strip() or "lp command failed"
+                    )
+                message = "Sent to printer."
+
+            elif platform == "win":
+                import os as _os
+                import tempfile
+
+                with tempfile.NamedTemporaryFile(
+                    "w",
+                    suffix=".txt",
+                    delete=False,
+                    encoding="utf-8",
+                ) as temp_file:
+                    temp_file.write(document)
+                    temp_path = temp_file.name
+
+                _os.startfile(temp_path, "print")
+                message = "Sent to printer."
+
+            else:
+                raise RuntimeError(
+                    f"Printing is not supported on this platform ({platform})."
+                )
+
+        except FileNotFoundError:
+            message = (
+                "Print failed: no 'lp' command found. "
+                "Install/configure CUPS printing (e.g. sudo apt install cups)."
+            )
+        except Exception as error:
+            message = f"Print failed: {type(error).__name__}: {error}"
+
+        Clock.schedule_once(lambda dt, m=message: self.set_status(m), 0)
 
     def _handle_question(self, speaker, question):
         self.append_message(speaker, f"QUESTION_FOR_USER: {question}")
@@ -1759,13 +1949,14 @@ class BrainstormScreen(Screen):
         # loaded at construction time, when the screen wasn't visible
         # yet and had no real size), Kivy won't fire the bound callback
         # for a same-value reassignment above, leaving the widget stuck
-        # at whatever bogus tiny height it first computed. Scheduled
-        # twice, like scroll_to_bottom below, to catch up after this
-        # screen's own layout pass completes now that it's visible.
-        Clock.schedule_once(self._resize_chat_view, 0)
-        Clock.schedule_once(self._resize_chat_view, 0.05)
-        Clock.schedule_once(self.scroll_to_bottom, 0.05)
-        Clock.schedule_once(self.scroll_to_bottom, 0.15)
+        # at whatever bogus tiny height it first computed. Scheduled at
+        # several delays to reliably catch up after this screen's own
+        # layout pass completes now that it's visible -- Android's
+        # window/layout startup can take noticeably longer than desktop
+        # Linux, so this is deliberately more generous than one retry.
+        for delay in (0, 0.05, 0.15, 0.3):
+            Clock.schedule_once(self._resize_chat_view, delay)
+            Clock.schedule_once(self.scroll_to_bottom, delay)
 
     def on_leave(self, *args):
         self.save_session()
