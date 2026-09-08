@@ -27,7 +27,17 @@ import sys
 from services.chatgpt_client import ChatGPTClient, ChatGPTClientError
 from services.claude_client import ClaudeClient, ClaudeClientError
 from utils.system_header import create_system_header
-from utils.ui_scale import font, height
+from utils.ui_scale import (
+    button_font,
+    button_height,
+    text_font,
+    small_font,
+    input_font,
+    row_height,
+    small_row_height,
+    padding_size,
+    spacing_size,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 BRAINSTORM_DIR = BASE_DIR / "data" / "brainstorm"
@@ -156,6 +166,11 @@ class BrainstormScreen(Screen):
         # "You" message). None means "use the auto-derived title".
         self.custom_title = None
 
+        # Snapshot of self.transcript as of the last successful archive,
+        # used to skip creating a redundant duplicate archive when
+        # nothing has actually changed since then.
+        self._last_archived_transcript = None
+
         self._save_event = None
 
         self.load_session()
@@ -164,11 +179,31 @@ class BrainstormScreen(Screen):
     # -------------------------------------------------------------
     # UI
     # -------------------------------------------------------------
+    @staticmethod
+    def _bind_disabled_dim(widget, enabled_color, disabled_color=(0.18, 0.18, 0.20, 1)):
+        """
+        Make a widget's background actually gray out when disabled.
+
+        Kivy's default disabled styling only swaps the built-in text
+        color and background image automatically -- it does NOT dim a
+        custom background_color when background_normal="" is used (as
+        every button on this screen does), so disabled buttons would
+        otherwise look identical to enabled ones. This binds the visual
+        state directly to the `disabled` property so it always matches,
+        no matter which code path toggles it.
+        """
+        widget.background_color = disabled_color if widget.disabled else enabled_color
+        widget.bind(
+            disabled=lambda inst, val, ec=enabled_color, dc=disabled_color: setattr(
+                inst, "background_color", dc if val else ec
+            )
+        )
+
     def build_ui(self):
         root = BoxLayout(
             orientation="vertical",
-            padding=height(12),
-            spacing=height(8),
+            padding=padding_size(),
+            spacing=spacing_size(),
         )
 
         self.system_header = create_system_header(
@@ -180,36 +215,109 @@ class BrainstormScreen(Screen):
         root.add_widget(self.system_header)
 
         # ---------------------------------------------------------
+        # Current topic title (always visible, regardless of scroll
+        # position -- the topic text itself lives inside the scrollable
+        # transcript and gets scrolled out of view immediately since the
+        # screen auto-scrolls to the latest message).
+        # ---------------------------------------------------------
+        self.topic_title_panel = BoxLayout(
+            size_hint=(1, 0.055),
+            padding=(spacing_size(), spacing_size() // 2 or 1),
+        )
+
+        with self.topic_title_panel.canvas.before:
+            Color(0.08, 0.12, 0.20, 1)
+            self._topic_title_bg_rect = Rectangle(
+                pos=self.topic_title_panel.pos, size=self.topic_title_panel.size
+            )
+
+        self.topic_title_panel.bind(
+            pos=lambda inst, val: setattr(self._topic_title_bg_rect, "pos", val),
+            size=lambda inst, val: setattr(self._topic_title_bg_rect, "size", val),
+        )
+
+        self.topic_title_label = Label(
+            text="No active topic",
+            font_size=text_font(),
+            bold=True,
+            color=(0.70, 0.85, 1, 1),
+            halign="center",
+            valign="middle",
+            shorten=True,
+            shorten_from="right",
+        )
+        self.topic_title_label.bind(
+            size=lambda inst, val: setattr(inst, "text_size", val)
+        )
+        self.topic_title_panel.add_widget(self.topic_title_label)
+        root.add_widget(self.topic_title_panel)
+
+        # ---------------------------------------------------------
         # Transcript
         # ---------------------------------------------------------
         # A read-only TextInput (not a Label) so the user can click-drag
         # to select text and press Ctrl+C, same as the System Log on the
         # AI screen. Labels cannot be selected or copied in Kivy.
+        #
+        # Wrapped in a ScrollView for a visible right-side scrollbar --
+        # TextInput has no scrollbar of its own. scroll_type=['bars']
+        # means only dragging the bar itself scrolls; dragging inside
+        # the text keeps working for selection, so Copy Transcript is
+        # unaffected.
+        self.chat_scroll = ScrollView(
+            size_hint=(1, 0.445),
+            do_scroll_x=False,
+            do_scroll_y=True,
+            bar_width=spacing_size(),
+            scroll_type=["bars"],
+            bar_color=(0.45, 0.55, 0.70, 0.9),
+            bar_inactive_color=(0.35, 0.40, 0.48, 0.6),
+        )
+
         self.chat_view = TextInput(
-            text=self.render_transcript_text(),
+            text="",
             readonly=True,
             multiline=True,
             cursor_blink=False,
-            font_size=font(15),
-            size_hint=(1, 0.50),
-            padding=(height(10), height(8)),
+            font_size=text_font(),
+            size_hint=(1, None),
+            padding=(padding_size(), padding_size()),
             background_color=(0.025, 0.03, 0.05, 1),
             foreground_color=(0.92, 0.92, 0.92, 1),
             selection_color=(0.20, 0.45, 0.75, 0.65),
+            hint_text=(
+                "No topic selected.\n\n"
+                "Type a topic below and press Start Brainstorm, "
+                "or open Past Sessions to reopen one you've already started."
+            ),
+            hint_text_color=(0.45, 0.55, 0.68, 0.9),
             use_bubble=True,
             use_handles=True,
         )
-        root.add_widget(self.chat_view)
+        self.chat_view.bind(
+            text=lambda inst, val: Clock.schedule_once(self._resize_chat_view, 0)
+        )
+        # Set the real initial text as a separate assignment AFTER
+        # construction, not as a constructor kwarg alongside hint_text.
+        # Kivy has a known quirk where hint_text can get visually
+        # "stuck" showing even once text is set, if both are passed to
+        # the constructor together -- a plain assignment afterward
+        # avoids it and forces a proper refresh.
+        self.chat_view.text = self.render_transcript_text()
+
+        self.chat_scroll.add_widget(self.chat_view)
+        root.add_widget(self.chat_scroll)
+        Clock.schedule_once(self._resize_chat_view, 0)
 
         copy_row = BoxLayout(
             orientation="horizontal",
-            spacing=height(8),
+            spacing=spacing_size(),
             size_hint=(1, 0.06),
         )
 
         self.copy_btn = Button(
             text="Copy Transcript",
-            font_size=font(14),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.25, 0.28, 0.38, 1),
         )
@@ -223,68 +331,73 @@ class BrainstormScreen(Screen):
         # ---------------------------------------------------------
         self.topic_input = TextInput(
             hint_text="Describe the problem you want ChatGPT and Claude to solve...",
-            font_size=font(16),
+            font_size=input_font(),
             multiline=True,
             size_hint=(1, 0.14),
-            padding=(height(10), height(10)),
+            padding=(padding_size(), padding_size()),
         )
         root.add_widget(self.topic_input)
 
         control_row = BoxLayout(
             orientation="horizontal",
-            spacing=height(8),
+            spacing=spacing_size(),
             size_hint=(1, 0.08),
         )
 
         self.start_btn = Button(
             text="Start Brainstorm",
-            font_size=font(16),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.10, 0.40, 0.30, 1),
         )
         self.start_btn.bind(on_press=self.start_brainstorm)
+        self._bind_disabled_dim(self.start_btn, (0.10, 0.40, 0.30, 1))
         control_row.add_widget(self.start_btn)
 
         self.stop_btn = Button(
             text="Stop",
-            font_size=font(16),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.42, 0.22, 0.22, 1),
             disabled=True,
         )
         self.stop_btn.bind(on_press=self.stop_brainstorm)
+        self._bind_disabled_dim(self.stop_btn, (0.42, 0.22, 0.22, 1))
         control_row.add_widget(self.stop_btn)
 
         self.new_topic_btn = Button(
             text="New Topic",
-            font_size=font(16),
+            font_size=button_font(),
             size_hint_x=0.32,
             background_normal="",
             background_color=(0.30, 0.30, 0.14, 1),
         )
         self.new_topic_btn.bind(on_press=self.new_topic)
+        self._bind_disabled_dim(self.new_topic_btn, (0.30, 0.30, 0.14, 1))
         control_row.add_widget(self.new_topic_btn)
 
         self.past_sessions_btn = Button(
             text="Past Sessions",
-            font_size=font(16),
+            font_size=button_font(),
             size_hint_x=0.36,
             background_normal="",
             background_color=(0.16, 0.24, 0.34, 1),
         )
         self.past_sessions_btn.bind(on_press=self.open_past_sessions)
+        self._bind_disabled_dim(self.past_sessions_btn, (0.16, 0.24, 0.34, 1))
         control_row.add_widget(self.past_sessions_btn)
 
         root.add_widget(control_row)
 
         self.final_decision_btn = Button(
             text="Get Final Decision Now",
-            font_size=font(16),
+            font_size=button_font(),
             size_hint=(1, 0.07),
             background_normal="",
             background_color=(0.42, 0.32, 0.10, 1),
         )
         self.final_decision_btn.bind(on_press=self.request_final_decision)
+        self._bind_disabled_dim(self.final_decision_btn, (0.42, 0.32, 0.10, 1))
         root.add_widget(self.final_decision_btn)
 
         # ---------------------------------------------------------
@@ -292,27 +405,31 @@ class BrainstormScreen(Screen):
         # ---------------------------------------------------------
         self.answer_row = BoxLayout(
             orientation="horizontal",
-            spacing=height(8),
+            spacing=spacing_size(),
             size_hint=(1, 0.10),
         )
 
         self.answer_input = TextInput(
             hint_text="An AI is waiting for your answer...",
-            font_size=font(16),
+            font_size=input_font(),
             multiline=False,
             disabled=True,
+        )
+        self._bind_disabled_dim(
+            self.answer_input, (1, 1, 1, 1), disabled_color=(0.45, 0.45, 0.48, 1)
         )
         self.answer_row.add_widget(self.answer_input)
 
         self.answer_btn = Button(
             text="Answer",
-            font_size=font(16),
+            font_size=button_font(),
             size_hint_x=0.28,
             background_normal="",
             background_color=(0.20, 0.32, 0.72, 1),
             disabled=True,
         )
         self.answer_btn.bind(on_press=self.send_user_answer)
+        self._bind_disabled_dim(self.answer_btn, (0.20, 0.32, 0.72, 1))
         self.answer_row.add_widget(self.answer_btn)
 
         root.add_widget(self.answer_row)
@@ -322,7 +439,7 @@ class BrainstormScreen(Screen):
         # ---------------------------------------------------------
         self.status_panel = BoxLayout(
             size_hint=(1, 0.06),
-            padding=(height(8), height(4)),
+            padding=(spacing_size(), spacing_size()),
         )
 
         with self.status_panel.canvas.before:
@@ -338,7 +455,7 @@ class BrainstormScreen(Screen):
 
         self.status_label = Label(
             text="Ready.",
-            font_size=font(17),
+            font_size=button_font(),
             bold=True,
             color=(1, 0.85, 0.35, 1),
             halign="center",
@@ -351,6 +468,8 @@ class BrainstormScreen(Screen):
         root.add_widget(self.status_panel)
 
         self.add_widget(root)
+        self.refresh_topic_title()
+        self.refresh_final_decision_button()
 
     def get_system_status_text(self):
         if self.manager and self.manager.has_screen("home"):
@@ -387,6 +506,7 @@ class BrainstormScreen(Screen):
                 )
                 self.final_decision = None
                 self.custom_title = None
+                self._last_archived_transcript = None
 
         except Exception as error:
             print(f"Brainstorm session load error: {type(error).__name__}: {error}")
@@ -395,6 +515,7 @@ class BrainstormScreen(Screen):
             self.pending_solution = None
             self.final_decision = None
             self.custom_title = None
+            self._last_archived_transcript = None
 
     @staticmethod
     def _parse_transcript(text):
@@ -465,6 +586,25 @@ class BrainstormScreen(Screen):
                 return trimmed[:60] + ("..." if len(trimmed) > 60 else "")
         return "(untitled topic)"
 
+    def refresh_topic_title(self):
+        """Keep the always-visible title bar in sync with the current
+        topic, since it lives outside the scrollable transcript."""
+        if not hasattr(self, "topic_title_label"):
+            return
+
+        self.topic_title_label.text = (
+            self.session_title() if self.transcript else "No active topic"
+        )
+
+    def refresh_final_decision_button(self):
+        """Get Final Decision Now should only be pressable while a
+        discussion is actively running -- not just while a topic
+        happens to exist but is sitting idle."""
+        if not hasattr(self, "final_decision_btn"):
+            return
+
+        self.final_decision_btn.disabled = not self.running
+
     def archive_current_session(self):
         """
         Save the current discussion to data/brainstorm/archive/ instead
@@ -488,11 +628,28 @@ class BrainstormScreen(Screen):
                 json.dumps(data, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
+            self._last_archived_transcript = list(self.transcript)
             return path
 
         except Exception as error:
             print(f"Brainstorm archive error: {type(error).__name__}: {error}")
             return None
+
+    def _archive_current_session_if_changed(self):
+        """
+        Auto-archive the current session before switching away from it,
+        but ONLY if it actually differs from the last time it was
+        archived. Without this check, repeatedly viewing/loading other
+        past sessions while one stays active would silently create a
+        new near-duplicate archive copy every single time.
+        """
+        if not self.transcript:
+            return None
+
+        if list(self.transcript) == self._last_archived_transcript:
+            return None
+
+        return self.archive_current_session()
 
     @staticmethod
     @staticmethod
@@ -539,6 +696,27 @@ class BrainstormScreen(Screen):
     # -------------------------------------------------------------
     # Transcript UI updates (always called on the main thread)
     # -------------------------------------------------------------
+    def _resize_chat_view(self, dt=0):
+        """
+        Grow the TextInput to fit all of its content, so it never clips
+        internally -- all scrolling then happens in the outer
+        ScrollView, which is what actually draws the visible scrollbar.
+        Falls back to filling the viewport if line metrics aren't
+        available yet (e.g. before the first layout pass).
+        """
+        try:
+            line_count = max(1, len(self.chat_view._lines))
+            vertical_padding = self.chat_view.padding[1] + self.chat_view.padding[3]
+            computed_height = int(line_count * self.chat_view.line_height + vertical_padding)
+        except Exception:
+            computed_height = 0
+
+        viewport_height = self.chat_scroll.height or 1
+        self.chat_view.height = max(computed_height, viewport_height)
+
+    def scroll_to_bottom(self, dt=0):
+        self.chat_scroll.scroll_y = 0
+
     def _refresh_transcript_ui(self, dt=0):
         """
         Update the on-screen transcript and persist it. Safe to call via
@@ -548,23 +726,15 @@ class BrainstormScreen(Screen):
         """
         self.chat_view.text = self.render_transcript_text()
         self.schedule_save()
+        Clock.schedule_once(self._resize_chat_view, 0)
         Clock.schedule_once(self.scroll_to_bottom, 0)
         Clock.schedule_once(self.scroll_to_bottom, 0.05)
 
     def append_message(self, speaker, message):
         self.transcript.append((speaker, str(message)))
         self._refresh_transcript_ui()
-
-    def scroll_to_bottom(self, dt=0):
-        try:
-            end_index = len(self.chat_view.text)
-            self.chat_view.cursor = self.chat_view.get_cursor_from_index(end_index)
-
-            ensure_visible = getattr(self.chat_view, "_ensure_cursor_visible", None)
-            if callable(ensure_visible):
-                ensure_visible()
-        except Exception as error:
-            print(f"Brainstorm auto-scroll error: {type(error).__name__}: {error}")
+        self.refresh_topic_title()
+        self.refresh_final_decision_button()
 
     def copy_transcript(self, instance=None):
         """
@@ -625,6 +795,9 @@ class BrainstormScreen(Screen):
         self.running = False
         self.start_btn.disabled = False
         self.stop_btn.disabled = True
+        self.new_topic_btn.disabled = False
+        self.past_sessions_btn.disabled = False
+        self.refresh_final_decision_button()
         self.set_status(
             "Recovered from a stalled discussion. Press Start/Continue again."
         )
@@ -674,6 +847,7 @@ class BrainstormScreen(Screen):
             self.pending_solution = None
             self.final_decision = None
             self.custom_title = None
+            self._last_archived_transcript = None
             self.append_message("You", typed_text)
             self.topic_input.text = ""
             self.set_status("ChatGPT and Claude are discussing your problem...")
@@ -686,6 +860,9 @@ class BrainstormScreen(Screen):
 
         self.start_btn.disabled = True
         self.stop_btn.disabled = False
+        self.new_topic_btn.disabled = True
+        self.past_sessions_btn.disabled = True
+        self.refresh_final_decision_button()
 
         self.debate_thread = threading.Thread(
             target=self.run_debate_loop,
@@ -697,23 +874,46 @@ class BrainstormScreen(Screen):
         """
         Archive the current discussion (if any) and start fresh.
 
+        If you've already typed a topic in the box, this archives the
+        old discussion AND immediately starts the new one in a single
+        click -- matching "type a topic, press New Topic" as one
+        action, rather than requiring a separate Start Brainstorm press
+        afterward. If the box is empty, it just clears the screen and
+        waits for you to type something.
+
         Nothing is ever silently deleted: the outgoing discussion is
         saved under data/brainstorm/archive/ and can be reopened later
-        from "Past Sessions".
+        from "Past Sessions" -- unless it's identical to the last
+        archive already made of it (e.g. you just reloaded that same
+        archive and changed nothing), in which case no redundant copy
+        is created.
         """
         if self.running:
             self.set_status("Stop the current discussion first.")
             return
 
-        archived_path = self.archive_current_session()
+        if not self.chatgpt_client.has_key():
+            self.set_status("OpenAI API key not configured. See Settings.")
+            return
+
+        if not self.claude_client.has_key():
+            self.set_status("Claude API key not configured. See Settings.")
+            return
+
+        typed_text = self.topic_input.text.strip()
+
+        archived_path = self._archive_current_session_if_changed()
 
         self.transcript = []
         self.turn_index = 0
         self.pending_solution = None
         self.final_decision = None
         self.custom_title = None
+        self._last_archived_transcript = None
         self.chat_view.text = ""
         self.start_btn.text = "Start Brainstorm"
+        self.refresh_topic_title()
+        self.refresh_final_decision_button()
 
         # Clear the active session file too, now that its content lives
         # safely in the archive.
@@ -723,10 +923,39 @@ class BrainstormScreen(Screen):
         except OSError:
             pass
 
+        if not typed_text:
+            if archived_path is not None:
+                self.set_status("Previous discussion archived. Ready for a new topic.")
+            else:
+                self.set_status("Ready for a new topic.")
+            return
+
+        # A topic was already typed -- start it immediately instead of
+        # requiring a second Start Brainstorm click.
+        self.topic_input.text = ""
+        self.append_message("You", typed_text)
+
+        self.running = True
+        self.stop_requested = False
+        self.waiting_for_user = False
+        self.pause_event.clear()
+        self.turn_budget_end = MAX_TURNS
+        self.start_btn.disabled = True
+        self.stop_btn.disabled = False
+        self.new_topic_btn.disabled = True
+        self.past_sessions_btn.disabled = True
+        self.refresh_final_decision_button()
+
         if archived_path is not None:
-            self.set_status(f"Previous discussion archived. Ready for a new topic.")
+            self.set_status("Previous discussion archived. Starting new topic...")
         else:
-            self.set_status("Ready for a new topic.")
+            self.set_status("ChatGPT and Claude are discussing your problem...")
+
+        self.debate_thread = threading.Thread(
+            target=self.run_debate_loop,
+            daemon=True,
+        )
+        self.debate_thread.start()
 
     # -------------------------------------------------------------
     # Past Sessions
@@ -758,20 +987,20 @@ class BrainstormScreen(Screen):
             entry["is_current"] = False
             rows.append(entry)
 
-        content = BoxLayout(orientation="vertical", spacing=height(8), padding=height(10))
+        content = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
 
         if not rows:
             content.add_widget(
                 Label(
                     text="No topics yet. Start a discussion to see it here.",
-                    font_size=font(15),
+                    font_size=text_font(),
                     halign="center",
                     valign="middle",
                 )
             )
         else:
             scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
-            session_list = GridLayout(cols=1, spacing=height(10), size_hint_y=None)
+            session_list = GridLayout(cols=1, spacing=spacing_size(), size_hint_y=None)
             session_list.bind(minimum_height=session_list.setter("height"))
 
             popup_holder = {}
@@ -786,9 +1015,9 @@ class BrainstormScreen(Screen):
 
         close_btn = Button(
             text="Close",
-            font_size=font(15),
+            font_size=button_font(),
             size_hint=(1, None),
-            height=height(48),
+            height=button_height(),
             background_normal="",
             background_color=(0.30, 0.30, 0.14, 1),
         )
@@ -821,22 +1050,32 @@ class BrainstormScreen(Screen):
             f"Claude: {row_data['claude_count']}  |  {decision_text}"
         )
 
-        row = BoxLayout(orientation="vertical", spacing=height(4), size_hint_y=None)
+        # Current topic wins regardless of decision status (green); a
+        # decided topic is blue; still-undecided is yellow/gold, so the
+        # whole list is scannable at a glance.
+        if is_current:
+            row_color = (0.14, 0.42, 0.20, 1)
+        elif decided:
+            row_color = (0.12, 0.22, 0.46, 1)
+        else:
+            row_color = (0.48, 0.40, 0.08, 1)
+
+        row = BoxLayout(orientation="vertical", spacing=spacing_size(), size_hint_y=None)
         row.bind(minimum_height=row.setter("height"))
 
         info_btn = Button(
             text=label_text,
-            font_size=font(13),
+            font_size=small_font(),
             size_hint_y=None,
-            height=height(78),
+            height=row_height(),
             halign="left",
             valign="middle",
             background_normal="",
-            background_color=(0.14, 0.28, 0.20, 1) if is_current else (0.10, 0.15, 0.25, 1),
+            background_color=row_color,
         )
         info_btn.bind(
             size=lambda inst, val: setattr(
-                inst, "text_size", (val[0] - height(16), val[1])
+                inst, "text_size", (val[0] - spacing_size() * 2, val[1])
             )
         )
 
@@ -851,12 +1090,17 @@ class BrainstormScreen(Screen):
 
         row.add_widget(info_btn)
 
-        actions = BoxLayout(orientation="horizontal", spacing=height(6), size_hint_y=None, height=height(44))
+        actions = BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint_y=None,
+            height=small_row_height(),
+        )
 
         if decided:
             view_btn = Button(
                 text="View Decision",
-                font_size=font(13),
+                font_size=button_font(),
                 background_normal="",
                 background_color=(0.14, 0.30, 0.42, 1),
             )
@@ -869,7 +1113,7 @@ class BrainstormScreen(Screen):
         else:
             get_btn = Button(
                 text="Get Decision",
-                font_size=font(13),
+                font_size=button_font(),
                 background_normal="",
                 background_color=(0.42, 0.32, 0.10, 1),
             )
@@ -882,7 +1126,7 @@ class BrainstormScreen(Screen):
 
         rename_btn = Button(
             text="Rename",
-            font_size=font(13),
+            font_size=button_font(),
             size_hint_x=0.4,
             background_normal="",
             background_color=(0.30, 0.30, 0.14, 1),
@@ -897,7 +1141,7 @@ class BrainstormScreen(Screen):
         if not is_current:
             delete_btn = Button(
                 text="Delete",
-                font_size=font(13),
+                font_size=button_font(),
                 size_hint_x=0.4,
                 background_normal="",
                 background_color=(0.42, 0.18, 0.18, 1),
@@ -913,12 +1157,12 @@ class BrainstormScreen(Screen):
         return row
 
     def open_rename_popup(self, row_data, past_sessions_popup=None):
-        content = BoxLayout(orientation="vertical", spacing=height(10), padding=height(14))
+        content = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
 
         content.add_widget(
             Label(
                 text="Rename topic:",
-                font_size=font(15),
+                font_size=text_font(),
                 bold=True,
                 size_hint=(1, 0.25),
             )
@@ -926,23 +1170,23 @@ class BrainstormScreen(Screen):
 
         title_input = TextInput(
             text=row_data["title"],
-            font_size=font(16),
+            font_size=input_font(),
             multiline=False,
             size_hint=(1, 0.35),
         )
         content.add_widget(title_input)
 
-        buttons = BoxLayout(orientation="horizontal", spacing=height(8), size_hint=(1, 0.35))
+        buttons = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.35))
 
         cancel_btn = Button(
             text="Cancel",
-            font_size=font(15),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.18, 0.28, 0.42, 1),
         )
         save_btn = Button(
             text="Save",
-            font_size=font(15),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.10, 0.40, 0.30, 1),
         )
@@ -981,6 +1225,8 @@ class BrainstormScreen(Screen):
 
         if is_current:
             self.custom_title = new_title
+            self.refresh_topic_title()
+            self.refresh_final_decision_button()
             self.schedule_save()
         else:
             try:
@@ -1025,9 +1271,19 @@ class BrainstormScreen(Screen):
             return
 
         # Anything currently on screen is archived first, so switching
-        # to a past session never loses the one you were just having.
-        if self.transcript:
-            self.archive_current_session()
+        # to a past session never loses the one you were just having --
+        # but only if it actually changed since the last time it was
+        # archived, to avoid creating a silent duplicate copy.
+        self._archive_current_session_if_changed()
+
+        # The archive being loaded now becomes "the current session" --
+        # remove the archive file itself so it doesn't sit alongside the
+        # now-live copy looking like a duplicate. If you switch away
+        # again later, it will be re-archived fresh at that point.
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as error:
+            print(f"Brainstorm: could not remove loaded archive {path.name}: {error}")
 
         self.transcript = [tuple(entry) for entry in data.get("transcript", [])]
         self.turn_index = int(data.get("turn_index", 0))
@@ -1037,8 +1293,17 @@ class BrainstormScreen(Screen):
         # title (whether it was auto-derived or renamed at archive
         # time), so it doesn't unexpectedly change once resumed.
         self.custom_title = data.get("title")
+        # The archive file was just deleted above (it's now represented
+        # by "current" instead), so there is NO backing file anymore --
+        # do NOT mark this as "already archived", or switching away
+        # later without any changes would skip re-archiving it (dedup
+        # logic) and this topic would vanish entirely. Setting this to
+        # None forces exactly one fresh archive on the next switch-away.
+        self._last_archived_transcript = None
         self.chat_view.text = self.render_transcript_text()
         self.start_btn.text = "Continue Brainstorm" if self.transcript else "Start Brainstorm"
+        self.refresh_topic_title()
+        self.refresh_final_decision_button()
         self.schedule_save()
 
         Clock.schedule_once(self.scroll_to_bottom, 0.05)
@@ -1050,12 +1315,12 @@ class BrainstormScreen(Screen):
     def confirm_delete_session(self, path, past_sessions_popup=None):
         """Show a Yes/Cancel confirmation before permanently deleting an
         archived session."""
-        content = BoxLayout(orientation="vertical", spacing=height(12), padding=height(14))
+        content = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
 
         content.add_widget(
             Label(
                 text="Delete this session?\nThis cannot be undone.",
-                font_size=font(16),
+                font_size=text_font(),
                 bold=True,
                 halign="center",
                 valign="middle",
@@ -1064,19 +1329,19 @@ class BrainstormScreen(Screen):
 
         buttons = BoxLayout(
             orientation="horizontal",
-            spacing=height(8),
+            spacing=spacing_size(),
             size_hint=(1, 0.4),
         )
 
         cancel_btn = Button(
             text="Cancel",
-            font_size=font(15),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.18, 0.28, 0.42, 1),
         )
         yes_btn = Button(
             text="Yes, Delete",
-            font_size=font(15),
+            font_size=button_font(),
             background_normal="",
             background_color=(0.55, 0.16, 0.16, 1),
         )
@@ -1148,6 +1413,9 @@ class BrainstormScreen(Screen):
         self.turn_budget_end = self.turn_index + MAX_TURNS
         self.start_btn.disabled = True
         self.stop_btn.disabled = False
+        self.new_topic_btn.disabled = True
+        self.past_sessions_btn.disabled = True
+        self.refresh_final_decision_button()
         self.set_status("Asking ChatGPT and Claude for a final decision...")
 
         self.debate_thread = threading.Thread(target=self.run_debate_loop, daemon=True)
@@ -1168,6 +1436,9 @@ class BrainstormScreen(Screen):
         self.start_btn.disabled = False
         self.start_btn.text = "Continue Brainstorm" if self.transcript else "Start Brainstorm"
         self.stop_btn.disabled = True
+        self.new_topic_btn.disabled = False
+        self.past_sessions_btn.disabled = False
+        self.refresh_final_decision_button()
         self.answer_input.disabled = True
         self.answer_btn.disabled = True
         self.answer_input.hint_text = "An AI is waiting for your answer..."
@@ -1409,12 +1680,12 @@ class BrainstormScreen(Screen):
 
     @staticmethod
     def _show_decision_popup(heading, decision_text, title="Solution Reached"):
-        content = BoxLayout(orientation="vertical", spacing=height(10), padding=height(14))
+        content = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
 
         content.add_widget(
             Label(
                 text=heading,
-                font_size=font(15),
+                font_size=text_font(),
                 bold=True,
                 size_hint=(1, 0.15),
                 halign="center",
@@ -1425,7 +1696,7 @@ class BrainstormScreen(Screen):
         scroll = ScrollView(size_hint=(1, 0.65), do_scroll_x=False, do_scroll_y=True)
         solution_label = Label(
             text=decision_text,
-            font_size=font(15),
+            font_size=text_font(),
             size_hint_y=None,
             halign="left",
             valign="top",
@@ -1439,7 +1710,7 @@ class BrainstormScreen(Screen):
 
         close_btn = Button(
             text="OK",
-            font_size=font(15),
+            font_size=button_font(),
             size_hint=(1, 0.20),
             background_normal="",
             background_color=(0.10, 0.40, 0.30, 1),
@@ -1478,9 +1749,23 @@ class BrainstormScreen(Screen):
     # -------------------------------------------------------------
     def on_pre_enter(self, *args):
         self.chat_view.text = self.render_transcript_text()
+        self.refresh_topic_title()
+        self.refresh_final_decision_button()
         if not self.running:
             self.start_btn.text = "Continue Brainstorm" if self.transcript else "Start Brainstorm"
+
+        # Force a resize unconditionally, not just via the text-change
+        # bind: if this exact text was already set once before (e.g.
+        # loaded at construction time, when the screen wasn't visible
+        # yet and had no real size), Kivy won't fire the bound callback
+        # for a same-value reassignment above, leaving the widget stuck
+        # at whatever bogus tiny height it first computed. Scheduled
+        # twice, like scroll_to_bottom below, to catch up after this
+        # screen's own layout pass completes now that it's visible.
+        Clock.schedule_once(self._resize_chat_view, 0)
+        Clock.schedule_once(self._resize_chat_view, 0.05)
         Clock.schedule_once(self.scroll_to_bottom, 0.05)
+        Clock.schedule_once(self.scroll_to_bottom, 0.15)
 
     def on_leave(self, *args):
         self.save_session()
