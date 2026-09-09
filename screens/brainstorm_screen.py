@@ -439,6 +439,7 @@ class BrainstormScreen(Screen):
         self.start_btn = Button(
             text="Start Brainstorm",
             font_size=button_font(),
+            size_hint_x=(1 if stacked_controls else 0.30),
             background_normal="",
             background_color=(0.10, 0.40, 0.30, 1),
         )
@@ -450,6 +451,7 @@ class BrainstormScreen(Screen):
         self.stop_btn = Button(
             text="Stop",
             font_size=button_font(),
+            size_hint_x=(1 if stacked_controls else 0.14),
             background_normal="",
             background_color=(0.42, 0.22, 0.22, 1),
             disabled=True,
@@ -470,7 +472,7 @@ class BrainstormScreen(Screen):
         self.new_topic_btn = Button(
             text="New Topic",
             font_size=button_font(),
-            size_hint_x=(1 if stacked_controls else 0.32),
+            size_hint_x=(1 if stacked_controls else 0.22),
             background_normal="",
             background_color=(0.30, 0.30, 0.14, 1),
         )
@@ -482,7 +484,7 @@ class BrainstormScreen(Screen):
         self.past_sessions_btn = Button(
             text="Past Sessions",
             font_size=button_font(),
-            size_hint_x=(1 if stacked_controls else 0.36),
+            size_hint_x=(1 if stacked_controls else 0.34),
             background_normal="",
             background_color=(0.16, 0.24, 0.34, 1),
         )
@@ -1339,6 +1341,7 @@ class BrainstormScreen(Screen):
 
         popup = Popup(
             title="Past Sessions",
+            title_size=button_font() * 1.35,
             content=content,
             size_hint=(0.9, 0.85),
         )

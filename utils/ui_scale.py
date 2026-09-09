@@ -65,7 +65,7 @@ def font(base):
     elif profile == "m12":
         scale = 1.45
     elif profile == "linux":
-        scale = 1.10
+        scale = 2.00
     else:
         scale = 1.00
 
@@ -82,7 +82,7 @@ def height(base):
     elif profile == "m12":
         scale = 1.35
     elif profile == "linux":
-        scale = 1.05
+        scale = 2.00
     else:
         scale = 1.00
 
@@ -103,7 +103,7 @@ def title_font():
     if profile == "m12":
         return 32
     if profile == "linux":
-        return 30
+        return 60
 
     return font(26)
 
@@ -118,7 +118,7 @@ def button_font():
     if profile == "m12":
         return 30
     if profile == "linux":
-        return 18
+        return 64
 
     return font(16)
 
@@ -133,7 +133,7 @@ def list_font():
     if profile == "m12":
         return 32
     if profile == "linux":
-        return 17
+        return 52
 
     return font(14)
 
@@ -148,7 +148,7 @@ def text_font():
     if profile == "m12":
         return 22
     if profile == "linux":
-        return 16
+        return 48
 
     return font(14)
 
@@ -163,7 +163,7 @@ def status_font():
     if profile == "m12":
         return 20
     if profile == "linux":
-        return 14
+        return 36
 
     return font(12)
 
@@ -178,7 +178,7 @@ def small_font():
     if profile == "m12":
         return 18
     if profile == "linux":
-        return 13
+        return 32
 
     return font(11)
 
@@ -193,7 +193,7 @@ def input_font():
     if profile == "m12":
         return 30
     if profile == "linux":
-        return 18
+        return 52
 
     return font(20)
 
@@ -208,7 +208,7 @@ def clock_time_font():
     if profile == "m12":
         return 58
     if profile == "linux":
-        return 52
+        return 104
 
     return font(52)
 
@@ -223,7 +223,7 @@ def clock_date_font():
     if profile == "m12":
         return 24
     if profile == "linux":
-        return 20
+        return 40
 
     return font(20)
 
@@ -242,7 +242,7 @@ def button_height():
     if profile == "m12":
         return 66
     if profile == "linux":
-        return 52
+        return 104
 
     return height(48)
 
@@ -257,7 +257,7 @@ def row_height():
     if profile == "m12":
         return 96
     if profile == "linux":
-        return 64
+        return 128
 
     return height(60)
 
@@ -272,7 +272,7 @@ def small_row_height():
     if profile == "m12":
         return 66
     if profile == "linux":
-        return 48
+        return 96
 
     return height(44)
 
@@ -287,7 +287,7 @@ def input_height():
     if profile == "m12":
         return 72
     if profile == "linux":
-        return 56
+        return 112
 
     return height(52)
 
@@ -302,7 +302,7 @@ def top_bar_height():
     if profile == "m12":
         return 46
     if profile == "linux":
-        return 40
+        return 80
 
     return height(34)
 
@@ -317,7 +317,7 @@ def padding_size():
     if profile == "m12":
         return 10
     if profile == "linux":
-        return 10
+        return 20
 
     return 10
 
@@ -332,7 +332,7 @@ def spacing_size():
     if profile == "m12":
         return 8
     if profile == "linux":
-        return 8
+        return 16
 
     return 8
 
@@ -420,8 +420,8 @@ def ai_layout():
 
     if profile == "linux":
         return {
-            "screen_padding": 8,
-            "screen_spacing": 5,
+            "screen_padding": 16,
+            "screen_spacing": 10,
             "mode_hint": 0.060,
             "section_title_hint": 0.036,
             "chat_hint": 0.390,
@@ -430,15 +430,15 @@ def ai_layout():
             "log_hint": 0.120,
             "log_buttons_hint": 0.052,
             "back_hint": 0.048,
-            "mode_font": 22,
-            "section_font": 24,
-            "chat_font": 30,
-            "input_font": 25,
-            "message_button_font": 21,
-            "log_font": 23,
-            "log_button_font": 20,
-            "back_font": 21,
-            "android_chat_font": 30,
+            "mode_font": 44,
+            "section_font": 48,
+            "chat_font": 60,
+            "input_font": 50,
+            "message_button_font": 42,
+            "log_font": 46,
+            "log_button_font": 40,
+            "back_font": 42,
+            "android_chat_font": 60,
         }
 
     return {

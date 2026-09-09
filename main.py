@@ -1,4 +1,5 @@
 import sys
+import subprocess
 
 from kivy.config import Config
 
@@ -9,11 +10,71 @@ Config.set("kivy", "clipboard", "sdl2")
 # -------------------------------------------------------------
 IS_LINUX = sys.platform.startswith("linux")
 
+
+def _linux_system_screen_size():
+    """
+    Return the current Linux display size reported by the system.
+
+    xrandr is queried before Kivy creates its window, so the initial
+    M12 window can be sized from the actual display instead of a
+    hardcoded desktop resolution.
+    """
+    try:
+        result = subprocess.run(
+            ["xrandr", "--current"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if "*" not in line:
+                    continue
+
+                for part in line.split():
+                    if "x" not in part:
+                        continue
+
+                    pieces = part.split("x", 1)
+                    if (
+                        len(pieces) == 2
+                        and pieces[0].isdigit()
+                        and pieces[1].isdigit()
+                    ):
+                        width = int(pieces[0])
+                        height = int(pieces[1])
+
+                        if width >= 640 and height >= 480:
+                            return width, height
+    except Exception:
+        pass
+
+    return None
+
+
 if IS_LINUX:
-    # Linux desktop/laptop:
-    # larger resizable window + F11 fullscreen
-    Config.set("graphics", "width", "1000")
-    Config.set("graphics", "height", "700")
+    detected_screen = _linux_system_screen_size()
+
+    if detected_screen is not None:
+        screen_width, screen_height = detected_screen
+
+        # Use most of the available display while leaving room for the
+        # desktop panel, window borders, and normal window management.
+        window_width = int(screen_width * 0.75)
+        window_height = int(screen_height * 0.80)
+
+        # Keep the application usable on unusually small/large displays.
+        window_width = max(900, min(window_width, screen_width - 80))
+        window_height = max(650, min(window_height, screen_height - 100))
+    else:
+        # Safe fallback if the Linux display server cannot be queried.
+        window_width = 1000
+        window_height = 700
+
+    Config.set("graphics", "width", str(window_width))
+    Config.set("graphics", "height", str(window_height))
     Config.set("graphics", "minimum_width", "900")
     Config.set("graphics", "minimum_height", "650")
     Config.set("graphics", "resizable", "1")
@@ -198,7 +259,34 @@ class M12OS(App):
             except Exception:
                 pass
 
+            # Let the Linux window manager choose the largest normal
+            # window that fits the current desktop/work area.
+            Clock.schedule_once(self._maximize_linux_window, 0.15)
+
         self.update_window_title()
+
+    def _maximize_linux_window(self, dt=0):
+        if not IS_LINUX:
+            return
+
+        try:
+            maximize = getattr(Window, "maximize", None)
+            if callable(maximize):
+                maximize()
+                Clock.schedule_once(
+                    lambda _dt: self.update_window_title(),
+                    0.15,
+                )
+                log.info(
+                    f"Linux window maximized: "
+                    f"{int(Window.width)}x{int(Window.height)}"
+                )
+            else:
+                log.warning("Linux window maximize is not available.")
+        except Exception as error:
+            log.error(
+                f"Linux maximize failed: {type(error).__name__}: {error}"
+            )
 
     # -------------------------------------------------------------
     # Linux keyboard handling
