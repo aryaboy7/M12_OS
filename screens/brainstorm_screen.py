@@ -27,6 +27,7 @@ import sys
 
 from services.chatgpt_client import ChatGPTClient, ChatGPTClientError
 from services.claude_client import ClaudeClient, ClaudeClientError
+from services.voice_service import VoiceService
 from utils.system_header import create_system_header
 from utils.ui_scale import (
     button_font,
@@ -130,6 +131,13 @@ class BrainstormScreen(Screen):
         self.chatgpt_client = ChatGPTClient()
         self.claude_client = ClaudeClient()
 
+        # Shared speech-to-text/text-to-speech service, matching the
+        # same VoiceService used by AIScreen. Created lazily on first
+        # use, not at startup, same as AIScreen does.
+        self.voice_service = None
+        self.voice_recording = False
+        self.speaking = False
+
         self.running = False
         self.debate_thread = None
         self.stop_requested = False
@@ -173,6 +181,16 @@ class BrainstormScreen(Screen):
         self._last_archived_transcript = None
 
         self._save_event = None
+
+        # Self-correcting retry loop for the chat view's height, used
+        # instead of a fixed number of guessed time delays -- some
+        # Android hardware (e.g. the M12 device) can take noticeably
+        # longer than others to complete its first real layout pass, so
+        # a bounded set of short delays isn't reliably enough on every
+        # device. This just keeps trying for a couple of seconds and
+        # self-cancels once time is up.
+        self._resize_retry_event = None
+        self._resize_retry_count = 0
 
         self.load_session()
         self.build_ui()
@@ -365,14 +383,33 @@ class BrainstormScreen(Screen):
         # ---------------------------------------------------------
         # Topic input
         # ---------------------------------------------------------
+        topic_row = BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint=(1, 0.14),
+        )
+
         self.topic_input = TextInput(
             hint_text="Describe the problem you want ChatGPT and Claude to solve...",
             font_size=input_font(),
             multiline=True,
-            size_hint=(1, 0.14),
             padding=(padding_size(), padding_size()),
         )
-        root.add_widget(self.topic_input)
+        topic_row.add_widget(self.topic_input)
+
+        self.topic_voice_btn = Button(
+            text="Voice",
+            font_size=button_font(),
+            size_hint_x=0.22,
+            background_normal="",
+            background_color=(0.20, 0.32, 0.72, 1),
+        )
+        self.topic_voice_btn.bind(on_press=self.start_topic_voice_input)
+        self._bind_disabled_dim(self.topic_voice_btn, (0.20, 0.32, 0.72, 1))
+        self._enable_button_wrap(self.topic_voice_btn)
+        topic_row.add_widget(self.topic_voice_btn)
+
+        root.add_widget(topic_row)
 
         # ---------------------------------------------------------
         # Controls: Start/Continue, Stop, New Topic, Past Sessions
@@ -490,6 +527,19 @@ class BrainstormScreen(Screen):
             self.answer_input, (1, 1, 1, 1), disabled_color=(0.45, 0.45, 0.48, 1)
         )
         self.answer_row.add_widget(self.answer_input)
+
+        self.answer_voice_btn = Button(
+            text="Voice",
+            font_size=button_font(),
+            size_hint_x=0.22,
+            background_normal="",
+            background_color=(0.20, 0.32, 0.72, 1),
+            disabled=True,
+        )
+        self.answer_voice_btn.bind(on_press=self.start_answer_voice_input)
+        self._bind_disabled_dim(self.answer_voice_btn, (0.20, 0.32, 0.72, 1))
+        self._enable_button_wrap(self.answer_voice_btn)
+        self.answer_row.add_widget(self.answer_voice_btn)
 
         self.answer_btn = Button(
             text="Answer",
@@ -807,6 +857,155 @@ class BrainstormScreen(Screen):
         self.refresh_topic_title()
         self.refresh_final_decision_button()
 
+    # -------------------------------------------------------------
+    # Voice input (topic box and answer box)
+    # -------------------------------------------------------------
+    def _get_voice_service(self):
+        if self.voice_service is None:
+            self.voice_service = VoiceService()
+        return self.voice_service
+
+    def start_topic_voice_input(self, instance=None):
+        if self.voice_recording:
+            return
+
+        self.voice_recording = True
+        self.topic_voice_btn.text = "Listening..."
+        self.topic_voice_btn.disabled = True
+        self.set_status("Speak now -- recording for 6 seconds...")
+
+        threading.Thread(
+            target=self._voice_worker,
+            args=(self._finish_topic_voice,),
+            daemon=True,
+        ).start()
+
+    def _finish_topic_voice(self, text, error_message):
+        self.voice_recording = False
+        self.topic_voice_btn.text = "Voice"
+        self.topic_voice_btn.disabled = False
+
+        if error_message:
+            self.blocked(f"Voice input failed: {error_message}")
+            return
+
+        text = text.strip()
+
+        if not text:
+            self.set_status("No speech was recognized.")
+            return
+
+        self.topic_input.text = text
+        self.set_status(f'Heard: "{text}"')
+
+    def start_answer_voice_input(self, instance=None):
+        if self.voice_recording or not self.waiting_for_user:
+            return
+
+        self.voice_recording = True
+        self.answer_voice_btn.text = "Listening..."
+        self.answer_voice_btn.disabled = True
+        self.set_status("Speak now -- recording for 6 seconds...")
+
+        threading.Thread(
+            target=self._voice_worker,
+            args=(self._finish_answer_voice,),
+            daemon=True,
+        ).start()
+
+    def _finish_answer_voice(self, text, error_message):
+        self.voice_recording = False
+        self.answer_voice_btn.text = "Voice"
+
+        # Only re-enable if still actually waiting on an answer --
+        # the AI's question may have already been superseded (e.g. the
+        # user pressed Stop) while this recording was in flight.
+        self.answer_voice_btn.disabled = not self.waiting_for_user
+
+        if error_message:
+            self.blocked(f"Voice input failed: {error_message}")
+            return
+
+        text = text.strip()
+
+        if not text:
+            self.set_status("No speech was recognized.")
+            return
+
+        self.answer_input.text = text
+        self.set_status(f'Heard: "{text}"')
+
+    def _voice_worker(self, on_done):
+        """Shared background-thread recorder for both the topic box and
+        the answer box. Runs off the main thread since recording blocks
+        for the full duration."""
+        result_text = ""
+        error_message = ""
+
+        try:
+            service = self._get_voice_service()
+            result_text = service.record_and_transcribe(duration=6) or ""
+        except Exception as error:
+            error_message = f"{type(error).__name__}: {error}"
+
+        Clock.schedule_once(
+            lambda dt, t=result_text, e=error_message: on_done(t, e), 0
+        )
+
+    # -------------------------------------------------------------
+    # Text-to-speech (read the final decision aloud)
+    # -------------------------------------------------------------
+    def read_solution_aloud(self, text, button=None):
+        """Speak a decision aloud, or stop mid-speech if already
+        speaking -- pressing the same button toggles between the two,
+        matching the Start/Stop pattern used elsewhere on this screen."""
+        if self.speaking:
+            try:
+                if self.voice_service is not None:
+                    self.voice_service.stop_speaking()
+            except Exception as error:
+                print(f"Brainstorm read-aloud stop error: {type(error).__name__}: {error}")
+            return
+
+        text = str(text or "").strip()
+
+        if not text:
+            self.blocked("No decision text to read aloud.")
+            return
+
+        self.speaking = True
+
+        if button is not None:
+            button.text = "Stop Reading"
+
+        threading.Thread(
+            target=self._read_aloud_worker,
+            args=(text, button),
+            daemon=True,
+        ).start()
+
+    def _read_aloud_worker(self, text, button):
+        error_message = ""
+
+        try:
+            service = self._get_voice_service()
+            service.speak_text(text)
+        except Exception as error:
+            error_message = f"{type(error).__name__}: {error}"
+
+        Clock.schedule_once(
+            lambda dt, e=error_message, b=button: self._finish_reading_aloud(e, b), 0
+        )
+
+    def _finish_reading_aloud(self, error_message, button):
+        self.speaking = False
+
+        if button is not None:
+            button.text = "Read Aloud"
+
+        if error_message:
+            self.set_status(f"Read aloud failed: {error_message}")
+
     def copy_transcript(self, instance=None):
         """
         Copy selected text, or the full transcript when nothing is
@@ -842,6 +1041,49 @@ class BrainstormScreen(Screen):
 
     def set_status(self, text):
         self.status_label.text = str(text)
+
+    def blocked(self, message):
+        """
+        Use for anything that fully stops an action from happening at
+        all (missing API key, nothing typed, discussion still running,
+        etc). A status-bar update alone is too easy to miss -- this
+        also pops up a real dialog so it's impossible to wonder why
+        nothing happened.
+        """
+        self.set_status(message)
+
+        content = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
+
+        message_label = Label(
+            text=message,
+            font_size=text_font(),
+            halign="center",
+            valign="middle",
+            size_hint=(1, 0.65),
+        )
+        message_label.bind(
+            size=lambda inst, val: setattr(inst, "text_size", val)
+        )
+        content.add_widget(message_label)
+
+        close_btn = Button(
+            text="OK",
+            font_size=button_font(),
+            size_hint=(1, 0.35),
+            background_normal="",
+            background_color=(0.30, 0.30, 0.14, 1),
+        )
+        self._enable_button_wrap(close_btn)
+        content.add_widget(close_btn)
+
+        popup = Popup(
+            title="",
+            content=content,
+            size_hint=(0.8, 0.35),
+            auto_dismiss=False,
+        )
+        close_btn.bind(on_press=popup.dismiss)
+        popup.open()
 
     # -------------------------------------------------------------
     # Start / Stop
@@ -890,11 +1132,11 @@ class BrainstormScreen(Screen):
             return
 
         if not self.chatgpt_client.has_key():
-            self.set_status("OpenAI API key not configured. See Settings.")
+            self.blocked("OpenAI API key not configured.\n\nGo to Settings > Security Key Setup and add your OpenAI key.")
             return
 
         if not self.claude_client.has_key():
-            self.set_status("Claude API key not configured. See Settings.")
+            self.blocked("Claude API key not configured.\n\nGo to Settings > Security Key Setup and add your Claude (Anthropic) key.")
             return
 
         typed_text = self.topic_input.text.strip()
@@ -911,7 +1153,7 @@ class BrainstormScreen(Screen):
 
         else:
             if not typed_text:
-                self.set_status("Enter a problem or idea first.")
+                self.blocked("Enter a problem or idea first.")
                 return
 
             self.turn_index = 0
@@ -960,15 +1202,15 @@ class BrainstormScreen(Screen):
         is created.
         """
         if self.running:
-            self.set_status("Stop the current discussion first.")
+            self.blocked("Stop the current discussion first.")
             return
 
         if not self.chatgpt_client.has_key():
-            self.set_status("OpenAI API key not configured. See Settings.")
+            self.blocked("OpenAI API key not configured.\n\nGo to Settings > Security Key Setup and add your OpenAI key.")
             return
 
         if not self.claude_client.has_key():
-            self.set_status("Claude API key not configured. See Settings.")
+            self.blocked("Claude API key not configured.\n\nGo to Settings > Security Key Setup and add your Claude (Anthropic) key.")
             return
 
         typed_text = self.topic_input.text.strip()
@@ -1033,7 +1275,7 @@ class BrainstormScreen(Screen):
     # -------------------------------------------------------------
     def open_past_sessions(self, instance=None):
         if self.running:
-            self.set_status("Stop the current discussion first.")
+            self.blocked("Stop the current discussion first.")
             return
 
         # Unified list: the currently active discussion (if any) plus
@@ -1487,11 +1729,11 @@ class BrainstormScreen(Screen):
         self._recover_if_thread_died()
 
         if not self.transcript:
-            self.set_status("Start a discussion first.")
+            self.blocked("Start a discussion first.")
             return
 
         if self.waiting_for_user:
-            self.set_status("Answer the pending question first.")
+            self.blocked("Answer the pending question first.")
             return
 
         if self.running:
@@ -1539,6 +1781,7 @@ class BrainstormScreen(Screen):
         self.refresh_final_decision_button()
         self.answer_input.disabled = True
         self.answer_btn.disabled = True
+        self.answer_voice_btn.disabled = True
         self.answer_input.hint_text = "An AI is waiting for your answer..."
         self.set_status(final_status)
 
@@ -1557,6 +1800,7 @@ class BrainstormScreen(Screen):
         self.answer_input.text = ""
         self.answer_input.disabled = True
         self.answer_btn.disabled = True
+        self.answer_voice_btn.disabled = True
         self.waiting_for_user = False
 
         self.append_message("You", answer)
@@ -1775,6 +2019,10 @@ class BrainstormScreen(Screen):
         self.schedule_save()
         self.finish_brainstorm(f"Solution reached (by {speaker}).")
         self._show_decision_popup(f"{speaker} proposed a solution:", solution_text)
+        # Automatically read a freshly-reached decision aloud -- the
+        # "Read Aloud" button in the popup also lets you replay it, or
+        # trigger it on demand later from Past Sessions > View Decision.
+        self.read_solution_aloud(solution_text)
 
     def _show_decision_popup(self, heading, decision_text, title="Solution Reached"):
         content = BoxLayout(orientation="vertical", spacing=spacing_size(), padding=padding_size())
@@ -1805,19 +2053,73 @@ class BrainstormScreen(Screen):
         scroll.add_widget(solution_label)
         content.add_widget(scroll)
 
-        buttons = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.20))
+        # 3 buttons in one row fits fine on desktop and M12 (smaller
+        # button_font()), but overflows badly on a regular Android
+        # phone/tablet where button_font() is nearly double -- same
+        # responsive stacking used for the main screen controls and
+        # each Past Sessions row.
+        #
+        # The M12 unit itself has no printing capability at all (no
+        # Print Spooler, no share-sheet apps to hand text off to), so
+        # Print Solution is hidden there entirely rather than showing a
+        # button that can never work on that hardware. It stays
+        # available on every other platform/profile, including regular
+        # Android phones/tablets, where the Share-sheet approach can
+        # still reach a real printer.
+        profile = device_profile()
+        show_print_button = not (platform == "android" and profile == "m12")
+        button_count = 3 if show_print_button else 2
+        stacked = profile in ("phone", "tablet") or (
+            profile == "m12" and button_count >= 3
+        )
 
-        print_btn = Button(
-            text="Print Solution",
+        buttons_hint = 0.32 if stacked else 0.20
+        buttons_container = BoxLayout(
+            orientation="vertical",
+            spacing=spacing_size(),
+            size_hint=(1, buttons_hint),
+        )
+
+        top_row = BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint=(1, 0.5 if stacked else 1),
+        )
+
+        read_aloud_btn = Button(
+            text="Read Aloud",
             font_size=button_font(),
             background_normal="",
-            background_color=(0.16, 0.24, 0.34, 1),
+            background_color=(0.20, 0.32, 0.72, 1),
         )
-        print_btn.bind(
-            on_press=lambda inst, d=decision_text, h=heading: self.print_solution(d, h)
+        read_aloud_btn.bind(
+            on_press=lambda inst, d=decision_text: self.read_solution_aloud(
+                d, read_aloud_btn
+            )
         )
-        self._enable_button_wrap(print_btn)
-        buttons.add_widget(print_btn)
+        self._enable_button_wrap(read_aloud_btn)
+        top_row.add_widget(read_aloud_btn)
+
+        if show_print_button:
+            print_btn = Button(
+                text="Print Solution",
+                font_size=button_font(),
+                background_normal="",
+                background_color=(0.16, 0.24, 0.34, 1),
+            )
+            print_btn.bind(
+                on_press=lambda inst, d=decision_text, h=heading: self.print_solution(d, h)
+            )
+            self._enable_button_wrap(print_btn)
+            top_row.add_widget(print_btn)
+
+        buttons_container.add_widget(top_row)
+
+        bottom_row = top_row if not stacked else BoxLayout(
+            orientation="horizontal",
+            spacing=spacing_size(),
+            size_hint=(1, 0.5),
+        )
 
         close_btn = Button(
             text="OK",
@@ -1826,9 +2128,14 @@ class BrainstormScreen(Screen):
             background_color=(0.10, 0.40, 0.30, 1),
         )
         self._enable_button_wrap(close_btn)
-        buttons.add_widget(close_btn)
 
-        content.add_widget(buttons)
+        if stacked:
+            bottom_row.add_widget(close_btn)
+            buttons_container.add_widget(bottom_row)
+        else:
+            top_row.add_widget(close_btn)
+
+        content.add_widget(buttons_container)
 
         popup = Popup(
             title=title,
@@ -1836,7 +2143,15 @@ class BrainstormScreen(Screen):
             size_hint=(0.85, 0.6),
             auto_dismiss=False,
         )
-        close_btn.bind(on_press=popup.dismiss)
+
+        def _close(instance=None):
+            # Stop any in-progress speech so it doesn't keep talking
+            # after the popup is gone.
+            if self.speaking:
+                self.read_solution_aloud(decision_text, read_aloud_btn)
+            popup.dismiss()
+
+        close_btn.bind(on_press=_close)
         popup.open()
 
     # -------------------------------------------------------------
@@ -1856,7 +2171,7 @@ class BrainstormScreen(Screen):
         text = str(decision_text or "").strip()
 
         if not text:
-            self.set_status("No decision text to print.")
+            self.blocked("No decision text to print.")
             return
 
         self.set_status("Sending to printer...")
@@ -1901,6 +2216,24 @@ class BrainstormScreen(Screen):
                 _os.startfile(temp_path, "print")
                 message = "Sent to printer."
 
+            elif platform == "android":
+                # Android has no equivalent of `lp`/CUPS reachable from
+                # an app. The normal way any app "prints" on Android is
+                # via the system Share sheet (Share > Print) -- the
+                # built-in Print Spooler registers itself as a share
+                # target for plain text, exactly like whatever apps
+                # you're already printing from on this phone. This
+                # mirrors the same jnius ACTION_SEND pattern AIScreen
+                # already uses for its own Android image sharing.
+                Clock.schedule_once(
+                    lambda dt, d=document, h=heading: self._launch_android_print_share(d, h),
+                    0,
+                )
+                # The Android branch reports its own status once the
+                # share sheet is actually launched (or fails), on the
+                # main thread -- skip the generic message below.
+                return
+
             else:
                 raise RuntimeError(
                     f"Printing is not supported on this platform ({platform})."
@@ -1916,10 +2249,49 @@ class BrainstormScreen(Screen):
 
         Clock.schedule_once(lambda dt, m=message: self.set_status(m), 0)
 
+    def _launch_android_print_share(self, document, heading):
+        """
+        Open Android's system Share sheet with the decision as plain
+        text. Must run on the main thread -- startActivity() cannot be
+        called from a background thread. On stock Android the built-in
+        Print Spooler shows up as "Print" right in this same share
+        sheet, alongside whatever apps you'd normally share text to --
+        the same flow used to print from other apps on this phone.
+        """
+        try:
+            from jnius import autoclass
+
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            Intent = autoclass("android.content.Intent")
+            JavaString = autoclass("java.lang.String")
+
+            activity = PythonActivity.mActivity
+
+            share_intent = Intent(Intent.ACTION_SEND)
+            share_intent.setType("text/plain")
+            share_intent.putExtra(Intent.EXTRA_SUBJECT, JavaString(heading))
+            share_intent.putExtra(Intent.EXTRA_TEXT, JavaString(document))
+
+            chooser = Intent.createChooser(
+                share_intent,
+                JavaString("Print or Share Decision"),
+            )
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+            activity.startActivity(chooser)
+
+            self.set_status("Choose Print (or another app) from the share menu.")
+
+        except Exception as error:
+            self.set_status(
+                f"Print failed: {type(error).__name__}: {error}"
+            )
+
     def _handle_question(self, speaker, question):
         self.append_message(speaker, f"QUESTION_FOR_USER: {question}")
         self.answer_input.disabled = False
         self.answer_btn.disabled = False
+        self.answer_voice_btn.disabled = False
         self.answer_input.hint_text = f"{speaker} is asking: {question}"
         self.answer_input.focus = True
         self.set_status(f"{speaker} needs more information from you.")
@@ -1944,26 +2316,59 @@ class BrainstormScreen(Screen):
         if not self.running:
             self.start_btn.text = "Continue Brainstorm" if self.transcript else "Start Brainstorm"
 
-        # Force a resize unconditionally, not just via the text-change
-        # bind: if this exact text was already set once before (e.g.
-        # loaded at construction time, when the screen wasn't visible
-        # yet and had no real size), Kivy won't fire the bound callback
-        # for a same-value reassignment above, leaving the widget stuck
-        # at whatever bogus tiny height it first computed. Scheduled at
-        # several delays to reliably catch up after this screen's own
-        # layout pass completes now that it's visible -- Android's
-        # window/layout startup can take noticeably longer than desktop
-        # Linux, so this is deliberately more generous than one retry.
-        for delay in (0, 0.05, 0.15, 0.3):
-            Clock.schedule_once(self._resize_chat_view, delay)
-            Clock.schedule_once(self.scroll_to_bottom, delay)
+        self._start_resize_retry_loop()
+
+    def _start_resize_retry_loop(self):
+        """
+        Keep recomputing the chat view's height for a couple of seconds
+        after entering the screen, instead of guessing a fixed number
+        of delays.
+
+        Why this exists: if this exact transcript text was already set
+        once before (e.g. loaded at construction time, when the screen
+        wasn't visible yet and had no real size), Kivy won't fire the
+        bound text-change callback for a same-value reassignment,
+        leaving the widget stuck at whatever bogus tiny height it first
+        computed. A fixed set of short retries worked on desktop and
+        most Android hardware, but some devices (e.g. the M12 unit)
+        can take noticeably longer than that to complete their first
+        real layout pass -- so this retries on an interval instead and
+        self-cancels once time is up, which is correct regardless of
+        how long any given device actually takes.
+        """
+        if self._resize_retry_event is not None:
+            self._resize_retry_event.cancel()
+
+        self._resize_retry_count = 0
+        self._resize_retry_event = Clock.schedule_interval(
+            self._resize_retry_tick, 0.1
+        )
+
+    def _resize_retry_tick(self, dt):
+        self._resize_chat_view()
+        self.scroll_to_bottom()
+
+        self._resize_retry_count += 1
+
+        # ~2.5 seconds total (25 ticks at 0.1s) -- generous enough for
+        # even slow/underpowered Android hardware to finish its first
+        # layout pass, while still stopping on its own rather than
+        # running forever.
+        if self._resize_retry_count >= 25:
+            self._resize_retry_event = None
+            return False
+
+        return True
 
     def on_leave(self, *args):
+        if self._resize_retry_event is not None:
+            self._resize_retry_event.cancel()
+            self._resize_retry_event = None
         self.save_session()
 
     def go_back(self, instance=None):
         if self.running:
-            self.set_status("Stop the brainstorm before leaving.")
+            self.blocked("Stop the brainstorm before leaving.")
             return
 
         target = self.return_screen
