@@ -156,58 +156,19 @@ class M12OS(App):
         # ---------------------------------------------------------
         # Global application container
         # ---------------------------------------------------------
-        root = FloatLayout()
+        self.root_container = FloatLayout()
 
-        # ---------------------------------------------------------
-        # Screen manager
-        # ---------------------------------------------------------
-        self.screen_manager = ScreenManager()
+        # ScreenManager is intentionally created later on Linux.
+        #
+        # Linux window managers apply the real maximized/work-area size
+        # only after the Kivy window exists. Building every screen before
+        # that happens causes font/height helpers to use the wrong size.
+        #
+        # On non-Linux platforms we keep the existing immediate startup.
+        self.screen_manager = None
 
-        self.screen_manager.add_widget(HomeScreen(name="home"))
-        self.screen_manager.add_widget(NotesScreen(name="notes"))
-        self.screen_manager.add_widget(NoteEditorScreen(name="editor"))
-        self.screen_manager.add_widget(NoteTypesScreen(name="note_types"))
-        self.screen_manager.add_widget(ClockScreen(name="clock"))
-        self.screen_manager.add_widget(StopwatchScreen(name="stopwatch"))
-        self.screen_manager.add_widget(TimerScreen(name="timer"))
-        self.screen_manager.add_widget(SettingsScreen(name="settings"))
-        self.screen_manager.add_widget(UpdaterScreen(name="updater"))
-        self.screen_manager.add_widget(DrawingScreen(name="drawing"))
-        self.screen_manager.add_widget(FilesScreen(name="files"))
-        self.screen_manager.add_widget(MusicScreen(name="music"))
-        self.screen_manager.add_widget(AIScreen(name="ai"))
-        self.screen_manager.add_widget(BrainstormScreen(name="brainstorm"))
-        self.screen_manager.add_widget(WeatherScreen(name="weather"))
-        self.screen_manager.add_widget(CalendarScreen(name="calendar"))
-        self.screen_manager.add_widget(
-            CalculatorConverterScreen(name="calculator")
-        )
-        self.screen_manager.add_widget(AlarmScreen(name="alarm"))
-        self.screen_manager.add_widget(BackupScreen(name="backup"))
-        self.screen_manager.add_widget(VideoPlayerScreen(name="video_player"))
-
-        if BluetoothScreen is not None:
-            try:
-                self.screen_manager.add_widget(
-                    BluetoothScreen(name="bluetooth")
-                )
-            except Exception as error:
-                log.error(
-                    "Bluetooth screen creation failed: "
-                    f"{type(error).__name__}: {error}"
-                )
-
-        start_screen = self.config_manager.get(
-            "start_screen",
-            "home",
-        )
-
-        if self.screen_manager.has_screen(start_screen):
-            self.screen_manager.current = start_screen
-        else:
-            self.screen_manager.current = "home"
-
-        root.add_widget(self.screen_manager)
+        if not IS_LINUX:
+            self._build_screen_manager()
 
         self.update_window_title()
 
@@ -230,11 +191,78 @@ class M12OS(App):
         self.alarm_notifier = AlarmNotifier(interval_seconds=30)
         self.alarm_notifier.start()
 
-        # ---------------------------------------------------------
-        # Bluetooth automatic connection
-        # ---------------------------------------------------------
+        if not IS_LINUX:
+            self._schedule_bluetooth_auto_connect()
+
+        return self.root_container
+
+    def _build_screen_manager(self):
+        """
+        Build all application screens using the CURRENT Window size.
+
+        On Linux this is called only after the window manager has applied
+        the final maximized/work-area dimensions. That means every
+        ui_scale helper sees the real usable window instead of the smaller
+        pre-maximize startup window.
+        """
+        if self.screen_manager is not None:
+            return
+
+        manager = ScreenManager()
+
+        manager.add_widget(HomeScreen(name="home"))
+        manager.add_widget(NotesScreen(name="notes"))
+        manager.add_widget(NoteEditorScreen(name="editor"))
+        manager.add_widget(NoteTypesScreen(name="note_types"))
+        manager.add_widget(ClockScreen(name="clock"))
+        manager.add_widget(StopwatchScreen(name="stopwatch"))
+        manager.add_widget(TimerScreen(name="timer"))
+        manager.add_widget(SettingsScreen(name="settings"))
+        manager.add_widget(UpdaterScreen(name="updater"))
+        manager.add_widget(DrawingScreen(name="drawing"))
+        manager.add_widget(FilesScreen(name="files"))
+        manager.add_widget(MusicScreen(name="music"))
+        manager.add_widget(AIScreen(name="ai"))
+        manager.add_widget(BrainstormScreen(name="brainstorm"))
+        manager.add_widget(WeatherScreen(name="weather"))
+        manager.add_widget(CalendarScreen(name="calendar"))
+        manager.add_widget(
+            CalculatorConverterScreen(name="calculator")
+        )
+        manager.add_widget(AlarmScreen(name="alarm"))
+        manager.add_widget(BackupScreen(name="backup"))
+        manager.add_widget(VideoPlayerScreen(name="video_player"))
+
+        if BluetoothScreen is not None:
+            try:
+                manager.add_widget(
+                    BluetoothScreen(name="bluetooth")
+                )
+            except Exception as error:
+                log.error(
+                    "Bluetooth screen creation failed: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        start_screen = self.config_manager.get(
+            "start_screen",
+            "home",
+        )
+
+        if manager.has_screen(start_screen):
+            manager.current = start_screen
+        else:
+            manager.current = "home"
+
+        self.screen_manager = manager
+        self.root_container.add_widget(manager)
+
+    def _schedule_bluetooth_auto_connect(self):
         try:
-            if self.screen_manager.has_screen("bluetooth"):
+            if (
+                self.screen_manager is not None
+                and self.screen_manager.has_screen("bluetooth")
+            ):
                 bluetooth_screen = self.screen_manager.get_screen("bluetooth")
                 Clock.schedule_once(
                     lambda dt: bluetooth_screen.auto_connect_default(),
@@ -243,7 +271,6 @@ class M12OS(App):
         except Exception as error:
             log.error(f"Bluetooth auto-connect schedule failed: {error}")
 
-        return root
 
     # -------------------------------------------------------------
     # Linux window setup
@@ -259,11 +286,13 @@ class M12OS(App):
             except Exception:
                 pass
 
-            # Let the Linux window manager choose the largest normal
-            # window that fits the current desktop/work area.
-            Clock.schedule_once(self._maximize_linux_window, 0.15)
-
-        self.update_window_title()
+            # IMPORTANT:
+            # Maximize before constructing any screen. Screen constructors
+            # call ui_scale helpers, so they must see the final usable
+            # Window dimensions.
+            self._maximize_linux_window()
+        else:
+            self.update_window_title()
 
     def _maximize_linux_window(self, dt=0):
         if not IS_LINUX:
@@ -273,20 +302,31 @@ class M12OS(App):
             maximize = getattr(Window, "maximize", None)
             if callable(maximize):
                 maximize()
-                Clock.schedule_once(
-                    lambda _dt: self.update_window_title(),
-                    0.15,
-                )
-                log.info(
-                    f"Linux window maximized: "
-                    f"{int(Window.width)}x{int(Window.height)}"
-                )
+
+                # Give the Linux window manager time to apply the actual
+                # work-area size. Only then build the screens.
+                Clock.schedule_once(self._finish_linux_startup, 0.40)
             else:
                 log.warning("Linux window maximize is not available.")
+                Clock.schedule_once(self._finish_linux_startup, 0)
         except Exception as error:
             log.error(
                 f"Linux maximize failed: {type(error).__name__}: {error}"
             )
+            Clock.schedule_once(self._finish_linux_startup, 0)
+
+    def _finish_linux_startup(self, dt=0):
+        if self.screen_manager is None:
+            self._build_screen_manager()
+            self._schedule_bluetooth_auto_connect()
+
+        self.update_window_title()
+
+        log.info(
+            f"Linux window ready: "
+            f"{int(Window.width)}x{int(Window.height)}"
+        )
+
 
     # -------------------------------------------------------------
     # Linux keyboard handling
@@ -349,6 +389,9 @@ class M12OS(App):
     def open_global_ai(self, instance=None):
         manager = self.screen_manager
 
+        if manager is None:
+            return
+
         if manager.current == "ai":
             return
 
@@ -368,6 +411,9 @@ class M12OS(App):
     # -------------------------------------------------------------
     def open_global_brainstorm(self, instance=None):
         manager = self.screen_manager
+
+        if manager is None:
+            return
 
         if manager.current == "brainstorm":
             return
