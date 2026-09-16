@@ -103,6 +103,7 @@ from utils.logger import log
 from utils.event_notifier import EventNotifier
 from utils.alarm_notifier import AlarmNotifier
 from utils.ui_scale import font, height
+from utils.data_paths import EVENTS_FILE, ALARMS_FILE
 
 from screens.home_screen import HomeScreen
 from screens.notes_screen import NotesScreen
@@ -293,6 +294,63 @@ class M12OS(App):
             self._maximize_linux_window()
         else:
             self.update_window_title()
+
+            if platform == "android":
+                Clock.schedule_once(
+                    self._restore_android_native_alarms,
+                    1.0,
+                )
+
+    def _restore_android_native_alarms(self, dt=0):
+        """Re-register saved Calendar events and Clock alarms on Android."""
+        if platform != "android":
+            return
+
+        import json
+
+        try:
+            from services.android_event_alarm_scheduler import (
+                sync_android_event_alarms,
+            )
+
+            events = []
+            if EVENTS_FILE.exists():
+                data = json.loads(EVENTS_FILE.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    events = data
+
+            sync_android_event_alarms(events)
+            log.info(
+                "Android startup event alarm sync completed: "
+                f"{len(events)} saved event(s)."
+            )
+        except Exception as error:
+            log.error(
+                "Android startup event alarm sync failed: "
+                f"{type(error).__name__}: {error}"
+            )
+
+        try:
+            from services.android_clock_alarm_scheduler import (
+                sync_android_clock_alarms,
+            )
+
+            alarms = []
+            if ALARMS_FILE.exists():
+                data = json.loads(ALARMS_FILE.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    alarms = data
+
+            sync_android_clock_alarms(alarms)
+            log.info(
+                "Android startup clock alarm sync completed: "
+                f"{len(alarms)} saved alarm(s)."
+            )
+        except Exception as error:
+            log.error(
+                "Android startup clock alarm sync failed: "
+                f"{type(error).__name__}: {error}"
+            )
 
     def _maximize_linux_window(self, dt=0):
         if not IS_LINUX:

@@ -1,3 +1,4 @@
+
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -272,27 +273,27 @@ class EventNotifier:
                 if remind_at and now >= remind_at and now < occurrence_dt:
                     if recurring:
                         if event.get("last_reminder_date", "") != today_key:
-                            event["last_reminder_date"] = today_key
-                            changed = True
-                            self.show_popup(event, occurrence_dt, popup_type="REMINDER")
+                            if self.show_popup(event, occurrence_dt, popup_type="REMINDER"):
+                                event["last_reminder_date"] = today_key
+                                changed = True
                     else:
                         if not event.get("reminder_notified", False):
-                            event["reminder_notified"] = True
-                            changed = True
-                            self.show_popup(event, occurrence_dt, popup_type="REMINDER")
+                            if self.show_popup(event, occurrence_dt, popup_type="REMINDER"):
+                                event["reminder_notified"] = True
+                                changed = True
 
             # Event-time popup.
             if now >= occurrence_dt and now <= occurrence_dt + timedelta(minutes=2):
                 if recurring:
                     if event.get("last_event_date", "") != today_key:
-                        event["last_event_date"] = today_key
-                        changed = True
-                        self.show_popup(event, occurrence_dt, popup_type="EVENT TIME")
+                        if self.show_popup(event, occurrence_dt, popup_type="EVENT TIME"):
+                            event["last_event_date"] = today_key
+                            changed = True
                 else:
                     if not event.get("event_notified", False):
-                        event["event_notified"] = True
-                        changed = True
-                        self.show_popup(event, occurrence_dt, popup_type="EVENT TIME")
+                        if self.show_popup(event, occurrence_dt, popup_type="EVENT TIME"):
+                            event["event_notified"] = True
+                            changed = True
 
             elif not recurring and now > occurrence_dt + timedelta(minutes=2):
                 if not event.get("event_notified", False):
@@ -304,12 +305,12 @@ class EventNotifier:
 
     def show_popup(self, event, occurrence_dt, popup_type="REMINDER"):
         if self.popup_open:
-            return
+            return False
 
         app = App.get_running_app()
 
         if not app:
-            return
+            return False
 
         self.popup_open = True
         self.play_sound()
@@ -379,3 +380,4 @@ class EventNotifier:
 
         popup.open()
         log.info(f"EventNotifier FINAL: {popup_type} popup shown for {title}")
+        return True

@@ -210,26 +210,25 @@ class AlarmNotifier:
             ):
                 continue
 
-            alarm["last_fired_date"] = today
-            alarm["last_fired_time"] = alarm_hm
-            changed = True
+            if self.show_popup(alarm):
+                alarm["last_fired_date"] = today
+                alarm["last_fired_time"] = alarm_hm
+                changed = True
 
-            if alarm.get("repeat_mode", "once") == "once":
-                alarm["enabled"] = False
-
-            self.show_popup(alarm)
+                if alarm.get("repeat_mode", "once") == "once":
+                    alarm["enabled"] = False
 
         if changed:
             self.save_alarms(alarms)
 
     def show_popup(self, alarm):
         if self.popup_open:
-            return
+            return False
 
         app = App.get_running_app()
 
         if not app:
-            return
+            return False
 
         self.popup_open = True
         self.play_sound()
@@ -300,3 +299,4 @@ class AlarmNotifier:
             f"name={alarm_name or '(none)'} "
             f"time={hour:02d}:{minute:02d}"
         )
+        return True
