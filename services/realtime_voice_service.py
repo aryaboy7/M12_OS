@@ -7,6 +7,7 @@ import logging
 import os
 import queue
 import ssl
+import subprocess
 import certifi
 import threading
 import time
@@ -284,6 +285,16 @@ class RealtimeVoiceService:
         self._input_stream = None
         self._output_stream = None
         self._speaker_thread = None
+
+        # Linux full-duplex echo cancellation. PipeWire exposes the
+        # PulseAudio-compatible module-echo-cancel interface used here.
+        # M12 temporarily routes its default input/output through the
+        # WebRTC echo-cancel source/sink while Voice conversation is active.
+        self._linux_aec_lock = threading.RLock()
+        self._linux_aec_active = False
+        self._linux_aec_module_id = None
+        self._linux_aec_previous_source = ""
+        self._linux_aec_previous_sink = ""
 
         self._android_sdl = None
         self._android_audio_record = None
@@ -870,6 +881,183 @@ class RealtimeVoiceService:
             and self.is_connected
         )
 
+    @staticmethod
+    def _run_pactl(*args, timeout=3.0):
+        """Run one pactl command and return stripped stdout."""
+        completed = subprocess.run(
+            ["pactl", *args],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout,
+        )
+        return completed.stdout.strip()
+
+    def _setup_linux_aec(self):
+        """
+        Enable PipeWire/PulseAudio WebRTC echo cancellation for M12 Voice.
+
+        Keep this sequence deliberately simple. The working Zorin test used
+        one module load, a short settling period, then selected the virtual
+        source and sink. Avoid querying PipeWire repeatedly while the echo
+        module is still being created; some PipeWire/Pulse combinations can
+        become unresponsive during that startup window.
+        """
+        if IS_ANDROID or kivy_platform != "linux":
+            return False
+
+        with self._linux_aec_lock:
+            if self._linux_aec_active:
+                return True
+
+            previous_source = ""
+            previous_sink = ""
+            loaded_module_id = None
+
+            try:
+                previous_source = self._run_pactl(
+                    "get-default-source"
+                )
+                previous_sink = self._run_pactl(
+                    "get-default-sink"
+                )
+
+                # If the echo-cancel pair already exists, reuse it. Otherwise
+                # load exactly one WebRTC echo-cancel module and give PipeWire
+                # time to finish creating both virtual endpoints before any
+                # further pactl request is made.
+                sources = self._run_pactl(
+                    "list", "short", "sources"
+                )
+                sinks = self._run_pactl(
+                    "list", "short", "sinks"
+                )
+
+                have_source = "echo-cancel-source" in sources
+                have_sink = "echo-cancel-sink" in sinks
+
+                if not (have_source and have_sink):
+                    loaded_module_id = self._run_pactl(
+                        "load-module",
+                        "module-echo-cancel",
+                        "aec_method=webrtc",
+                    )
+
+                    # Important: do not poll pactl here. The manual Zorin
+                    # test was stable when the module had time to settle.
+                    time.sleep(1.0)
+
+                # The tested full-duplex path requires BOTH endpoints.
+                self._run_pactl(
+                    "set-default-source",
+                    "echo-cancel-source",
+                )
+                self._run_pactl(
+                    "set-default-sink",
+                    "echo-cancel-sink",
+                )
+
+                self._linux_aec_previous_source = previous_source
+                self._linux_aec_previous_sink = previous_sink
+                self._linux_aec_module_id = loaded_module_id
+                self._linux_aec_active = True
+
+                print(
+                    "[Realtime] Linux WebRTC echo cancellation active."
+                )
+                return True
+
+            except Exception as error:
+                # Best-effort rollback if setup stopped halfway through.
+                try:
+                    if previous_source:
+                        self._run_pactl(
+                            "set-default-source", previous_source
+                        )
+                except Exception:
+                    pass
+
+                try:
+                    if previous_sink:
+                        self._run_pactl(
+                            "set-default-sink", previous_sink
+                        )
+                except Exception:
+                    pass
+
+                if loaded_module_id:
+                    try:
+                        self._run_pactl(
+                            "unload-module", loaded_module_id
+                        )
+                    except Exception:
+                        pass
+
+                print(
+                    "[Realtime] Linux WebRTC echo cancellation unavailable: "
+                    f"{type(error).__name__}: {error}"
+                )
+                return False
+
+    def _teardown_linux_aec(self):
+        """Restore Linux audio defaults and unload M12-owned AEC."""
+        if IS_ANDROID or kivy_platform != "linux":
+            return
+
+        with self._linux_aec_lock:
+            if not self._linux_aec_active:
+                return
+
+            previous_source = self._linux_aec_previous_source
+            previous_sink = self._linux_aec_previous_sink
+            module_id = self._linux_aec_module_id
+
+            # Mark inactive first so repeated Stop calls are harmless.
+            self._linux_aec_active = False
+            self._linux_aec_previous_source = ""
+            self._linux_aec_previous_sink = ""
+            self._linux_aec_module_id = None
+
+            try:
+                if previous_source:
+                    self._run_pactl(
+                        "set-default-source", previous_source
+                    )
+            except Exception as error:
+                print(
+                    "[Realtime] Unable to restore Linux input: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+            try:
+                if previous_sink:
+                    self._run_pactl(
+                        "set-default-sink", previous_sink
+                    )
+            except Exception as error:
+                print(
+                    "[Realtime] Unable to restore Linux output: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+            # Unload only a module that this RealtimeVoiceService loaded.
+            # If echo-cancel already existed, leave the user's module alone.
+            if module_id:
+                try:
+                    self._run_pactl(
+                        "unload-module", module_id
+                    )
+                except Exception as error:
+                    print(
+                        "[Realtime] Unable to unload Linux echo cancel: "
+                        f"{type(error).__name__}: {error}"
+                    )
+
+            print(
+                "[Realtime] Linux audio defaults restored."
+            )
+
     def start_conversation(
         self,
         timeout=20.0,
@@ -899,6 +1087,7 @@ class RealtimeVoiceService:
         self._conversation_active.set()
 
         try:
+            self._setup_linux_aec()
             self._start_speaker()
             self._apply_microphone_policy()
 
@@ -906,6 +1095,7 @@ class RealtimeVoiceService:
             self._conversation_active.clear()
             self._stop_microphone()
             self._stop_speaker()
+            self._teardown_linux_aec()
             self._release_android_wake_lock()
             raise
 
@@ -1002,6 +1192,7 @@ class RealtimeVoiceService:
         self._conversation_active.set()
 
         try:
+            self._setup_linux_aec()
             self._start_speaker()
             self._apply_microphone_policy()
 
@@ -1009,6 +1200,7 @@ class RealtimeVoiceService:
             self._conversation_active.clear()
             self._stop_microphone()
             self._stop_speaker()
+            self._teardown_linux_aec()
             self._release_android_wake_lock()
             raise
 
@@ -1036,6 +1228,7 @@ class RealtimeVoiceService:
         self._stop_microphone()
         self._stop_speaker()
         self._clear_audio_queues()
+        self._teardown_linux_aec()
 
         self._release_android_wake_lock()
 
