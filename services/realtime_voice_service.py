@@ -21,6 +21,10 @@ from services.memory_manager import get_memory_manager
 from services.api_key_manager import APIKeyManager
 from services.music_recognition_service import MusicRecognitionService
 from utils.config_manager import ConfigManager
+from utils.linux_aec_setup import (
+    detect_physical_devices,
+    ensure_linux_aec_service,
+)
 
 
 # Prevent third-party networking libraries from logging sensitive
@@ -907,6 +911,23 @@ class RealtimeVoiceService:
         if IS_ANDROID or kivy_platform != "linux":
             return False
 
+        # Keep the tested delayed PipeWire setup persistent across reboots.
+        # This is best-effort: Voice can still fall back to an M12-owned
+        # module if the per-user systemd setup is unavailable.
+        try:
+            setup = ensure_linux_aec_service(start_now=True)
+            if setup.get("supported"):
+                print(
+                    "[Realtime] Linux AEC service ready: "
+                    f"{setup.get('source_master')} -> "
+                    f"{setup.get('sink_master')}"
+                )
+        except Exception as error:
+            print(
+                "[Realtime] Linux AEC service setup unavailable: "
+                f"{type(error).__name__}: {error}"
+            )
+
         with self._linux_aec_lock:
             if self._linux_aec_active:
                 return True
@@ -938,10 +959,18 @@ class RealtimeVoiceService:
                 have_sink = "echo-cancel-sink" in sinks
 
                 if not (have_source and have_sink):
+                    # Fallback for Linux desktops where the user service could
+                    # not be started. Bind the echo canceller explicitly to
+                    # this computer's detected physical microphone/speakers.
+                    source_master, sink_master = detect_physical_devices()
                     loaded_module_id = self._run_pactl(
                         "load-module",
                         "module-echo-cancel",
                         "aec_method=webrtc",
+                        f"source_master={source_master}",
+                        f"sink_master={sink_master}",
+                        "source_name=echo-cancel-source",
+                        "sink_name=echo-cancel-sink",
                     )
 
                     # Important: do not poll pactl here. The manual Zorin
@@ -3662,6 +3691,115 @@ class RealtimeVoiceService:
                 if self._android_speaker_device == device_id:
                     self._android_speaker_device = 0
 
+    @staticmethod
+    def _parse_pactl_short_stream_ids(output, sample_marker):
+        """Return pactl stream IDs whose short row matches sample_marker."""
+        stream_ids = set()
+
+        for line in str(output or "").splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+
+            if sample_marker not in line:
+                continue
+
+            try:
+                stream_ids.add(int(parts[0]))
+            except (TypeError, ValueError):
+                continue
+
+        return stream_ids
+
+    def _linux_audio_stream_ids(self, stream_type):
+        """Snapshot M12-format PipeWire/Pulse stream IDs on Linux."""
+        if IS_ANDROID or kivy_platform != "linux":
+            return set()
+
+        try:
+            output = self._run_pactl(
+                "list", "short", stream_type, timeout=2.0
+            )
+        except Exception:
+            return set()
+
+        return self._parse_pactl_short_stream_ids(
+            output,
+            "s16le 1ch 24000Hz",
+        )
+
+    def _route_linux_output_stream(self, previous_ids):
+        """Route only the newly opened M12 speaker stream through AEC."""
+        if not self._linux_aec_active:
+            return
+
+        try:
+            current_ids = self._linux_audio_stream_ids("sink-inputs")
+            new_ids = sorted(current_ids - set(previous_ids or ()))
+
+            if len(new_ids) != 1:
+                print(
+                    "[Realtime] Linux AEC speaker stream not uniquely identified."
+                )
+                return
+
+            stream_id = str(new_ids[0])
+            self._run_pactl(
+                "move-sink-input",
+                stream_id,
+                "echo-cancel-sink",
+            )
+            self._run_pactl(
+                "set-sink-input-volume",
+                stream_id,
+                "100%",
+            )
+            print(
+                "[Realtime] Linux speaker routed through echo-cancel-sink "
+                "at 100% gain."
+            )
+        except Exception as error:
+            print(
+                "[Realtime] Linux speaker AEC routing failed: "
+                f"{type(error).__name__}: {error}"
+            )
+
+    def _route_linux_input_stream(self, previous_ids):
+        """Route only the newly opened M12 mic through AEC at unity gain."""
+        if not self._linux_aec_active:
+            return
+
+        try:
+            current_ids = self._linux_audio_stream_ids("source-outputs")
+            new_ids = sorted(current_ids - set(previous_ids or ()))
+
+            if len(new_ids) != 1:
+                print(
+                    "[Realtime] Linux AEC microphone stream not uniquely identified."
+                )
+                return
+
+            stream_id = str(new_ids[0])
+            self._run_pactl(
+                "move-source-output",
+                stream_id,
+                "echo-cancel-source",
+            )
+            self._run_pactl(
+                "set-source-output-volume",
+                stream_id,
+                "100%",
+            )
+            print(
+                "[Realtime] Linux microphone routed through echo-cancel-source "
+                "at 100% gain."
+            )
+        except Exception as error:
+            print(
+                "[Realtime] Linux microphone AEC routing failed: "
+                f"{type(error).__name__}: {error}"
+            )
+
     def _start_microphone(
         self,
     ):
@@ -3694,6 +3832,10 @@ class RealtimeVoiceService:
         if self._input_stream is not None:
             return
 
+        linux_input_ids = self._linux_audio_stream_ids(
+            "source-outputs"
+        )
+
         try:
             self._input_stream = (
                 sd.RawInputStream(
@@ -3708,6 +3850,9 @@ class RealtimeVoiceService:
             )
 
             self._input_stream.start()
+            self._route_linux_input_stream(
+                linux_input_ids
+            )
 
         except Exception as error:
             self._input_stream = None
@@ -3884,6 +4029,10 @@ class RealtimeVoiceService:
             )
             return
 
+        linux_output_ids = self._linux_audio_stream_ids(
+            "sink-inputs"
+        )
+
         try:
             self._output_stream = (
                 sd.RawOutputStream(
@@ -3895,6 +4044,9 @@ class RealtimeVoiceService:
             )
 
             self._output_stream.start()
+            self._route_linux_output_stream(
+                linux_output_ids
+            )
 
             while (
                 not self._stop_event.is_set()
