@@ -446,11 +446,20 @@ class AIScreen(Screen):
         # ---------------------------------------------------------
         # Message input
         # ---------------------------------------------------------
+        # ---------------------------------------------------------
+        # Message input + Send button
+        # ---------------------------------------------------------
+        message_input_row = BoxLayout(
+            orientation="horizontal",
+            spacing=height(6),
+            size_hint=(1, input_hint),
+        )
+
         self.message_input = TextInput(
             hint_text="Type a message or press Voice...",
             font_size=ai_ui["input_font"],
             multiline=True,
-            size_hint=(1, input_hint),
+            size_hint_x=0.82,
             padding=(
                 height(12),
                 height(12),
@@ -461,7 +470,32 @@ class AIScreen(Screen):
             text=self.on_message_text_changed
         )
 
-        root.add_widget(self.message_input)
+        self.send_btn = Button(
+            text="Send",
+            font_size=ai_ui["message_button_font"],
+            size_hint_x=0.18,
+            background_normal="",
+            background_color=(
+                0.10,
+                0.40,
+                0.30,
+                1,
+            ),
+        )
+        self.send_btn.bind(
+            on_press=self.send_message
+        )
+
+        message_input_row.add_widget(
+            self.message_input
+        )
+        message_input_row.add_widget(
+            self.send_btn
+        )
+
+        root.add_widget(
+            message_input_row
+        )
 
         # Initialize mode colors and the input hint only after
         # message_input exists.
@@ -470,17 +504,20 @@ class AIScreen(Screen):
 
         # ---------------------------------------------------------
         # Message controls
+        #
+        # Columns line up with System Log controls:
+        # Voice      | Clear Messages | Copy Messages
+        # Save Log   | Clear Log      | Copy Log
         # ---------------------------------------------------------
         message_buttons = BoxLayout(
             orientation="horizontal",
-            spacing=height(6),
+            spacing=height(8),
             size_hint=(1, message_buttons_hint),
         )
 
         self.voice_btn = Button(
             text="Voice",
             font_size=ai_ui["message_button_font"],
-            size_hint_x=0.18,
             background_normal="",
             background_color=(
                 0.20,
@@ -499,7 +536,6 @@ class AIScreen(Screen):
         self.clear_btn = Button(
             text="Clear Messages",
             font_size=ai_ui["message_button_font"],
-            size_hint_x=0.32,
             background_normal="",
             background_color=(
                 0.35,
@@ -518,7 +554,6 @@ class AIScreen(Screen):
         self.copy_btn = Button(
             text="Copy Messages",
             font_size=ai_ui["message_button_font"],
-            size_hint_x=0.32,
             background_normal="",
             background_color=(
                 0.25,
@@ -532,25 +567,6 @@ class AIScreen(Screen):
         )
         message_buttons.add_widget(
             self.copy_btn
-        )
-
-        self.send_btn = Button(
-            text="Send",
-            font_size=ai_ui["message_button_font"],
-            size_hint_x=0.18,
-            background_normal="",
-            background_color=(
-                0.10,
-                0.40,
-                0.30,
-                1,
-            ),
-        )
-        self.send_btn.bind(
-            on_press=self.send_message
-        )
-        message_buttons.add_widget(
-            self.send_btn
         )
 
         root.add_widget(message_buttons)
@@ -673,24 +689,6 @@ class AIScreen(Screen):
             size_hint=(1, log_buttons_hint),
         )
 
-        self.copy_log_btn = Button(
-            text="Copy Log",
-            font_size=ai_ui["log_button_font"],
-            background_normal="",
-            background_color=(
-                0.22,
-                0.30,
-                0.44,
-                1,
-            ),
-        )
-        self.copy_log_btn.bind(
-            on_press=self.copy_system_log
-        )
-        system_log_buttons.add_widget(
-            self.copy_log_btn
-        )
-
         self.save_log_btn = Button(
             text="Save Log",
             font_size=ai_ui["log_button_font"],
@@ -714,9 +712,9 @@ class AIScreen(Screen):
             font_size=ai_ui["log_button_font"],
             background_normal="",
             background_color=(
-                0.42,
-                0.22,
-                0.22,
+                0.35,
+                0.20,
+                0.20,
                 1,
             ),
         )
@@ -725,6 +723,24 @@ class AIScreen(Screen):
         )
         system_log_buttons.add_widget(
             self.clear_log_btn
+        )
+
+        self.copy_log_btn = Button(
+            text="Copy Log",
+            font_size=ai_ui["log_button_font"],
+            background_normal="",
+            background_color=(
+                0.25,
+                0.28,
+                0.38,
+                1,
+            ),
+        )
+        self.copy_log_btn.bind(
+            on_press=self.copy_system_log
+        )
+        system_log_buttons.add_widget(
+            self.copy_log_btn
         )
 
         root.add_widget(system_log_buttons)
@@ -2087,6 +2103,7 @@ class AIScreen(Screen):
                 self.current_image_query
                 or "Images"
             ),
+            title_size=font(22),
             content=content,
             size_hint=(0.95, 0.92),
         )
@@ -2125,6 +2142,7 @@ class AIScreen(Screen):
 
         close_btn = Button(
             text="Close",
+            font_size=font(20),
             size_hint_y=None,
             height=height(48),
         )
@@ -2239,18 +2257,22 @@ class AIScreen(Screen):
                 if platform == "android"
                 else "Copy Image"
             ),
+            font_size=font(20),
         )
 
         save_btn = Button(
             text="Save Image",
+            font_size=font(20),
         )
 
         source_btn = Button(
             text="Open Source",
+            font_size=font(20),
         )
 
         close_btn = Button(
             text="Close",
+            font_size=font(20),
         )
 
         buttons.add_widget(
@@ -2275,6 +2297,7 @@ class AIScreen(Screen):
 
         popup = Popup(
             title=title,
+            title_size=font(22),
             content=content,
             size_hint=(0.96, 0.94),
         )
