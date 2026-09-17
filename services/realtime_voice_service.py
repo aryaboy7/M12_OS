@@ -21,10 +21,6 @@ from services.memory_manager import get_memory_manager
 from services.api_key_manager import APIKeyManager
 from services.music_recognition_service import MusicRecognitionService
 from utils.config_manager import ConfigManager
-from utils.linux_aec_setup import (
-    detect_physical_devices,
-    ensure_linux_aec_service,
-)
 
 
 # Prevent third-party networking libraries from logging sensitive
@@ -311,6 +307,13 @@ class RealtimeVoiceService:
         self._android_mic_device = 0
         self._android_speaker_device = 0
         self._android_audio_lock = threading.Lock()
+
+        # Android communication audio mode.
+        # This helps the platform route full-duplex Voice through its
+        # communication/VoIP processing path, including AEC where supported.
+        self._android_audio_manager = None
+        self._android_previous_audio_mode = None
+        self._android_communication_mode_active = False
 
         self._last_error = ""
         self._running = False
@@ -916,23 +919,6 @@ class RealtimeVoiceService:
         if IS_ANDROID or kivy_platform != "linux":
             return False
 
-        # Keep the tested delayed PipeWire setup persistent across reboots.
-        # This is best-effort: Voice can still fall back to an M12-owned
-        # module if the per-user systemd setup is unavailable.
-        try:
-            setup = ensure_linux_aec_service(start_now=True)
-            if setup.get("supported"):
-                print(
-                    "[Realtime] Linux AEC service ready: "
-                    f"{setup.get('source_master')} -> "
-                    f"{setup.get('sink_master')}"
-                )
-        except Exception as error:
-            print(
-                "[Realtime] Linux AEC service setup unavailable: "
-                f"{type(error).__name__}: {error}"
-            )
-
         with self._linux_aec_lock:
             if self._linux_aec_active:
                 return True
@@ -964,18 +950,10 @@ class RealtimeVoiceService:
                 have_sink = "echo-cancel-sink" in sinks
 
                 if not (have_source and have_sink):
-                    # Fallback for Linux desktops where the user service could
-                    # not be started. Bind the echo canceller explicitly to
-                    # this computer's detected physical microphone/speakers.
-                    source_master, sink_master = detect_physical_devices()
                     loaded_module_id = self._run_pactl(
                         "load-module",
                         "module-echo-cancel",
                         "aec_method=webrtc",
-                        f"source_master={source_master}",
-                        f"sink_master={sink_master}",
-                        "source_name=echo-cancel-source",
-                        "sink_name=echo-cancel-sink",
                     )
 
                     # Important: do not poll pactl here. The manual Zorin
@@ -1092,6 +1070,165 @@ class RealtimeVoiceService:
                 "[Realtime] Linux audio defaults restored."
             )
 
+    def _setup_android_communication_mode(
+        self,
+    ):
+        """
+        Put Android into the platform communication/VoIP audio mode.
+
+        The microphone already uses VOICE_COMMUNICATION and
+        AcousticEchoCanceler. MODE_IN_COMMUNICATION gives Android's audio
+        framework and HAL the matching full-duplex communication context.
+        """
+        if not IS_ANDROID:
+            return
+
+        if self._android_communication_mode_active:
+            return
+
+        try:
+            from jnius import autoclass
+
+            PythonActivity = autoclass(
+                "org.kivy.android.PythonActivity"
+            )
+            Context = autoclass(
+                "android.content.Context"
+            )
+            AudioManager = autoclass(
+                "android.media.AudioManager"
+            )
+
+            activity = PythonActivity.mActivity
+            audio_manager = activity.getSystemService(
+                Context.AUDIO_SERVICE
+            )
+
+            if audio_manager is None:
+                raise RuntimeError(
+                    "Android AudioManager is unavailable."
+                )
+
+            previous_mode = int(
+                audio_manager.getMode()
+            )
+
+            audio_manager.setMode(
+                int(AudioManager.MODE_IN_COMMUNICATION)
+            )
+
+            # Keep communication processing/AEC, but route playback through
+            # the phone's loudspeaker instead of the earpiece.
+            try:
+                AudioDeviceInfo = autoclass(
+                    "android.media.AudioDeviceInfo"
+                )
+
+                devices = (
+                    audio_manager.getAvailableCommunicationDevices()
+                )
+
+                speaker_found = False
+
+                for device in devices:
+                    if int(device.getType()) == int(
+                        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                    ):
+                        speaker_found = True
+                        routed = bool(
+                            audio_manager.setCommunicationDevice(
+                                device
+                            )
+                        )
+
+                        print(
+                            "[Realtime] Android communication "
+                            f"speaker route selected={routed}."
+                        )
+                        break
+
+                if not speaker_found:
+                    print(
+                        "[Realtime] Android built-in communication "
+                        "speaker device not found."
+                    )
+
+            except Exception as error:
+                print(
+                    "[Realtime] Android speaker routing unavailable: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+            current_mode = int(
+                audio_manager.getMode()
+            )
+
+            self._android_audio_manager = audio_manager
+            self._android_previous_audio_mode = previous_mode
+            self._android_communication_mode_active = True
+
+            print(
+                "[Realtime] Android audio mode: "
+                f"{previous_mode} -> {current_mode} "
+                "(MODE_IN_COMMUNICATION)."
+            )
+
+        except Exception as error:
+            self._android_audio_manager = None
+            self._android_previous_audio_mode = None
+            self._android_communication_mode_active = False
+
+            print(
+                "[Realtime] Unable to enable Android "
+                "MODE_IN_COMMUNICATION: "
+                f"{type(error).__name__}: {error}"
+            )
+
+
+    def _restore_android_audio_mode(
+        self,
+    ):
+        """
+        Restore the Android audio mode that existed before Voice started.
+        """
+        if not IS_ANDROID:
+            return
+
+        if not self._android_communication_mode_active:
+            return
+
+        audio_manager = self._android_audio_manager
+        previous_mode = self._android_previous_audio_mode
+
+        self._android_audio_manager = None
+        self._android_previous_audio_mode = None
+        self._android_communication_mode_active = False
+
+        if audio_manager is None or previous_mode is None:
+            return
+
+        try:
+            try:
+                audio_manager.clearCommunicationDevice()
+            except Exception:
+                pass
+
+            audio_manager.setMode(
+                int(previous_mode)
+            )
+
+            print(
+                "[Realtime] Android audio mode restored "
+                f"to {int(previous_mode)}."
+            )
+
+        except Exception as error:
+            print(
+                "[Realtime] Unable to restore Android audio mode: "
+                f"{type(error).__name__}: {error}"
+            )
+
+
     def start_conversation(
         self,
         timeout=20.0,
@@ -1114,6 +1251,7 @@ class RealtimeVoiceService:
         self._text_input_mode = False
 
         self._acquire_android_wake_lock()
+        self._setup_android_communication_mode()
 
         # Mark the conversation active before starting audio threads.
         # The speaker worker checks this flag immediately; starting it
@@ -1130,6 +1268,7 @@ class RealtimeVoiceService:
             self._stop_microphone()
             self._stop_speaker()
             self._teardown_linux_aec()
+            self._restore_android_audio_mode()
             self._release_android_wake_lock()
             raise
 
@@ -1221,6 +1360,7 @@ class RealtimeVoiceService:
         self._user_transcript = ""
 
         self._acquire_android_wake_lock()
+        self._setup_android_communication_mode()
         self._text_input_mode = False
 
         self._conversation_active.set()
@@ -1235,6 +1375,7 @@ class RealtimeVoiceService:
             self._stop_microphone()
             self._stop_speaker()
             self._teardown_linux_aec()
+            self._restore_android_audio_mode()
             self._release_android_wake_lock()
             raise
 
@@ -1263,6 +1404,7 @@ class RealtimeVoiceService:
         self._stop_speaker()
         self._clear_audio_queues()
         self._teardown_linux_aec()
+        self._restore_android_audio_mode()
 
         self._release_android_wake_lock()
 
@@ -3805,12 +3947,12 @@ class RealtimeVoiceService:
                 f"{type(error).__name__}: {error}"
             )
 
-    def _should_use_macos_aec(self):
+    def _should_use_macos_aec(
+        self,
+    ):
         """
         Use Apple Voice Processing only on macOS when Speaker Echo
-        Protection is OFF.
-
-        SEP ON deliberately keeps the existing microphone-pause path.
+        Protection is OFF. Protection ON keeps the existing mic-pause path.
         """
         if IS_ANDROID or kivy_platform != "macosx":
             return False
@@ -3821,9 +3963,6 @@ class RealtimeVoiceService:
         self,
         audio_bytes,
     ):
-        """
-        Receive processed 24 kHz mono PCM16 from the native Mac bridge.
-        """
         if (
             not self._conversation_active.is_set()
             or not self._microphone_enabled.is_set()
@@ -3838,50 +3977,46 @@ class RealtimeVoiceService:
     def _ensure_macos_aec(
         self,
     ):
-        """
-        Start the shared native macOS microphone/speaker AEC engine.
-        """
         if not self._should_use_macos_aec():
             return False
 
         with self._mac_aec_lock:
             backend = self._mac_aec_backend
 
-            if (
-                backend is not None
-                and backend.is_running
-            ):
+            if backend is not None and backend.running:
                 return True
 
-            from utils.macos_aec import (
-                MacOSAECBackend,
-            )
+            try:
+                from utils.macos_aec import MacOSAECBackend
 
-            backend = MacOSAECBackend(
-                on_microphone_audio=(
-                    self._mac_aec_microphone_audio
+                backend = MacOSAECBackend(
+                    microphone_callback=(
+                        self._mac_aec_microphone_audio
+                    )
                 )
-            )
 
-            if not backend.start():
+                if not backend.start():
+                    raise RuntimeError(
+                        "macOS AEC backend did not start."
+                    )
+
+                self._mac_aec_backend = backend
+
+            except Exception as error:
+                self._mac_aec_backend = None
                 raise RuntimeError(
-                    "Native macOS AEC did not start."
-                )
-
-            self._mac_aec_backend = backend
+                    "Unable to start macOS Apple Voice Processing AEC: "
+                    f"{error}"
+                ) from error
 
             print(
                 "[Realtime] macOS Apple Voice Processing AEC active."
             )
-
             return True
 
     def _stop_macos_aec(
         self,
     ):
-        """
-        Stop the native Mac audio engine if this Voice session owns it.
-        """
         with self._mac_aec_lock:
             backend = self._mac_aec_backend
             self._mac_aec_backend = None
@@ -3893,7 +4028,7 @@ class RealtimeVoiceService:
             backend.stop()
         except Exception as error:
             print(
-                "[Realtime] macOS AEC stop error: "
+                "[Realtime] macOS AEC stop failed: "
                 f"{type(error).__name__}: {error}"
             )
 
@@ -3904,25 +4039,17 @@ class RealtimeVoiceService:
     def _macos_aec_speaker_worker(
         self,
     ):
-        """
-        Send M12's 24 kHz mono PCM speaker stream into the same Apple
-        Voice Processing engine that captures the microphone.
-        """
         try:
             if not self._ensure_macos_aec():
-                raise RuntimeError(
-                    "Native macOS AEC is unavailable."
-                )
+                return
 
             while (
                 not self._stop_event.is_set()
                 and self._conversation_active.is_set()
             ):
                 try:
-                    audio_bytes = (
-                        self._speaker_queue.get(
-                            timeout=0.2
-                        )
+                    audio_bytes = self._speaker_queue.get(
+                        timeout=0.2
                     )
                 except queue.Empty:
                     continue
@@ -3930,16 +4057,12 @@ class RealtimeVoiceService:
                 if audio_bytes is None:
                     break
 
-                with self._mac_aec_lock:
-                    backend = self._mac_aec_backend
+                if not audio_bytes:
+                    continue
 
-                if (
-                    backend is None
-                    or not backend.is_running
-                ):
-                    raise RuntimeError(
-                        "Native macOS AEC stopped unexpectedly."
-                    )
+                backend = self._mac_aec_backend
+                if backend is None:
+                    break
 
                 backend.write_playback(
                     audio_bytes
@@ -3951,17 +4074,16 @@ class RealtimeVoiceService:
                 and not self._stop_event.is_set()
             ):
                 self._report_error(
-                    "Realtime macOS AEC speaker failed",
+                    "Realtime macOS speaker failed",
                     error,
                 )
+
 
     def _start_microphone(
         self,
     ):
         self._microphone_enabled.set()
 
-        # macOS + SEP OFF:
-        # microphone PCM comes from Apple's Voice Processing engine.
         if self._should_use_macos_aec():
             self._ensure_macos_aec()
             return
@@ -4028,12 +4150,8 @@ class RealtimeVoiceService:
     ):
         self._microphone_enabled.clear()
 
-        # The native Mac engine must stay alive while Ace is speaking,
-        # because its output is the AEC reference. Microphone forwarding
-        # is gated by _microphone_enabled instead.
         if (
-            not IS_ANDROID
-            and kivy_platform == "macosx"
+            kivy_platform == "macosx"
             and self._mac_aec_backend is not None
         ):
             return
@@ -4182,9 +4300,6 @@ class RealtimeVoiceService:
             thread.join(timeout=2.0)
 
         self._speaker_thread = None
-
-        # The Mac bridge owns both speaker and microphone, so shut it
-        # down only after the speaker worker has finished.
         self._stop_macos_aec()
 
     def _speaker_worker(
@@ -4194,7 +4309,6 @@ class RealtimeVoiceService:
             self._android_speaker_worker()
             return
 
-        # macOS + SEP OFF uses one native full-duplex audio engine.
         if self._should_use_macos_aec():
             self._macos_aec_speaker_worker()
             return
