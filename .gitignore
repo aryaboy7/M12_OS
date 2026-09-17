@@ -41,3 +41,6 @@ data/ai_history/
 .buildozer/
 bin/
 data/brainstorm/
+
+# Local macOS native AEC build
+utils/.m12_mac_aec_bridge

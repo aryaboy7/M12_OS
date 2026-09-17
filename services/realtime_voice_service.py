@@ -290,6 +290,11 @@ class RealtimeVoiceService:
         self._output_stream = None
         self._speaker_thread = None
 
+        # Native macOS full-duplex echo cancellation.
+        # The Swift helper owns BOTH microphone and speaker when active.
+        self._mac_aec_lock = threading.RLock()
+        self._mac_aec_backend = None
+
         # Linux full-duplex echo cancellation. PipeWire exposes the
         # PulseAudio-compatible module-echo-cancel interface used here.
         # M12 temporarily routes its default input/output through the
@@ -3800,10 +3805,166 @@ class RealtimeVoiceService:
                 f"{type(error).__name__}: {error}"
             )
 
+    def _should_use_macos_aec(self):
+        """
+        Use Apple Voice Processing only on macOS when Speaker Echo
+        Protection is OFF.
+
+        SEP ON deliberately keeps the existing microphone-pause path.
+        """
+        if IS_ANDROID or kivy_platform != "macosx":
+            return False
+
+        return not self._refresh_echo_protection_setting()
+
+    def _mac_aec_microphone_audio(
+        self,
+        audio_bytes,
+    ):
+        """
+        Receive processed 24 kHz mono PCM16 from the native Mac bridge.
+        """
+        if (
+            not self._conversation_active.is_set()
+            or not self._microphone_enabled.is_set()
+            or self._stop_event.is_set()
+        ):
+            return
+
+        self._queue_microphone_audio(
+            audio_bytes
+        )
+
+    def _ensure_macos_aec(
+        self,
+    ):
+        """
+        Start the shared native macOS microphone/speaker AEC engine.
+        """
+        if not self._should_use_macos_aec():
+            return False
+
+        with self._mac_aec_lock:
+            backend = self._mac_aec_backend
+
+            if (
+                backend is not None
+                and backend.is_running
+            ):
+                return True
+
+            from utils.macos_aec import (
+                MacOSAECBackend,
+            )
+
+            backend = MacOSAECBackend(
+                on_microphone_audio=(
+                    self._mac_aec_microphone_audio
+                )
+            )
+
+            if not backend.start():
+                raise RuntimeError(
+                    "Native macOS AEC did not start."
+                )
+
+            self._mac_aec_backend = backend
+
+            print(
+                "[Realtime] macOS Apple Voice Processing AEC active."
+            )
+
+            return True
+
+    def _stop_macos_aec(
+        self,
+    ):
+        """
+        Stop the native Mac audio engine if this Voice session owns it.
+        """
+        with self._mac_aec_lock:
+            backend = self._mac_aec_backend
+            self._mac_aec_backend = None
+
+        if backend is None:
+            return
+
+        try:
+            backend.stop()
+        except Exception as error:
+            print(
+                "[Realtime] macOS AEC stop error: "
+                f"{type(error).__name__}: {error}"
+            )
+
+        print(
+            "[Realtime] macOS Apple Voice Processing AEC stopped."
+        )
+
+    def _macos_aec_speaker_worker(
+        self,
+    ):
+        """
+        Send M12's 24 kHz mono PCM speaker stream into the same Apple
+        Voice Processing engine that captures the microphone.
+        """
+        try:
+            if not self._ensure_macos_aec():
+                raise RuntimeError(
+                    "Native macOS AEC is unavailable."
+                )
+
+            while (
+                not self._stop_event.is_set()
+                and self._conversation_active.is_set()
+            ):
+                try:
+                    audio_bytes = (
+                        self._speaker_queue.get(
+                            timeout=0.2
+                        )
+                    )
+                except queue.Empty:
+                    continue
+
+                if audio_bytes is None:
+                    break
+
+                with self._mac_aec_lock:
+                    backend = self._mac_aec_backend
+
+                if (
+                    backend is None
+                    or not backend.is_running
+                ):
+                    raise RuntimeError(
+                        "Native macOS AEC stopped unexpectedly."
+                    )
+
+                backend.write_playback(
+                    audio_bytes
+                )
+
+        except Exception as error:
+            if (
+                self._conversation_active.is_set()
+                and not self._stop_event.is_set()
+            ):
+                self._report_error(
+                    "Realtime macOS AEC speaker failed",
+                    error,
+                )
+
     def _start_microphone(
         self,
     ):
         self._microphone_enabled.set()
+
+        # macOS + SEP OFF:
+        # microphone PCM comes from Apple's Voice Processing engine.
+        if self._should_use_macos_aec():
+            self._ensure_macos_aec()
+            return
 
         if IS_ANDROID:
             if (
@@ -3866,6 +4027,16 @@ class RealtimeVoiceService:
         self,
     ):
         self._microphone_enabled.clear()
+
+        # The native Mac engine must stay alive while Ace is speaking,
+        # because its output is the AEC reference. Microphone forwarding
+        # is gated by _microphone_enabled instead.
+        if (
+            not IS_ANDROID
+            and kivy_platform == "macosx"
+            and self._mac_aec_backend is not None
+        ):
+            return
 
         if IS_ANDROID:
             thread = self._android_mic_thread
@@ -4012,11 +4183,20 @@ class RealtimeVoiceService:
 
         self._speaker_thread = None
 
+        # The Mac bridge owns both speaker and microphone, so shut it
+        # down only after the speaker worker has finished.
+        self._stop_macos_aec()
+
     def _speaker_worker(
         self,
     ):
         if IS_ANDROID:
             self._android_speaker_worker()
+            return
+
+        # macOS + SEP OFF uses one native full-duplex audio engine.
+        if self._should_use_macos_aec():
+            self._macos_aec_speaker_worker()
             return
 
         if not SOUNDDEVICE_AVAILABLE:
