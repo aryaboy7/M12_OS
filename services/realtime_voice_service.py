@@ -3990,7 +3990,7 @@ class RealtimeVoiceService:
                 from utils.macos_aec import MacOSAECBackend
 
                 backend = MacOSAECBackend(
-                    microphone_callback=(
+                    on_microphone_audio=(
                         self._mac_aec_microphone_audio
                     )
                 )
