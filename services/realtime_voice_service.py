@@ -659,11 +659,24 @@ class RealtimeVoiceService:
             ):
                 if quiet_started is None:
                     quiet_started = time.monotonic()
-                elif (
-                    time.monotonic() - quiet_started
-                    >= 0.35
-                ):
-                    break
+                else:
+                    quiet_required = 0.35
+
+                    # macOS local-skill speech is played through a native
+                    # AVAudioPlayerNode. The Python queue can be empty before
+                    # Core Audio has physically finished the final scheduled
+                    # buffer, so keep the microphone protected a little longer.
+                    if (
+                        kivy_platform == "macosx"
+                        and self._local_speech_response
+                    ):
+                        quiet_required = 1.25
+
+                    if (
+                        time.monotonic() - quiet_started
+                        >= quiet_required
+                    ):
+                        break
             else:
                 quiet_started = None
 
@@ -2452,71 +2465,85 @@ class RealtimeVoiceService:
             elif event_type == (
                 "conversation.item.input_audio_transcription.completed"
             ):
+                buffered_transcript = (
+                    self._user_transcript.strip()
+                )
+
                 transcript = str(
                     getattr(
                         event,
                         "transcript",
-                        self._user_transcript,
+                        "",
                     )
                 ).strip()
 
                 if not transcript:
-                    transcript = (
-                        self._user_transcript.strip()
-                    )
+                    transcript = buffered_transcript
 
                 self._user_transcript = ""
 
-                if transcript:
-                    echo_protection_on = (
-                        self._refresh_echo_protection_setting()
+                if not transcript:
+                    print(
+                        "[Realtime] Empty completed transcription."
                     )
-
-                    suppress_for_assistant = (
-                        echo_protection_on
-                        and self._assistant_speaking.is_set()
-                    )
-
-                    suppress_for_local = (
-                        self._local_speech_response
-                        or time.monotonic()
-                        < self._local_echo_suppress_until
-                    )
-
                     if (
-                        suppress_for_assistant
-                        or suppress_for_local
+                        not self._assistant_speaking.is_set()
+                        and not self._local_speech_response
                     ):
-                        print(
-                            "[Realtime] Ignored speaker echo transcript: "
-                            + transcript
+                        self._emit_status(
+                            "Realtime voice is listening."
                         )
-                        continue
+                    continue
 
-                    if self._is_duplicate_transcript(
-                        event,
-                        transcript,
-                    ):
-                        print(
-                            "[Realtime] Duplicate completed "
-                            "transcript ignored."
-                        )
-                        continue
+                echo_protection_on = (
+                    self._refresh_echo_protection_setting()
+                )
 
-                    self._emit_user_transcript(
-                        transcript
-                    )
+                suppress_for_assistant = (
+                    echo_protection_on
+                    and self._assistant_speaking.is_set()
+                )
 
-                    # AI Mode is owned by OpenAI Realtime. Do not run the
-                    # legacy local skill router against natural-language
-                    # transcripts here. Realtime resolves intent and calls
-                    # structured M12 tools when device capabilities are needed.
-                    self._emit_status(
-                        "Realtime answering..."
+                suppress_for_local = (
+                    self._local_speech_response
+                    or time.monotonic()
+                    < self._local_echo_suppress_until
+                )
+
+                if (
+                    suppress_for_assistant
+                    or suppress_for_local
+                ):
+                    print(
+                        "[Realtime] Ignored speaker echo transcript: "
+                        + transcript
                     )
-                    await self._create_response_once(
-                        connection
+                    continue
+
+                if self._is_duplicate_transcript(
+                    event,
+                    transcript,
+                ):
+                    print(
+                        "[Realtime] Duplicate completed "
+                        "transcript ignored."
                     )
+                    continue
+
+                self._emit_user_transcript(
+                    transcript
+                )
+
+                # AI Mode is owned by OpenAI Realtime. Do not run the
+                # legacy local skill router against natural-language
+                # transcripts here. Realtime resolves intent and calls
+                # structured M12 tools when device capabilities are needed.
+                self._emit_status(
+                    "Realtime answering..."
+                )
+                await self._create_response_once(
+                    connection
+                )
 
             elif event_type == (
                 "response.function_call_arguments.done"
@@ -3983,7 +4010,7 @@ class RealtimeVoiceService:
         with self._mac_aec_lock:
             backend = self._mac_aec_backend
 
-            if backend is not None and backend.running:
+            if backend is not None and backend.is_running:
                 return True
 
             try:

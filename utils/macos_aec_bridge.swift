@@ -32,6 +32,11 @@ final class M12MacAECBridge {
         try input.setVoiceProcessingEnabled(true)
         try output.setVoiceProcessingEnabled(true)
 
+        // Explicitly keep Apple's microphone voice-processing path active.
+        // Do not allow the Voice Processing I/O unit to bypass AEC.
+        input.isVoiceProcessingBypassed = false
+        input.isVoiceProcessingAGCEnabled = true
+
         guard input.isVoiceProcessingEnabled,
               output.isVoiceProcessingEnabled else {
             throw NSError(
@@ -96,7 +101,12 @@ final class M12MacAECBridge {
 
         log("input format: \(inputFormat)")
         log("output format: \(outputFormat)")
-        log("ACTIVE voiceProcessing=true transport=24000Hz/1ch/S16LE")
+        log(
+            "ACTIVE voiceProcessing=true "
+            + "bypassed=\(input.isVoiceProcessingBypassed) "
+            + "agc=\(input.isVoiceProcessingAGCEnabled) "
+            + "transport=24000Hz/1ch/S16LE"
+        )
 
         startPlaybackReader(outputFormat: outputFormat)
     }
