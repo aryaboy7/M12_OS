@@ -22,6 +22,19 @@ from services.api_key_manager import APIKeyManager
 from services.music_recognition_service import MusicRecognitionService
 from utils.config_manager import ConfigManager
 
+try:
+    from services.speaker_verification_service import (
+        SpeakerVerificationService,
+    )
+    from services.voice_gate import VoiceGate
+except Exception as error:
+    SpeakerVerificationService = None
+    VoiceGate = None
+    print(
+        "[VoiceGate] Local gate import unavailable: "
+        f"{type(error).__name__}: {error}"
+    )
+
 
 # Prevent third-party networking libraries from logging sensitive
 # request headers such as the OpenAI Authorization bearer token.
@@ -74,6 +87,11 @@ INPUT_CHUNK_MS = 20
 INPUT_FRAMES = int(
     SAMPLE_RATE * INPUT_CHUNK_MS / 1000
 )
+
+# OpenAI Realtime sessions have a hard maximum lifetime. Renew the socket
+# before that limit so Voice can continue transparently.
+REALTIME_SESSION_RENEW_SECONDS = 55 * 60
+REALTIME_SESSION_RENEW_GRACE_SECONDS = 180
 
 SDL_INIT_AUDIO = 0x00000010
 AUDIO_S16LSB = 0x8010
@@ -329,6 +347,54 @@ class RealtimeVoiceService:
 
         # Realtime function-tool state.
         self._pending_tool_followup = False
+
+        # Local speaker gate.
+        #
+        # Microphone PCM is classified locally BEFORE it is appended to the
+        # OpenAI Realtime input buffer. Rejected speech never reaches OpenAI.
+        self._speaker_verifier = None
+        self._voice_gate = None
+        self._voice_gate_last_role = None
+
+        if (
+            SpeakerVerificationService is not None
+            and VoiceGate is not None
+        ):
+            try:
+                verifier = SpeakerVerificationService(
+                    owner_threshold=0.80
+                )
+
+                if verifier.available:
+                    gate = VoiceGate(
+                        speaker_verifier=verifier,
+                        owner_threshold=0.80,
+                        output_sample_rate=SAMPLE_RATE,
+                    )
+
+                    if gate.available:
+                        self._speaker_verifier = verifier
+                        self._voice_gate = gate
+                        print(
+                            "[VoiceGate] Local owner gate enabled "
+                            "before OpenAI Realtime."
+                        )
+                    else:
+                        print(
+                            "[VoiceGate] Disabled: "
+                            + gate.last_error
+                        )
+                else:
+                    print(
+                        "[VoiceGate] Disabled: "
+                        + verifier.last_error
+                    )
+
+            except Exception as error:
+                print(
+                    "[VoiceGate] Initialization error: "
+                    f"{type(error).__name__}: {error}"
+                )
 
         # True only while Realtime is vocalizing an exact local-skill result.
         # Local result text is already rendered by AIScreen, so the generated
@@ -873,6 +939,11 @@ class RealtimeVoiceService:
         self._processed_transcript_ids.clear()
         self._last_transcript_text = ""
         self._last_transcript_time = 0.0
+        self._voice_gate_last_role = None
+
+        if self._voice_gate is not None:
+            self._voice_gate.reset()
+
         self._clear_audio_queues()
 
         self._thread = threading.Thread(
@@ -1433,6 +1504,10 @@ class RealtimeVoiceService:
         self._processed_transcript_ids.clear()
         self._last_transcript_text = ""
         self._last_transcript_time = 0.0
+        self._voice_gate_last_role = None
+
+        if self._voice_gate is not None:
+            self._voice_gate.reset()
 
         self._emit_status(
             "Realtime voice stopped."
@@ -1894,12 +1969,17 @@ class RealtimeVoiceService:
                 self._wait_for_stop()
             )
 
+            renewal_task = asyncio.create_task(
+                self._wait_for_session_renewal()
+            )
+
             done, pending = await asyncio.wait(
                 {
                     receiver_task,
                     sender_task,
                     microphone_task,
                     stop_task,
+                    renewal_task,
                 },
                 return_when=(
                     asyncio.FIRST_COMPLETED
@@ -1919,6 +1999,72 @@ class RealtimeVoiceService:
 
                 if exception is not None:
                     raise exception
+
+            if (
+                renewal_task in done
+                and not self._stop_event.is_set()
+            ):
+                self._prepare_for_realtime_reconnect(
+                    "Realtime session renewal."
+                )
+
+    async def _wait_for_session_renewal(
+        self,
+    ):
+        """
+        Proactively rotate the Realtime socket before the server's hard
+        session-duration limit. If a response is active at the renewal point,
+        allow a short grace period for it to finish naturally.
+        """
+        await asyncio.sleep(
+            REALTIME_SESSION_RENEW_SECONDS
+        )
+
+        deadline = (
+            time.monotonic()
+            + REALTIME_SESSION_RENEW_GRACE_SECONDS
+        )
+
+        while (
+            not self._stop_event.is_set()
+            and time.monotonic() < deadline
+            and (
+                self._response_in_progress
+                or self._assistant_speaking.is_set()
+            )
+        ):
+            await asyncio.sleep(0.25)
+
+        if not self._stop_event.is_set():
+            self._emit_status(
+                "Renewing Realtime session..."
+            )
+
+    def _prepare_for_realtime_reconnect(
+        self,
+        reason="",
+    ):
+        """
+        Clear only transient socket/turn state before opening a fresh Realtime
+        connection. Keep the user's Voice/Text conversation preference active
+        so the new connection resumes automatically.
+        """
+        if reason:
+            print(
+                "[Realtime] "
+                + str(reason).strip()
+            )
+
+        self._connected_event.clear()
+        self._ready_event.clear()
+        self._response_in_progress = False
+        self._pending_tool_followup = False
+        self._response_transcript = ""
+        self._user_transcript = ""
+        self._assistant_speaking.clear()
+        self._echo_paused_microphone = False
+        self._microphone_enabled.clear()
+        self._clear_audio_queues()
 
     def _current_instructions(
         self,
@@ -1976,6 +2122,31 @@ class RealtimeVoiceService:
                 "Do not say that you are reading memory."
             )
 
+        instructions += (
+            "\n\nSPEAKER ACCESS RULE: "
+            "The device normally accepts only its verified owner. "
+            "If the owner explicitly says that another person may ask the "
+            "next question, call allow_guest_once. The wording may be natural "
+            "and may be in any language, for example that a wife, friend, "
+            "guest, or another person will ask next. Do not grant guest access "
+            "unless the owner clearly authorizes the next speaker."
+        )
+
+        instructions += (
+            "\n\nWEB SEARCH RULE: "
+            "If you cannot confidently answer a factual question from your own "
+            "knowledge, or the information may be current, obscure, specific, or "
+            "internet-dependent, call the search_web tool before saying that the "
+            "information is unavailable. Never invent facts. Prefer search_web over "
+            "telling the user that you cannot find information when a web search "
+            "could reasonably answer the question. When the user asks to find "
+            "information about a named person, interpret that as research in public "
+            "sources unless they explicitly ask for private contact details, precise "
+            "current location, or other sensitive personal data. Public biographical "
+            "facts, historical records, professional history, publications, obituary "
+            "information, and dates of birth or death may be researched with search_web."
+        )
+
         return instructions
 
     def _session_configuration(
@@ -1998,6 +2169,12 @@ class RealtimeVoiceService:
                 "interrupt_response": True,
             },
         }
+
+        if self._voice_gate is not None:
+            # Local VoiceGate now owns speech boundaries. Accepted utterances
+            # are explicitly committed to Realtime, so server VAD must not
+            # independently decide whether/when to commit the same burst.
+            input_configuration["turn_detection"] = None
 
         if self.language != "auto":
             input_configuration[
@@ -2125,6 +2302,54 @@ class RealtimeVoiceService:
                             },
                         },
                         "required": ["action"],
+                        "additionalProperties": False,
+                    },
+                },
+                {
+                    "type": "function",
+                    "name": "allow_guest_once",
+                    "description": (
+                        "Authorize exactly one temporary non-owner speaker turn "
+                        "after the verified owner explicitly says that another "
+                        "person may ask the next question. The owner may express "
+                        "this naturally in any language. Do not call this tool "
+                        "merely because another person is mentioned."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": False,
+                    },
+                },
+                {
+                    "type": "function",
+                    "name": "search_web",
+                    "description": (
+                        "Search the internet for information that is current, obscure, "
+                        "specific, uncertain, or not reliably available from your own "
+                        "knowledge. Use this tool when you cannot confidently answer the "
+                        "user from existing knowledge, or when the user asks about recent "
+                        "events, current facts, lesser-known people, organizations, products, "
+                        "prices, schedules, news, publications, historical records, obituary "
+                        "information, or other information that may require web research. "
+                        "A request such as 'find information about this person' means research "
+                        "public sources; it does not mean locate the person's current whereabouts "
+                        "or obtain private contact details. Do not tell the user that public "
+                        "information cannot be found before trying this tool when an internet "
+                        "search could answer the question."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": (
+                                    "A clear standalone internet search query containing "
+                                    "all names and context required to answer the user."
+                                ),
+                            },
+                        },
+                        "required": ["query"],
                         "additionalProperties": False,
                     },
                 },
@@ -2329,12 +2554,143 @@ class RealtimeVoiceService:
         self._last_transcript_time = now
         return duplicate
 
+    async def _append_realtime_pcm(
+        self,
+        connection,
+        audio_bytes,
+    ):
+        """Append PCM16LE audio to the existing Realtime input buffer."""
+        raw = bytes(
+            audio_bytes or b""
+        )
+
+        if not raw:
+            return
+
+        # Keep WebSocket messages close to the normal 20 ms microphone size.
+        chunk_bytes = (
+            INPUT_FRAMES
+            * CHANNELS
+            * SAMPLE_WIDTH
+        )
+
+        for offset in range(
+            0,
+            len(raw),
+            chunk_bytes,
+        ):
+            chunk = raw[
+                offset:offset + chunk_bytes
+            ]
+
+            if not chunk:
+                continue
+
+            encoded = base64.b64encode(
+                chunk
+            ).decode("ascii")
+
+            await connection.input_audio_buffer.append(
+                audio=encoded
+            )
+
+            # Yield periodically so receiving/cancellation remains responsive
+            # even though a completed local utterance is forwarded as a burst.
+            await asyncio.sleep(0)
+
+    async def _forward_voice_gate_utterance(
+        self,
+        connection,
+        decision,
+    ):
+        """Forward one locally-authorized utterance to Realtime."""
+        audio_bytes = bytes(
+            decision.get(
+                "audio",
+                b"",
+            )
+            or b""
+        )
+
+        if not audio_bytes:
+            return
+
+        role = str(
+            decision.get(
+                "role",
+                "",
+            )
+        ).strip().lower()
+
+        score = decision.get(
+            "score"
+        )
+
+        self._voice_gate_last_role = role
+
+        score_text = (
+            f"{float(score):.4f}"
+            if score is not None
+            else "n/a"
+        )
+
+        self._emit_status(
+            f"Speaker: {role} accepted — score {score_text}"
+        )
+
+        print(
+            "[VoiceGate] Forwarding authorized "
+            f"{role} utterance to Realtime "
+            f"(score={score_text})."
+        )
+
+        # VoiceGate already detected a complete local utterance. Do not ask
+        # server VAD to rediscover the turn boundary from a burst of buffered
+        # audio. Start from a clean Realtime input buffer, append only the
+        # authorized utterance, then commit it explicitly.
+        try:
+            await connection.input_audio_buffer.clear()
+        except Exception as error:
+            print(
+                "[VoiceGate] Realtime input-buffer clear warning: "
+                f"{type(error).__name__}: {error}"
+            )
+
+        await self._append_realtime_pcm(
+            connection,
+            audio_bytes,
+        )
+
+        await connection.input_audio_buffer.commit()
+
+        print(
+            "[VoiceGate] Authorized utterance committed "
+            "to Realtime."
+        )
+
+        # With server VAD disabled there will be no
+        # input_audio_buffer.speech_stopped event. Emit the same UI transition
+        # locally while Realtime transcription is being produced.
+        self._emit_speech_stopped()
+
     async def _send_microphone_audio(
         self,
         connection,
     ):
         """
-        Transfer microphone callback data to the WebSocket.
+        Transfer microphone PCM to OpenAI only after local VoiceGate approval.
+
+        When VoiceGate is available:
+            microphone -> local Silero VAD -> local speaker verification
+                       -> owner / authorized guest
+                       -> append accepted utterance
+                       -> explicit Realtime input commit
+
+        A rejected speaker's PCM never reaches the OpenAI input buffer.
+
+        If VoiceGate is unavailable, retain the previous stable Realtime path
+        so M12 does not become unusable on a platform that has not yet packaged
+        the local speaker-recognition runtime.
         """
         while not self._stop_event.is_set():
             if (
@@ -2352,13 +2708,84 @@ class RealtimeVoiceService:
                 await asyncio.sleep(0.005)
                 continue
 
-            encoded = base64.b64encode(
-                audio_bytes
-            ).decode("ascii")
+            gate = self._voice_gate
 
-            await connection.input_audio_buffer.append(
-                audio=encoded
-            )
+            if gate is None:
+                encoded = base64.b64encode(
+                    audio_bytes
+                ).decode("ascii")
+
+                await connection.input_audio_buffer.append(
+                    audio=encoded
+                )
+                continue
+
+            try:
+                decisions = gate.process_pcm16le(
+                    audio_bytes,
+                    SAMPLE_RATE,
+                )
+            except Exception as error:
+                print(
+                    "[VoiceGate] Processing error; "
+                    "falling back to stable direct audio path: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+                encoded = base64.b64encode(
+                    audio_bytes
+                ).decode("ascii")
+
+                await connection.input_audio_buffer.append(
+                    audio=encoded
+                )
+                continue
+
+            for decision in decisions:
+                accepted = bool(
+                    decision.get(
+                        "accepted",
+                        False,
+                    )
+                )
+
+                role = str(
+                    decision.get(
+                        "role",
+                        "rejected",
+                    )
+                ).strip().lower()
+
+                score = decision.get(
+                    "score"
+                )
+
+                score_text = (
+                    f"{float(score):.4f}"
+                    if score is not None
+                    else "n/a"
+                )
+
+                if not accepted:
+                    self._voice_gate_last_role = "rejected"
+
+                    self._emit_status(
+                        "Speaker: non-owner ignored "
+                        f"— score {score_text}"
+                    )
+
+                    print(
+                        "[VoiceGate] Rejected utterance discarded "
+                        "before OpenAI "
+                        f"(score={score_text})."
+                    )
+
+                    continue
+
+                await self._forward_voice_gate_utterance(
+                    connection,
+                    decision,
+                )
 
     async def _receive_events(
         self,
@@ -2434,13 +2861,20 @@ class RealtimeVoiceService:
                         # If no response is active, cancellation is harmless.
                         pass
 
-                self._response_in_progress = False
-                self._response_transcript = ""
-                self._assistant_speaking.clear()
+                    # Only a real barge-in cancellation may clear local
+                    # response state. With Echo Protection ON, a speech_started
+                    # event can still arrive from buffered/late input while the
+                    # server response is active; clearing the flag here would
+                    # allow a second response.create and trigger
+                    # conversation_already_has_active_response.
+                    self._response_in_progress = False
+                    self._response_transcript = ""
+                    self._assistant_speaking.clear()
 
-                # The user is now the active speaker. Re-apply policy so
-                # full-duplex AI mode remains listening after cancellation.
-                self._apply_microphone_policy()
+                    # The user is now the active speaker. Re-apply policy so
+                    # full-duplex AI mode remains listening after cancellation.
+                    self._apply_microphone_policy()
+
                 self._emit_speech_started()
 
             elif event_type == (
@@ -2727,6 +3161,15 @@ class RealtimeVoiceService:
                     message
                 )
 
+                if code == "session_expired":
+                    self._prepare_for_realtime_reconnect(
+                        "Realtime session expired; reconnecting."
+                    )
+                    self._emit_status(
+                        "Realtime session expired. Reconnecting..."
+                    )
+                    return
+
     async def _handle_function_call(
         self,
         connection,
@@ -2767,6 +3210,12 @@ class RealtimeVoiceService:
             output = self._execute_get_current_time_tool()
         elif name == "control_timer":
             output = self._execute_control_timer_tool(
+                raw_arguments
+            )
+        elif name == "allow_guest_once":
+            output = self._execute_allow_guest_once_tool()
+        elif name == "search_web":
+            output = await self._execute_search_web_tool(
                 raw_arguments
             )
         else:
@@ -2912,6 +3361,136 @@ class RealtimeVoiceService:
             result["seconds"] = seconds
 
         return result
+
+    def _execute_allow_guest_once_tool(
+        self,
+    ):
+        """Arm exactly one local guest-speaker turn."""
+        if self._voice_gate is None:
+            return {
+                "ok": False,
+                "error": "Local VoiceGate is unavailable.",
+            }
+
+        if self._voice_gate_last_role != "owner":
+            return {
+                "ok": False,
+                "error": (
+                    "Guest access can only be granted by "
+                    "the verified owner."
+                ),
+            }
+
+        if not self._voice_gate.authorize_guest_once():
+            return {
+                "ok": False,
+                "error": "Unable to arm guest access.",
+            }
+
+        self._emit_status(
+            "Speaker: guest access granted — 1 turn"
+        )
+
+        return {
+            "ok": True,
+            "guest_turns": 1,
+            "expires_in_seconds": int(
+                self._voice_gate.guest_timeout_seconds
+            ),
+        }
+
+    async def _execute_search_web_tool(
+        self,
+        raw_arguments,
+    ):
+        """Search the internet through the OpenAI Responses API."""
+
+        try:
+            if isinstance(raw_arguments, str):
+                arguments = json.loads(raw_arguments or "{}")
+            elif isinstance(raw_arguments, dict):
+                arguments = raw_arguments
+            else:
+                arguments = {}
+        except json.JSONDecodeError as error:
+            print(
+                "[Realtime] search_web arguments error: "
+                f"{type(error).__name__}: {error}"
+            )
+            return {
+                "ok": False,
+                "error": "Invalid web search arguments.",
+            }
+
+        query = str(
+            arguments.get("query", "")
+        ).strip()
+
+        if not query:
+            return {
+                "ok": False,
+                "error": "Web search query is empty.",
+            }
+
+        print(
+            f"[Realtime] search_web query={query!r}"
+        )
+
+        try:
+            response = await self.client.responses.create(
+                model="gpt-5.6-luna",
+                tools=[
+                    {
+                        "type": "web_search",
+                    }
+                ],
+                input=(
+                    "Search public web sources and answer the following request accurately. "
+                    "Treat requests to 'find information about' a named person as public-source "
+                    "biographical or historical research, not as a request to locate the person's "
+                    "current whereabouts or obtain private contact details. You may research public "
+                    "biographical facts, professional history, publications, obituary information, "
+                    "and dates of birth or death. Return a concise factual answer suitable for "
+                    "another AI assistant to relay to the user. Include useful names, dates, places, "
+                    "and context when available, and clearly say when reliable public evidence is "
+                    "insufficient. Do not say that you are an AI or describe the search process.\n\n"
+                    f"USER REQUEST:\n{query}"
+                ),
+            )
+
+            answer = str(
+                getattr(
+                    response,
+                    "output_text",
+                    "",
+                )
+                or ""
+            ).strip()
+
+            if not answer:
+                return {
+                    "ok": False,
+                    "error": "Web search returned no usable answer.",
+                }
+
+            return {
+                "ok": True,
+                "query": query,
+                "answer": answer,
+            }
+
+        except Exception as error:
+            print(
+                "[Realtime] search_web error: "
+                f"{type(error).__name__}: {error}"
+            )
+
+            return {
+                "ok": False,
+                "error": (
+                    f"{type(error).__name__}: {error}"
+                ),
+            }
 
     def _start_music_recognition_tool(
         self,

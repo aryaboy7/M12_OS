@@ -106,6 +106,8 @@ from utils.ui_scale import font, height
 from utils.data_paths import EVENTS_FILE, ALARMS_FILE
 
 from screens.home_screen import HomeScreen
+from screens.owner_voice_enrollment_screen import OwnerVoiceEnrollmentScreen
+from services.owner_voice_enrollment import OwnerVoiceEnrollmentService
 from screens.notes_screen import NotesScreen
 from screens.note_editor_screen import NoteEditorScreen
 from screens.note_types_screen import NoteTypesScreen
@@ -211,6 +213,9 @@ class M12OS(App):
 
         manager = ScreenManager()
 
+        manager.add_widget(
+            OwnerVoiceEnrollmentScreen(name="owner_voice_enrollment")
+        )
         manager.add_widget(HomeScreen(name="home"))
         manager.add_widget(NotesScreen(name="notes"))
         manager.add_widget(NoteEditorScreen(name="editor"))
@@ -245,15 +250,25 @@ class M12OS(App):
                     f"{type(error).__name__}: {error}"
                 )
 
-        start_screen = self.config_manager.get(
-            "start_screen",
-            "home",
-        )
+        owner_enrollment = OwnerVoiceEnrollmentService()
 
-        if manager.has_screen(start_screen):
-            manager.current = start_screen
+        if not owner_enrollment.profile_exists():
+            # First-run / missing-profile behavior:
+            # always show the owner enrollment screen before normal M12 use.
+            manager.current = "owner_voice_enrollment"
+            log.info(
+                "Owner voice profile missing; opening enrollment screen."
+            )
         else:
-            manager.current = "home"
+            start_screen = self.config_manager.get(
+                "start_screen",
+                "home",
+            )
+
+            if manager.has_screen(start_screen):
+                manager.current = start_screen
+            else:
+                manager.current = "home"
 
         self.screen_manager = manager
         self.root_container.add_widget(manager)
