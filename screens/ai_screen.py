@@ -188,6 +188,13 @@ class AIScreen(Screen):
         self._music_recording_meter_event = None
         self._music_recording_close_event = None
 
+        # Web-search activity panel. Reuse the same 12-dot activity meter
+        # as Music Recognition, but keep independent state so the two
+        # workflows cannot interfere with one another.
+        self._web_search_popup = None
+        self._web_search_meter_widget = None
+        self._web_search_meter_event = None
+
         self.session_memory = get_ai_session_memory()
 
         self.voice_is_busy = False
@@ -3359,11 +3366,21 @@ class AIScreen(Screen):
     ):
         status_text = str(message or "").strip()
 
-        if (
-            status_text.lower()
-            == "recording sample..."
-        ):
+        normalized_status = status_text.lower()
+
+        if normalized_status == "recording sample...":
             self._show_music_recording_popup()
+
+        if normalized_status == "searching the web...":
+            self._show_web_search_popup()
+        elif (
+            normalized_status.startswith("realtime answering")
+            or normalized_status.startswith("realtime ready")
+            or normalized_status.startswith("realtime error")
+            or normalized_status.startswith("web search failed")
+            or normalized_status.startswith("web search took too long")
+        ):
+            self._hide_web_search_popup()
 
         if self.realtime_voice_active:
             self.voice_status.text = status_text
@@ -3502,6 +3519,129 @@ class AIScreen(Screen):
         panel = self._music_recording_popup
         self._music_recording_popup = None
         self._music_recording_meter_widget = None
+
+        if panel is not None:
+            try:
+                if panel.parent is self:
+                    self.remove_widget(panel)
+            except Exception:
+                pass
+
+        return False
+
+    def _show_web_search_popup(
+        self,
+    ):
+        """Show the existing M12 12-dot activity meter while web search runs."""
+        self._hide_web_search_popup()
+
+        content = BoxLayout(
+            orientation="vertical",
+            padding=height(18),
+            spacing=height(10),
+        )
+
+        self._web_search_meter_widget = _RecordingMeter(
+            size_hint=(1, 0.62),
+        )
+
+        searching_label = Label(
+            text="Searching the web",
+            font_size=font(20),
+            bold=True,
+            size_hint=(1, 0.38),
+            halign="center",
+            valign="middle",
+        )
+        searching_label.bind(
+            size=lambda instance, value: setattr(
+                instance,
+                "text_size",
+                value,
+            )
+        )
+
+        content.add_widget(
+            self._web_search_meter_widget
+        )
+        content.add_widget(
+            searching_label
+        )
+
+        # Match the Music Recognition activity panel style.
+        content.size_hint = (0.42, 0.24)
+        content.pos_hint = {
+            "center_x": 0.5,
+            "center_y": 0.56,
+        }
+
+        with content.canvas.before:
+            panel_color = Color(
+                0.06,
+                0.08,
+                0.12,
+                0.96,
+            )
+            panel_rect = RoundedRectangle(
+                pos=content.pos,
+                size=content.size,
+                radius=[height(18)],
+            )
+
+        content.bind(
+            pos=lambda instance, value, rect=panel_rect: setattr(
+                rect,
+                "pos",
+                value,
+            ),
+            size=lambda instance, value, rect=panel_rect: setattr(
+                rect,
+                "size",
+                value,
+            ),
+        )
+
+        content._m12_web_search_panel_color = panel_color
+        content._m12_web_search_panel_rect = panel_rect
+
+        self._web_search_popup = content
+        self.add_widget(content)
+
+        self._web_search_meter_event = (
+            Clock.schedule_interval(
+                self._advance_web_search_meter,
+                1.0 / 60.0,
+            )
+        )
+
+    def _advance_web_search_meter(
+        self,
+        dt=0,
+    ):
+        meter = self._web_search_meter_widget
+
+        if meter is None:
+            return False
+
+        meter.advance()
+        return True
+
+    def _hide_web_search_popup(
+        self,
+        dt=0,
+    ):
+        meter_event = self._web_search_meter_event
+        self._web_search_meter_event = None
+
+        if meter_event is not None:
+            try:
+                meter_event.cancel()
+            except Exception:
+                pass
+
+        panel = self._web_search_popup
+        self._web_search_popup = None
+        self._web_search_meter_widget = None
 
         if panel is not None:
             try:

@@ -32,6 +32,7 @@ for logger_name in (
     "websockets.server",
     "httpx",
     "httpcore",
+    "httpcore2",
 ):
     logging.getLogger(logger_name).setLevel(logging.WARNING)
 
@@ -329,6 +330,17 @@ class RealtimeVoiceService:
 
         # Realtime function-tool state.
         self._pending_tool_followup = False
+
+        # Short-lived web-search cache. Repeating essentially the same current
+        # question within a few minutes should not require another network call.
+        self._web_search_cache = {}
+        self._web_search_cache_ttl = 300.0
+
+        # Permit only one live web lookup per user turn. Realtime may decide
+        # to call the same tool again while composing its follow-up answer;
+        # reuse the first result instead of launching another network search.
+        self._web_search_used_this_turn = False
+        self._web_search_last_output = None
 
         # True only while Realtime is vocalizing an exact local-skill result.
         # Local result text is already rendered by AIScreen, so the generated
@@ -1968,6 +1980,25 @@ class RealtimeVoiceService:
                 "language used by the user for the current request."
             )
 
+        instructions += (
+            "\n\nWEB SEARCH RULE: "
+            "Call web_search only when the LATEST user turn itself asks for "
+            "current or changing factual information, or is a clear follow-up "
+            "that continues an immediately active current-information request. "
+            "Examples that require web search include weather, weather forecasts, "
+            "current news, today's events, current conditions, current prices, "
+            "current office-holders, and recent developments. Never answer a "
+            "weather or forecast question from memory. For a clear follow-up, "
+            "resolve the needed subject, location, and date from conversation "
+            "and send a standalone query. Do NOT call web_search merely because "
+            "earlier conversation discussed current information. Statements, "
+            "acknowledgements, opinions, corrections, meta-conversation, or "
+            "utterances such as 'Это не обсуждается', 'понятно', 'спасибо', "
+            "'что случилось?', or similar conversational remarks must be "
+            "answered directly unless they independently ask for current facts. "
+            "Never delay a required search until a later user turn."
+        )
+
         if memory_context:
             instructions += (
                 "\n\n"
@@ -2050,6 +2081,41 @@ class RealtimeVoiceService:
                             },
                         },
                         "required": ["subjects"],
+                        "additionalProperties": False,
+                    },
+                },
+                {
+                    "type": "function",
+                    "name": "web_search",
+                    "description": (
+                        "Search the live internet for current, recent, changing, "
+                        "or hard-to-find factual information. Call this tool only "
+                        "when the latest user turn itself requests current or "
+                        "changing facts, or is a clear follow-up to an immediately "
+                        "active current-information request. Weather, forecasts, "
+                        "current news, today's events, current conditions, current "
+                        "prices, current office-holders, and recent developments "
+                        "require this tool on the same turn. Never answer weather "
+                        "or forecast questions from memory. For a clear follow-up, "
+                        "resolve omitted location, subject, and date from the "
+                        "conversation and make the query fully standalone. Do not "
+                        "call this tool because an older turn happened to discuss "
+                        "current information. Do not use it for acknowledgements, "
+                        "statements, opinions, corrections, meta-conversation, "
+                        "ordinary timeless questions, or questions about why the "
+                        "assistant just behaved a certain way."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": (
+                                    "A concise standalone web search question."
+                                ),
+                            },
+                        },
+                        "required": ["query"],
                         "additionalProperties": False,
                     },
                 },
@@ -2180,6 +2246,9 @@ class RealtimeVoiceService:
 
         if not message:
             return
+
+        self._web_search_used_this_turn = False
+        self._web_search_last_output = None
 
         self._emit_status(
             "Realtime answering..."
@@ -2530,6 +2599,9 @@ class RealtimeVoiceService:
                     )
                     continue
 
+                self._web_search_used_this_turn = False
+                self._web_search_last_output = None
+
                 self._emit_user_transcript(
                     transcript
                 )
@@ -2747,6 +2819,27 @@ class RealtimeVoiceService:
             output = self._execute_show_images_tool(
                 raw_arguments
             )
+        elif name == "web_search":
+            if (
+                self._web_search_used_this_turn
+                and self._web_search_last_output is not None
+            ):
+                print(
+                    "[Realtime] Additional web_search suppressed; "
+                    "reusing first result for this user turn."
+                )
+                output = dict(
+                    self._web_search_last_output
+                )
+                output["reused"] = True
+            else:
+                output = await self._execute_web_search_tool(
+                    raw_arguments
+                )
+                self._web_search_used_this_turn = True
+                self._web_search_last_output = dict(
+                    output
+                )
         elif name == "recognize_music":
             started = self._start_music_recognition_tool(
                 connection=connection,
@@ -2787,6 +2880,211 @@ class RealtimeVoiceService:
         )
 
         self._pending_tool_followup = True
+
+    @staticmethod
+    def _clean_web_search_answer(
+        answer,
+    ):
+        """Prepare a concise web answer for natural voice playback."""
+        value = str(answer or "").strip()
+
+        if not value:
+            return ""
+
+        value = value.replace("**", "")
+        value = value.replace("__", "")
+        value = value.replace("`", "")
+
+        cleaned_lines = []
+
+        for raw_line in value.splitlines():
+            line = raw_line.strip()
+
+            if not line:
+                continue
+
+            if line.startswith(("- ", "* ", "• ")):
+                line = line[2:].strip()
+
+            if line.startswith("#"):
+                line = line.lstrip("#").strip()
+
+            if line:
+                cleaned_lines.append(line)
+
+        return " ".join(cleaned_lines).strip()
+
+    async def _execute_web_search_tool(
+        self,
+        raw_arguments,
+    ):
+        """Search the live web through the OpenAI Responses API."""
+        try:
+            arguments = json.loads(
+                raw_arguments or "{}"
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "error": (
+                    "Invalid web search arguments: "
+                    f"{type(error).__name__}: {error}"
+                ),
+            }
+
+        query = str(
+            arguments.get("query", "")
+        ).strip()
+
+        if not query:
+            return {
+                "ok": False,
+                "error": "Web search query is empty.",
+            }
+
+        cache_key = " ".join(
+            query.lower().split()
+        )
+        now = time.monotonic()
+
+        cached = self._web_search_cache.get(
+            cache_key
+        )
+
+        if cached is not None:
+            cached_at, cached_answer = cached
+
+            if (
+                now - cached_at
+                <= self._web_search_cache_ttl
+            ):
+                print(
+                    "[Realtime] web_search cache hit: "
+                    f"{query}"
+                )
+                return {
+                    "ok": True,
+                    "query": query,
+                    "answer": cached_answer,
+                    "cached": True,
+                }
+
+            self._web_search_cache.pop(
+                cache_key,
+                None,
+            )
+
+        print(
+            f"[Realtime] web_search requested: {query}"
+        )
+
+        # Use the same status-callback path as Music Recognition. The AI
+        # screen already owns the visual activity treatment, so keep this
+        # service to one stable status message instead of creating a second
+        # animation system here.
+        self._emit_status(
+            "Searching the web..."
+        )
+
+        prompt = (
+            "Search the live web for the question below. "
+            "Return only the answer M12 should speak aloud. "
+            "Use 2 to 4 short sentences unless the user clearly "
+            "asks for more detail. No markdown, no headings, no "
+            "preamble, and do not repeat the question. Prefer the "
+            "newest reliable information when freshness matters. "
+            "Do not include raw URLs in the spoken answer.\n\n"
+            f"Question: {query}"
+        )
+
+        try:
+            response = await asyncio.wait_for(
+                self.client.responses.create(
+                    model="gpt-5.6-luna",
+                    tools=[
+                        {
+                            "type": "web_search",
+                        },
+                    ],
+                    input=prompt,
+                    reasoning={
+                        "effort": "low",
+                    },
+                    max_output_tokens=600,
+                ),
+                timeout=25.0,
+            )
+
+            answer = self._clean_web_search_answer(
+                response.output_text
+            )
+
+            print(
+                "[Realtime] web_search answer: "
+                + repr(answer)
+            )
+
+            if not answer:
+                return {
+                    "ok": False,
+                    "error": (
+                        "No reliable web results were found. Tell the user clearly that no results were found."
+                    ),
+                }
+
+            self._web_search_cache[
+                cache_key
+            ] = (
+                time.monotonic(),
+                answer,
+            )
+
+            if len(self._web_search_cache) > 20:
+                oldest_key = min(
+                    self._web_search_cache,
+                    key=lambda key: (
+                        self._web_search_cache[
+                            key
+                        ][0]
+                    ),
+                )
+                self._web_search_cache.pop(
+                    oldest_key,
+                    None,
+                )
+
+            return {
+                "ok": True,
+                "query": query,
+                "answer": answer,
+                "cached": False,
+            }
+
+        except asyncio.TimeoutError:
+            print(
+                "[Realtime] web_search timed out "
+                "after 25 seconds."
+            )
+            return {
+                "ok": False,
+                "error": (
+                    "The web search did not return results before the timeout. Tell the user clearly that the search did not return results in time."
+                ),
+            }
+
+        except Exception as error:
+            print(
+                "[Realtime] web_search error: "
+                f"{type(error).__name__}: {error}"
+            )
+
+            return {
+                "ok": False,
+                "error": (
+                    "Web search failed: "
+                    f"{type(error).__name__}: {error}"
+                ),
+            }
 
     def _execute_get_current_time_tool(
         self,
