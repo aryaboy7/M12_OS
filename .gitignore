@@ -44,3 +44,6 @@ data/brainstorm/
 
 # Local macOS native AEC build
 utils/.m12_mac_aec_bridge
+
+# Runtime alarm data
+data/alarms/alarms.json
