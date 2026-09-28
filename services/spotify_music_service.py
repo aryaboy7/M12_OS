@@ -54,6 +54,14 @@ class SpotifyMusicService:
             return False
 
     @staticmethod
+    def _is_linux():
+        try:
+            from kivy.utils import platform
+            return platform == "linux"
+        except Exception:
+            return False
+
+    @staticmethod
     def _ssl_context():
         return ssl.create_default_context(
             cafile=certifi.where()
@@ -790,6 +798,177 @@ class SpotifyMusicService:
         return controllable[0]
 
     @classmethod
+    def _linux_spotify_flatpak_installed(cls):
+        try:
+            result = subprocess.run(
+                [
+                    "flatpak",
+                    "info",
+                    "com.spotify.Client",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+                check=False,
+            )
+        except Exception:
+            return False
+
+        return result.returncode == 0
+
+    @classmethod
+    def _install_linux_spotify_flatpak(cls):
+        try:
+            result = subprocess.run(
+                [
+                    "flatpak",
+                    "install",
+                    "-y",
+                    "flathub",
+                    "com.spotify.Client",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=300,
+                check=False,
+            )
+        except FileNotFoundError as error:
+            raise RuntimeError(
+                "Flatpak is not installed."
+            ) from error
+        except Exception as error:
+            raise RuntimeError(
+                "Could not install Spotify: "
+                f"{error}"
+            ) from error
+
+        if result.returncode != 0:
+            details = (
+                str(result.stderr or "").strip()
+                or str(result.stdout or "").strip()
+            )
+
+            raise RuntimeError(
+                "Spotify installation failed"
+                + (
+                    f": {details}"
+                    if details
+                    else "."
+                )
+            )
+
+        return True
+
+    @classmethod
+    def _linux_mpris_available(cls):
+        try:
+            result = subprocess.run(
+                [
+                    "dbus-send",
+                    "--session",
+                    "--dest=org.freedesktop.DBus",
+                    "--type=method_call",
+                    "--print-reply",
+                    "/org/freedesktop/DBus",
+                    "org.freedesktop.DBus.NameHasOwner",
+                    "string:org.mpris.MediaPlayer2.spotify",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        except Exception:
+            return False
+
+        return (
+            result.returncode == 0
+            and "boolean true" in result.stdout.lower()
+        )
+
+    @classmethod
+    def _linux_mpris_call(
+        cls,
+        method_name,
+    ):
+        result = subprocess.run(
+            [
+                "dbus-send",
+                "--session",
+                "--type=method_call",
+                "--dest=org.mpris.MediaPlayer2.spotify",
+                "/org/mpris/MediaPlayer2",
+                (
+                    "org.mpris.MediaPlayer2.Player."
+                    + str(method_name)
+                ),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+
+        if result.returncode != 0:
+            details = str(
+                result.stderr or ""
+            ).strip()
+
+            raise RuntimeError(
+                "Spotify Linux media control failed"
+                + (
+                    f": {details}"
+                    if details
+                    else "."
+                )
+            )
+
+        return True
+
+    @classmethod
+    def _ensure_linux_spotify_ready(
+        cls,
+        timeout_seconds=15.0,
+        interval_seconds=0.5,
+    ):
+        if cls._linux_mpris_available():
+            return True
+
+        if not cls._linux_spotify_flatpak_installed():
+            cls._install_linux_spotify_flatpak()
+
+        subprocess.Popen(
+            [
+                "flatpak",
+                "run",
+                "com.spotify.Client",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        deadline = (
+            time.monotonic()
+            + float(timeout_seconds)
+        )
+
+        while time.monotonic() < deadline:
+            if cls._linux_mpris_available():
+                return True
+
+            time.sleep(
+                float(interval_seconds)
+            )
+
+        raise RuntimeError(
+            "Spotify was launched, but its Linux "
+            "media controls did not become available."
+        )
+
+    @classmethod
     def _launch_spotify_app(cls):
         """
         Best-effort native Spotify app activation.
@@ -1096,6 +1275,9 @@ class SpotifyMusicService:
                 .play_track(track_id)
             )
 
+        if cls._is_linux():
+            cls._ensure_linux_spotify_ready()
+
         access_token = (
             spotify_auth_service
             .get_access_token(
@@ -1204,6 +1386,16 @@ class SpotifyMusicService:
                 .pause_playback()
             )
 
+        if cls._is_linux():
+            cls._ensure_linux_spotify_ready()
+            cls._linux_mpris_call(
+                "Pause"
+            )
+            return {
+                "device_id": "linux-mpris",
+                "device_name": "Spotify",
+            }
+
         access_token = (
             spotify_auth_service
             .get_access_token(
@@ -1271,6 +1463,16 @@ class SpotifyMusicService:
                 spotify_android_remote_service
                 .resume_playback()
             )
+
+        if cls._is_linux():
+            cls._ensure_linux_spotify_ready()
+            cls._linux_mpris_call(
+                "Play"
+            )
+            return {
+                "device_id": "linux-mpris",
+                "device_name": "Spotify",
+            }
 
         access_token = (
             spotify_auth_service
