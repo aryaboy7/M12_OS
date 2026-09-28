@@ -244,7 +244,7 @@ final class M12MacAECBridge {
 
         let now = Date()
 
-        if now.timeIntervalSince(lastMicLogTime) >= 1.0 {
+        if now.timeIntervalSince(lastMicLogTime) >= 30.0 {
 
             var sumSquares: Float = 0.0
 
@@ -476,7 +476,7 @@ final class M12MacAECBridge {
 
                             self.lastPlaybackLogTime
 
-                        ) >= 1.0 {
+                        ) >= 30.0 {
 
                             self.log(
 

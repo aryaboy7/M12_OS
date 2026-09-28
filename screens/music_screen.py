@@ -789,9 +789,6 @@ class MusicScreen(Screen):
                 key=lambda p: str(p).lower()
             )
 
-        for p in unique[:25]:
-            log.info(f"MEDIA FOUND: {p}")
-
         roots = load_storage_roots() if platform == "android" else {}
 
         log.info(
@@ -830,9 +827,6 @@ class MusicScreen(Screen):
             log.info(f"DOWNLOAD: {f}")
 
         log.info(f"MEDIA FOUND COUNT: {len(unique)}")
-
-        for p in unique[:100]:
-            log.info(f"FOUND: {p}")
 
         return unique
 
