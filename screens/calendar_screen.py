@@ -14,6 +14,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.uix.spinner import Spinner
 from kivy.uix.checkbox import CheckBox
+from kivy.utils import platform
 
 from utils.ui_scale import (
     device_profile,
@@ -696,6 +697,19 @@ class CalendarScreen(Screen):
     def clear(self):
         self.root_box.clear_widgets()
 
+    def add_android_bottom_safe_space(self):
+        """Keep bottom controls above Android's navigation/gesture area."""
+        if platform != "android":
+            return
+
+        self.root_box.add_widget(
+            Label(
+                text="",
+                size_hint=(1, None),
+                height=height(36),
+            )
+        )
+
     def make_btn(self, text, callback, color=(0.10, 0.15, 0.25, 1), fs=18):
         if fs <= 13:
             use_font = compact_button_font()
@@ -785,6 +799,8 @@ class CalendarScreen(Screen):
         buttons2 = BoxLayout(orientation="horizontal", spacing=spacing_size(), size_hint=(1, 0.10))
         buttons2.add_widget(self.make_btn("Refresh", self.build_list_view))
         self.root_box.add_widget(buttons2)
+
+        self.add_android_bottom_safe_space()
 
     def select_event(self, index):
         self.selected_index = index
@@ -1069,6 +1085,8 @@ class CalendarScreen(Screen):
         buttons.add_widget(self.make_btn("Save", lambda inst: self.save_event(index), (0.12, 0.20, 0.35, 1)))
         buttons.add_widget(self.make_btn("Cancel", self.build_list_view))
         self.root_box.add_widget(buttons)
+
+        self.add_android_bottom_safe_space()
 
     def toggle_all_day(self, *args):
         if hasattr(self, "all_day_checkbox"):

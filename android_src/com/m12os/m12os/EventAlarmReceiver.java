@@ -35,7 +35,7 @@ public class EventAlarmReceiver extends BroadcastReceiver {
             "com.m12os.EVENT_STOP";
 
     private static final String CHANNEL_ID =
-            "m12_event_notifications_v2";
+            "m12_event_notifications_v3";
 
     // Event notification ID settings.
     // Calendar uses multiple notification IDs so different events
@@ -935,6 +935,10 @@ public class EventAlarmReceiver extends BroadcastReceiver {
 
         channel.enableVibration(true);
 
+        channel.setLockscreenVisibility(
+                Notification.VISIBILITY_PUBLIC
+        );
+
         /*
          * Sound is played manually by playEventSound().
          * The notification channel itself stays silent
@@ -1118,7 +1122,7 @@ public class EventAlarmReceiver extends BroadcastReceiver {
         builder.setAutoCancel(true);
 
         builder.setPriority(
-                Notification.PRIORITY_HIGH
+                Notification.PRIORITY_MAX
         );
 
         builder.setCategory(
@@ -1218,7 +1222,7 @@ public class EventAlarmReceiver extends BroadcastReceiver {
             );
 
             /*
-             * Automatically stop after 7 seconds.
+             * Automatically stop after 14 seconds.
              */
             new Handler(
                     Looper.getMainLooper()

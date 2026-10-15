@@ -14,8 +14,6 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.popup import Popup
-from kivy.uix.widget import Widget
-from kivy.metrics import dp
 
 from utils.logger import log
 from utils.text_editor_popup import open_text_editor
@@ -289,40 +287,6 @@ def stop_native_clock_alarm():
         )
 
 
-def android_bottom_safe_height():
-    """Reserve enough space so Android system navigation does not cover controls."""
-    if platform != "android":
-        return 0
-
-    try:
-        from jnius import autoclass
-
-        PythonActivity = autoclass(
-            "org.kivy.android.PythonActivity"
-        )
-        activity = PythonActivity.mActivity
-        resources = activity.getResources()
-
-        resource_id = resources.getIdentifier(
-            "navigation_bar_height",
-            "dimen",
-            "android",
-        )
-
-        if resource_id:
-            height = float(
-                resources.getDimensionPixelSize(resource_id)
-            )
-            return max(height, dp(16))
-
-    except Exception as error:
-        log.error(
-            "Android navigation-bar inset lookup failed: "
-            f"{type(error).__name__}: {error}"
-        )
-
-    return dp(48)
-
 
 class AlarmScreen(Screen):
     def __init__(self, **kwargs):
@@ -528,22 +492,14 @@ class AlarmScreen(Screen):
         delete_btn.bind(on_press=self.delete_alarm)
         action_row.add_widget(delete_btn)
 
+        root.add_widget(action_row)
+
         self.status_label = Label(
             text="",
             font_size=status_font(),
             size_hint=(1, alarm_status_hint())
         )
         root.add_widget(self.status_label)
-
-        root.add_widget(action_row)
-
-        if platform == "android":
-            root.add_widget(
-                Widget(
-                    size_hint_y=None,
-                    height=android_bottom_safe_height(),
-                )
-            )
 
         self.add_widget(root)
 
@@ -580,34 +536,39 @@ class AlarmScreen(Screen):
         )
 
     def show_status_message(self, message):
-        self.status_label.text = str(message)
+        message = str(message)
 
         if platform != "android":
+            self.status_label.text = message
             return
 
-        try:
-            from android.runnable import run_on_ui_thread
-            from jnius import autoclass
-
-            @run_on_ui_thread
-            def show_toast():
-                PythonActivity = autoclass(
-                    "org.kivy.android.PythonActivity"
-                )
-                Toast = autoclass("android.widget.Toast")
-                Toast.makeText(
-                    PythonActivity.mActivity,
-                    str(message),
-                    Toast.LENGTH_SHORT,
-                ).show()
-
-            show_toast()
-
-        except Exception as error:
-            log.error(
-                "Alarm status toast failed: "
-                f"{type(error).__name__}: {error}"
+        # On Android, show save feedback in the center of the app instead
+        # of at the bottom where system navigation can cover it.
+        content = Label(
+            text=message,
+            font_size=status_font(),
+            halign="center",
+            valign="middle",
+        )
+        content.bind(
+            size=lambda instance, value: setattr(
+                instance,
+                "text_size",
+                value,
             )
+        )
+
+        popup = Popup(
+            title="",
+            content=content,
+            size_hint=(0.72, 0.20),
+            auto_dismiss=True,
+        )
+        popup.open()
+        Clock.schedule_once(
+            lambda dt: popup.dismiss(),
+            1.5,
+        )
 
     def get_system_status_text(self):
         if (
@@ -1143,6 +1104,124 @@ class AlarmScreen(Screen):
         # Backward compatibility for legacy Once alarms without a date.
         return True
 
+    def next_alarm_datetime(self, alarm, now=None):
+        if now is None:
+            now = datetime.now()
+
+        if not bool(alarm.get("enabled", True)):
+            return None
+
+        try:
+            hour = int(alarm.get("hour", 0))
+            minute = int(alarm.get("minute", 0))
+        except (TypeError, ValueError):
+            return None
+
+        repeat_mode = str(
+            alarm.get("repeat_mode", "once")
+        ).strip()
+
+        if repeat_mode == "every_day":
+            candidate = now.replace(
+                hour=hour,
+                minute=minute,
+                second=0,
+                microsecond=0,
+            )
+            if candidate <= now:
+                candidate += timedelta(days=1)
+            return candidate
+
+        if repeat_mode == "days":
+            days = list(alarm.get("days", []))
+
+            for offset in range(8):
+                candidate_date = now.date() + timedelta(days=offset)
+
+                if DAY_NAMES[candidate_date.weekday()] not in days:
+                    continue
+
+                candidate = datetime(
+                    candidate_date.year,
+                    candidate_date.month,
+                    candidate_date.day,
+                    hour,
+                    minute,
+                )
+
+                if candidate > now:
+                    return candidate
+
+            return None
+
+        if repeat_mode == "yearly":
+            try:
+                month = int(alarm.get("yearly_month", 0))
+                day = int(alarm.get("yearly_day", 0))
+            except (TypeError, ValueError):
+                return None
+
+            # Search forward far enough to handle February 29.
+            for year in range(now.year, now.year + 9):
+                try:
+                    candidate = datetime(
+                        year,
+                        month,
+                        day,
+                        hour,
+                        minute,
+                    )
+                except ValueError:
+                    continue
+
+                if candidate > now:
+                    return candidate
+
+            return None
+
+        once_date = str(alarm.get("date", "")).strip()
+
+        if once_date:
+            try:
+                candidate_date = datetime.strptime(
+                    once_date,
+                    "%Y-%m-%d",
+                ).date()
+            except ValueError:
+                return None
+
+            candidate = datetime(
+                candidate_date.year,
+                candidate_date.month,
+                candidate_date.day,
+                hour,
+                minute,
+            )
+
+            return candidate if candidate > now else None
+
+        # Backward compatibility for legacy Once alarms without a date.
+        candidate = now.replace(
+            hour=hour,
+            minute=minute,
+            second=0,
+            microsecond=0,
+        )
+
+        if candidate <= now:
+            candidate += timedelta(days=1)
+
+        return candidate
+
+    def alarm_sort_key(self, item):
+        index, alarm = item
+        next_time = self.next_alarm_datetime(alarm)
+
+        if next_time is None:
+            return (1, datetime.max, index)
+
+        return (0, next_time, index)
+
     def alarm_matches_filter(self, alarm):
         if self.list_filter == "yearly":
             return str(
@@ -1172,6 +1251,10 @@ class AlarmScreen(Screen):
             for index, alarm in enumerate(self.alarms)
             if self.alarm_matches_filter(alarm)
         ]
+
+        visible_alarms.sort(
+            key=self.alarm_sort_key
+        )
 
         if not visible_alarms:
             filter_name = self.list_filter.title()
@@ -1284,7 +1367,7 @@ class AlarmScreen(Screen):
     def save_alarm(self, instance):
         try:
             if self.repeat_mode == "days" and not self.days:
-                self.status_label.text = "Select days or choose Once"
+                self.show_status_message("Select days or choose Once")
                 return
 
             alarm = self.state_to_alarm()
@@ -1313,12 +1396,12 @@ class AlarmScreen(Screen):
                     home.refresh_clock_button()
 
         except Exception as e:
-            self.status_label.text = str(e)
+            self.show_status_message(str(e))
 
     def delete_alarm(self, instance):
         try:
             if self.selected_index is None:
-                self.status_label.text = "Select alarm first."
+                self.show_status_message("Select alarm first.")
                 return
 
             if 0 <= self.selected_index < len(self.alarms):
@@ -1334,7 +1417,7 @@ class AlarmScreen(Screen):
             self.save_alarms_file()
             self.rebuild_alarm_list()
 
-            self.status_label.text = "Alarm Deleted"
+            self.show_status_message("Alarm Deleted")
 
             if self.manager and self.manager.has_screen("home"):
                 home = self.manager.get_screen("home")
@@ -1342,7 +1425,7 @@ class AlarmScreen(Screen):
                     home.refresh_clock_button()
 
         except Exception as e:
-            self.status_label.text = str(e)
+            self.show_status_message(str(e))
 
     def go_back(self, instance=None):
         self.manager.current = "clock"

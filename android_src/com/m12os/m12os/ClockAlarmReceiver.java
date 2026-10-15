@@ -324,6 +324,31 @@ public class ClockAlarmReceiver extends BroadcastReceiver {
             builder.setContentIntent(
                     contentIntent
             );
+
+            // A user-set clock alarm is an appropriate use of a full-screen
+            // intent. When the device is locked, Android can present the
+            // alarm above the lock screen instead of leaving it hidden behind
+            // the normal notification shade or media controls.
+            builder.setFullScreenIntent(
+                    contentIntent,
+                    true
+            );
+
+            if (Build.VERSION.SDK_INT >= 34) {
+                try {
+                    Log.i(
+                            TAG,
+                            "FULL_SCREEN_INTENT allowed="
+                                    + manager.canUseFullScreenIntent()
+                    );
+                } catch (Exception error) {
+                    Log.w(
+                            TAG,
+                            "Could not query full-screen intent permission",
+                            error
+                    );
+                }
+            }
         }
 
         manager.notify(
