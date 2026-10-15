@@ -14,6 +14,8 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.popup import Popup
+from kivy.uix.widget import Widget
+from kivy.metrics import dp
 
 from utils.logger import log
 from utils.text_editor_popup import open_text_editor
@@ -287,6 +289,41 @@ def stop_native_clock_alarm():
         )
 
 
+def android_bottom_safe_height():
+    """Reserve enough space so Android system navigation does not cover controls."""
+    if platform != "android":
+        return 0
+
+    try:
+        from jnius import autoclass
+
+        PythonActivity = autoclass(
+            "org.kivy.android.PythonActivity"
+        )
+        activity = PythonActivity.mActivity
+        resources = activity.getResources()
+
+        resource_id = resources.getIdentifier(
+            "navigation_bar_height",
+            "dimen",
+            "android",
+        )
+
+        if resource_id:
+            height = float(
+                resources.getDimensionPixelSize(resource_id)
+            )
+            return max(height, dp(16))
+
+    except Exception as error:
+        log.error(
+            "Android navigation-bar inset lookup failed: "
+            f"{type(error).__name__}: {error}"
+        )
+
+    return dp(48)
+
+
 class AlarmScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -491,14 +528,22 @@ class AlarmScreen(Screen):
         delete_btn.bind(on_press=self.delete_alarm)
         action_row.add_widget(delete_btn)
 
-        root.add_widget(action_row)
-
         self.status_label = Label(
             text="",
             font_size=status_font(),
             size_hint=(1, alarm_status_hint())
         )
         root.add_widget(self.status_label)
+
+        root.add_widget(action_row)
+
+        if platform == "android":
+            root.add_widget(
+                Widget(
+                    size_hint_y=None,
+                    height=android_bottom_safe_height(),
+                )
+            )
 
         self.add_widget(root)
 
@@ -533,6 +578,36 @@ class AlarmScreen(Screen):
             on_save=save_text,
             multiline=False,
         )
+
+    def show_status_message(self, message):
+        self.status_label.text = str(message)
+
+        if platform != "android":
+            return
+
+        try:
+            from android.runnable import run_on_ui_thread
+            from jnius import autoclass
+
+            @run_on_ui_thread
+            def show_toast():
+                PythonActivity = autoclass(
+                    "org.kivy.android.PythonActivity"
+                )
+                Toast = autoclass("android.widget.Toast")
+                Toast.makeText(
+                    PythonActivity.mActivity,
+                    str(message),
+                    Toast.LENGTH_SHORT,
+                ).show()
+
+            show_toast()
+
+        except Exception as error:
+            log.error(
+                "Alarm status toast failed: "
+                f"{type(error).__name__}: {error}"
+            )
 
     def get_system_status_text(self):
         if (
@@ -1219,13 +1294,17 @@ class AlarmScreen(Screen):
                 self.selected_index = len(self.alarms) - 1
                 message = "Alarm Added"
             else:
+                if self.alarms[self.selected_index] == alarm:
+                    self.show_status_message("Nothing to save")
+                    return
+
                 self.alarms[self.selected_index] = alarm
-                message = "Alarm Updated"
+                message = "Alarm Saved"
 
             self.save_alarms_file()
             self.rebuild_alarm_list()
 
-            self.status_label.text = message
+            self.show_status_message(message)
             log.info(message)
 
             if self.manager and self.manager.has_screen("home"):
