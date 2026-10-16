@@ -4,6 +4,8 @@ import time
 import webbrowser
 
 from kivy.clock import Clock
+from kivy.metrics import dp
+from kivy.utils import platform
 from kivy.graphics import Color, Line, RoundedRectangle
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -350,9 +352,20 @@ class RecognizedSongsScreen(Screen):
         self._playing_animation_index = 0
         self.row_buttons = {}
 
+        # Keep the bottom status/error message clear of Android's
+        # system navigation area on edge-to-edge displays.
+        base_padding = padding_size()
+        android_bottom_padding = (
+            dp(56) if platform == "android" else 0
+        )
         root = BoxLayout(
             orientation="vertical",
-            padding=padding_size(),
+            padding=(
+                base_padding,
+                base_padding,
+                base_padding,
+                base_padding + android_bottom_padding,
+            ),
             spacing=spacing_size(),
         )
 
@@ -808,17 +821,16 @@ class RecognizedSongsScreen(Screen):
 
         row = SongRowButton(
             text=display_text,
-            font_size=max(
-                13,
-                int(text_font() * 0.72),
+            font_size=(
+                max(20, int(text_font() * 1.05))
+                if platform == "android"
+                else max(13, int(text_font() * 0.72))
             ),
             size_hint_y=None,
-            height=max(
-                122,
-                int(
-                    button_height()
-                    * 2.05
-                ),
+            height=(
+                max(210, int(button_height() * 3.2))
+                if platform == "android"
+                else max(122, int(button_height() * 2.05))
             ),
             background_color=row_color,
             color=text_color,

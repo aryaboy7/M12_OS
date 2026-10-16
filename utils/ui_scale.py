@@ -13,17 +13,10 @@ from kivy.utils import platform
 # Portrait reference:   640 x 1046
 # Landscape reference:  900 x 650
 #
-# This is NOT device-specific sizing. Orientation is a layout
-# property, not a device type.
-#
-# All scalable fonts, heights, padding, and spacing use the same
-# fit/contain factor:
-#
-#     min(current_width / reference_width,
-#         current_height / reference_height)
-#
-# That guarantees the complete reference layout fits inside the
-# available window while preserving proportions.
+# Layout dimensions continue to use a proportional fit factor.
+# Android fonts have a separate readability scale so that narrow
+# displays (including a folded phone) don't make text too small.
+# Desktop font sizing remains unchanged.
 #
 # device_profile() remains available only for genuine layout /
 # platform behavior decisions.
@@ -78,7 +71,7 @@ def scale_factor():
 
 
 def scale(value):
-    """Scale any numeric UI measurement with the shared factor."""
+    """Scale any numeric layout measurement with the shared factor."""
     return max(1, int(round(float(value) * scale_factor())))
 
 
@@ -135,7 +128,18 @@ def is_linux():
 # ------------------------------------------------------------
 
 def font(base):
-    return scale(base)
+    """
+    Independent font scaling.
+
+    Preserve existing desktop sizing. Improve readability on Android
+    without enlarging the entire widget layout.
+    """
+    factor = scale_factor()
+
+    if platform == "android":
+        factor = max(1.0, factor * 1.35)
+
+    return max(1, int(round(float(base) * factor)))
 
 
 def height(base):
@@ -235,7 +239,8 @@ def ai_layout():
     Central sizing source for screens/ai_screen.py.
 
     Relative vertical layout proportions remain unchanged.
-    Every pixel/font measurement uses the same proportional scale factor.
+    Pixel spacing uses proportional scale; fonts use the separate
+    readability scale on Android.
     """
     if is_portrait_layout():
         values = {

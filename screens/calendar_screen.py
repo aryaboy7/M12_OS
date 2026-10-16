@@ -783,7 +783,42 @@ class CalendarScreen(Screen):
                     background_normal="",
                     background_color=self.event_color(event, index == self.selected_index)
                 )
-                btn.bind(size=lambda inst, val: setattr(inst, "text_size", (val[0] - spacing_size(), val[1])))
+                if platform == "android":
+                    # A fixed five-line row clips the first line (the title)
+                    # when large fonts and wrapped details exceed its height.
+                    # Re-measure on every width change, including Fold resize.
+                    btn.valign = "top"
+                    btn.padding = (spacing_size(), spacing_size())
+
+                    def fit_event_row(instance, *_args):
+                        inset = max(8, spacing_size())
+                        instance.text_size = (
+                            max(1, instance.width - inset * 2),
+                            None,
+                        )
+                        instance.texture_update()
+                        required = max(
+                            event_row_height(),
+                            instance.texture_size[1] + inset * 2,
+                        )
+                        if abs(instance.height - required) > 1:
+                            instance.height = required
+
+                    btn.bind(
+                        width=fit_event_row,
+                        text=fit_event_row,
+                        font_size=fit_event_row,
+                    )
+                    Clock.schedule_once(
+                        lambda dt, row=btn: fit_event_row(row), 0
+                    )
+                else:
+                    btn.bind(
+                        size=lambda inst, val: setattr(
+                            inst, "text_size",
+                            (val[0] - spacing_size(), val[1]),
+                        )
+                    )
                 btn.bind(on_press=lambda inst, i=index: self.select_event(i))
                 self.list_box.add_widget(btn)
 
